@@ -447,7 +447,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
             else:
                 msg = f"{special_msg}🚇 Prossimo treno per {dest} parte tra {time_str}, alle {next_dep.strftime('%H:%M')}."
             
-            if minutes < NEXT_TRAIN_THRESHOLD:
+            if minutes <= 1:
                 next2, min2, sec2, has2 = get_next_departure_after(station, now, next_dep.time())
                 if has2:
                     time_str2 = format_time(min2, sec2)
@@ -480,7 +480,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
                 msg += f"🔺 **Per Monte Po**: prossimo treno passa tra {time_str}.\n"
             else:
                 msg += f"🔺 **Per Monte Po**: prossimo treno passa tra {time_str}, alle {paso_mp.strftime('%H:%M')}.\n"
-        if mins < NEXT_TRAIN_THRESHOLD and next_info:
+        if mins <= 1 and next_info:
             paso2, mins2, secs2 = next_info
             time_str2 = format_time(mins2, secs2)
             if mins2 < SHORT_TIME_THRESHOLD:
