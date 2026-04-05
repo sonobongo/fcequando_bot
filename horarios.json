@@ -122,7 +122,7 @@
   "last_train_message_start_hour": 18,
   "closing_warning_hour": 8,
   "short_time_threshold": 5,
-  "next_train_threshold": 2,
+  "next_train_threshold": 1,
   "travel_times": {
     "Montepo_to_Milo": 9,
     "Stesicoro_to_Milo": 11
