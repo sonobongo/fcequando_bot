@@ -461,13 +461,15 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
         await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
         return
     
-    # Para estaciones intermedias
+    # ========== INICIO DEL BLOQUE DE ESTACIONES INTERMEDIAS ==========
+    # Para estaciones intermedias (incluye Milo)
     info_mp, info_st = get_next_train_at_station(now, estacion_key)
     nombre = NOMBRE_MOSTRAR.get(estacion_key, estacion_key.capitalize())
     
+    # Construir el mensaje de texto (igual para todas)
     msg = f"{special_msg}🚆 **Prossimi treni a {nombre}**\n\n"
     
-    # Orden: primero dirección Monte Po (🔺), luego Stesicoro (🔻)
+    # Dirección Monte Po
     if info_mp:
         paso_mp, mins, secs, next_info = info_mp
         time_str = format_time(mins, secs)
@@ -488,6 +490,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
     else:
         msg += f"🔺 **Per Monte Po**: nessun treno in arrivo al momento.\n"
     
+    # Dirección Stesicoro
     if info_st:
         paso_st, mins, secs, next_info = info_st
         time_str = format_time(mins, secs)
@@ -512,7 +515,13 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
     if last_msg and not is_sant_agata(now):
         msg += f"\n{last_msg}"
     
-    await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri, parse_mode='Markdown')
+    # --- Enviar imagen para Galatea ---
+    if estacion_key == "galatea":
+        image_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/st_galatea.jpg"
+        await update.message.reply_photo(photo=image_url, caption=msg, reply_markup=keyboard_main if return_to_main else keyboard_altri, parse_mode='Markdown')
+    else:
+        await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri, parse_mode='Markdown')
+    # ========== FIN DEL BLOQUE DE ESTACIONES INTERMEDIAS ==========
 
 # ============================================================================
 # TECLADOS
