@@ -422,7 +422,7 @@ logger = logging.getLogger(__name__)
 
 # Teclado con tres botones
 keyboard = ReplyKeyboardMarkup(
-    [[KeyboardButton("Monte Po"), KeyboardButton("Stesicoro"), KeyboardButton("Milo")]],
+    [[KeyboardButton("Monte Po"), KeyboardButton("Milo"), KeyboardButton("Stesicoro")]],
     resize_keyboard=True,
     one_time_keyboard=False
 )
