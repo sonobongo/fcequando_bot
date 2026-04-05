@@ -181,13 +181,6 @@ FESTIVI_NAZIONALI = [
     (1, 1), (1, 6), (4, 25), (5, 1), (6, 2), (8, 15), (11, 1), (12, 8), (12, 26)
 ]
 
-def is_festivo_nazionale(now: datetime) -> bool:
-    if is_christmas(now) or is_new_years_eve(now) or is_sant_agata(now):
-        return False
-    if is_easter_sunday(now):
-        return False
-    return (now.month, now.day) in FESTIVI_NAZIONALI
-
 def is_new_years_eve(now: datetime) -> bool:
     return now.month == 12 and now.day == 31
 
@@ -273,6 +266,27 @@ def is_easter_sunday(now: datetime) -> bool:
     easter = date(year, month, day)
     return now.date() == easter and now.weekday() == 6
 
+def is_easter_monday(now: datetime) -> bool:
+    """Retorna True se la data è il Lunedì dell'Angelo (lunes de Pascua)."""
+    year = now.year
+    a = year % 19
+    b = year // 100
+    c = year % 100
+    d = b // 4
+    e = b % 4
+    f = (b + 8) // 25
+    g = (b - f + 1) // 3
+    h = (19 * a + b - d - g + 15) % 30
+    i = c // 4
+    k = c % 4
+    l = (32 + 2 * e + 2 * i - h - k) % 7
+    m = (a + 11 * h + 22 * l) // 451
+    month = (h + l - 7 * m + 114) // 31
+    day = ((h + l - 7 * m + 114) % 31) + 1
+    easter_sunday = date(year, month, day)
+    easter_monday = easter_sunday + timedelta(days=1)
+    return now.date() == easter_monday
+
 def is_closed_all_day(now: datetime) -> bool:
     return is_christmas(now) or is_easter_sunday(now)
 
@@ -286,6 +300,15 @@ def get_closing_warning(now: datetime) -> str:
                 fest_name = CLOSED_ALL_DAY["easter_sunday"].get("message", "Pasqua")
             return f"⚠️ Attenzione: domani, {fest_name}, la metropolitana sarà CHIUSA tutto il giorno. ⚠️"
     return ""
+
+def is_festivo_nazionale(now: datetime) -> bool:
+    if is_christmas(now) or is_new_years_eve(now) or is_sant_agata(now):
+        return False
+    if is_easter_sunday(now):
+        return False
+    if is_easter_monday(now):
+        return True
+    return (now.month, now.day) in FESTIVI_NAZIONALI
 
 # ============================================================================
 # FUNCIONES DE HORARIOS (comunes para Monte Po y Stesicoro)
