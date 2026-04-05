@@ -415,19 +415,28 @@ def get_next_train_at_station(now: datetime, estacion_key: str) -> Tuple[Optiona
     return (info_mp, info_st)
 
 # ============================================================================
-# RESPUESTA PARA CUALQUIER ESTACIÓN (CORREGIDA: CIERRE PARA INTERMEDIAS)
+# RESPUESTA PARA CUALQUIER ESTACIÓN (CON SOPORTE PARA MODO TEST PERSISTENTE)
 # ============================================================================
-async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str, simulated_now: datetime = None, return_to_main: bool = True):
-    now = simulated_now if simulated_now is not None else datetime.now(CATANIA_TZ)
+async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str, return_to_main: bool = True):
+    # Obtener la hora actual o simulada desde el contexto del chat
+    chat_id = update.effective_chat.id
+    simulated_time = context.chat_data.get('test_time') if context.chat_data else None
+    if simulated_time:
+        now = simulated_time
+        # Mostrar un pequeño indicador de que estamos en modo test (opcional)
+        # Lo añadiremos al mensaje más adelante
+    else:
+        now = datetime.now(CATANIA_TZ)
     
     warning = get_closing_warning(now)
     if warning:
         await update.message.reply_text(warning, reply_markup=keyboard_main if return_to_main else keyboard_altri)
     
     special_msg = SANT_AGATA.get("message", "") + "\n\n" if is_sant_agata(now) else ""
+    test_indicator = "🧪 [TEST MODE] " if simulated_time else ""
     
     if is_closed_all_day(now):
-        msg = f"{special_msg}🚇 Oggi la metropolitana è chiusa tutto il giorno.\n🕒 Riaprirà domani mattina."
+        msg = f"{special_msg}{test_indicator}🚇 Oggi la metropolitana è chiusa tutto il giorno.\n🕒 Riaprirà domani mattina."
         if estacion_key in STATION_IMAGE:
             await update.message.reply_photo(photo=STATION_IMAGE[estacion_key], caption=msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
         else:
@@ -445,9 +454,9 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
                 if not has_first:
                     first_train, _, _, _ = get_next_departure(station, now + timedelta(days=1))
                 station_display = "Monte Po" if station == "Montepo" else "Stesicoro"
-                msg = f"{special_msg}🚇 La metropolitana è chiusa in questo momento. Il primo treno da {station_display} partirà alle {first_train.strftime('%H:%M')}."
+                msg = f"{special_msg}{test_indicator}🚇 La metropolitana è chiusa in questo momento. Il primo treno da {station_display} partirà alle {first_train.strftime('%H:%M')}."
             else:
-                msg = f"{special_msg}🚇 La metropolitana è chiusa in questo momento.\n🕒 Riaprirà alle {next_open.strftime('%H:%M')}."
+                msg = f"{special_msg}{test_indicator}🚇 La metropolitana è chiusa in questo momento.\n🕒 Riaprirà alle {next_open.strftime('%H:%M')}."
             if estacion_key in STATION_IMAGE:
                 await update.message.reply_photo(photo=STATION_IMAGE[estacion_key], caption=msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
             else:
@@ -456,7 +465,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
         
         next_dep, minutes, seconds, has_trains = get_next_departure(station, now)
         if not has_trains:
-            msg = f"{special_msg}🚇 Non ci sono più treni oggi. Il servizio riprenderà domani mattina."
+            msg = f"{special_msg}{test_indicator}🚇 Non ci sono più treni oggi. Il servizio riprenderà domani mattina."
             if estacion_key in STATION_IMAGE:
                 await update.message.reply_photo(photo=STATION_IMAGE[estacion_key], caption=msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
             else:
@@ -469,9 +478,9 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
         
         if minutes == 0:
             if seconds == 0:
-                msg = f"{special_msg}🚇 Il treno è in binario. Partirà subito."
+                msg = f"{special_msg}{test_indicator}🚇 Il treno è in binario. Partirà subito."
             else:
-                msg = f"{special_msg}🚇 Il treno è in binario. Partirà tra meno di un minuto."
+                msg = f"{special_msg}{test_indicator}🚇 Il treno è in binario. Partirà tra meno di un minuto."
             next2, min2, sec2, has2 = get_next_departure_after(station, now, next_dep.time())
             if has2:
                 time_str2 = format_time(min2, sec2)
@@ -480,9 +489,9 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
                 msg += f"\n\n🚆 Questo è l'ultimo treno della giornata."
         else:
             if minutes < SHORT_TIME_THRESHOLD:
-                msg = f"{special_msg}🚇 Prossimo treno per {dest} parte tra {time_str}."
+                msg = f"{special_msg}{test_indicator}🚇 Prossimo treno per {dest} parte tra {time_str}."
             else:
-                msg = f"{special_msg}🚇 Prossimo treno per {dest} parte tra {time_str}, alle {next_dep.strftime('%H:%M')}."
+                msg = f"{special_msg}{test_indicator}🚇 Prossimo treno per {dest} parte tra {time_str}, alle {next_dep.strftime('%H:%M')}."
             
             if minutes <= 1:
                 next2, min2, sec2, has2 = get_next_departure_after(station, now, next_dep.time())
@@ -511,9 +520,9 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
             first_train, _, _, has_first = get_next_departure("Montepo", now)
             if not has_first:
                 first_train, _, _, _ = get_next_departure("Montepo", now + timedelta(days=1))
-            msg = f"{special_msg}🚇 La metropolitana è chiusa in questo momento. Il primo treno da Monte Po partirà alle {first_train.strftime('%H:%M')}."
+            msg = f"{special_msg}{test_indicator}🚇 La metropolitana è chiusa in questo momento. Il primo treno da Monte Po partirà alle {first_train.strftime('%H:%M')}."
         else:
-            msg = f"{special_msg}🚇 La metropolitana è chiusa in questo momento.\n🕒 Riaprirà alle {next_open.strftime('%H:%M')}."
+            msg = f"{special_msg}{test_indicator}🚇 La metropolitana è chiusa in questo momento.\n🕒 Riaprirà alle {next_open.strftime('%H:%M')}."
         if estacion_key in STATION_IMAGE:
             await update.message.reply_photo(photo=STATION_IMAGE[estacion_key], caption=msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
         else:
@@ -524,7 +533,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
     info_mp, info_st = get_next_train_at_station(now, estacion_key)
     nombre = NOMBRE_MOSTRAR.get(estacion_key, estacion_key.capitalize())
     
-    msg = f"{special_msg}🚆 **Prossimi treni a {nombre}**\n\n"
+    msg = f"{special_msg}{test_indicator}🚆 **Prossimi treni a {nombre}**\n\n"
     
     # Dirección Monte Po
     if info_mp:
@@ -578,6 +587,122 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
         await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri, parse_mode='Markdown')
 
 # ============================================================================
+# COMANDOS TEST
+# ============================================================================
+async def test_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Comando /test: sin argumentos -> ayuda; con 2 args -> fija modo test; con 3 args -> respuesta única (compatibilidad)"""
+    args = context.args
+    chat_id = update.effective_chat.id
+    
+    if not args:
+        await update.message.reply_text(
+            "🧪 **Modalità test**\n\n"
+            "Per fissare una data/ora simulata e usare tutti i bottoni:\n"
+            "`/test DDMMYYYY HHMM`\n"
+            "Esempio: `/test 11022026 1102`\n\n"
+            "Per tornare alla realtà: `/testfin`\n\n"
+            "Per una singola risposta (senza cambiare modalità):\n"
+            "`/test DDMMYYYY HHMM stazione` (M, S, ML, ecc.)",
+            parse_mode='Markdown'
+        )
+        return
+    
+    if len(args) == 2:
+        # Modo test persistente: /test DDMMYYYY HHMM
+        date_str, time_str = args[0], args[1]
+        if len(date_str) != 8 or not date_str.isdigit():
+            await update.message.reply_text("Formato data non valido. Usa DDMMYYYY (es. 11022026).")
+            return
+        if len(time_str) != 4 or not time_str.isdigit():
+            await update.message.reply_text("Formato ora non valido. Usa HHMM (es. 1102).")
+            return
+        day = int(date_str[0:2])
+        month = int(date_str[2:4])
+        year = int(date_str[4:8])
+        hour = int(time_str[0:2])
+        minute = int(time_str[2:4])
+        if hour > 23 or minute > 59:
+            await update.message.reply_text("Ora non valida.")
+            return
+        try:
+            simulated = CATANIA_TZ.localize(datetime(year, month, day, hour, minute))
+        except Exception as e:
+            await update.message.reply_text(f"Data non valida: {e}")
+            return
+        # Guardar en chat_data
+        if context.chat_data is None:
+            context.chat_data = {}
+        context.chat_data['test_time'] = simulated
+        await update.message.reply_text(
+            f"🧪 **Modalità test attivata**\n"
+            f"Ora simulata: {simulated.strftime('%d/%m/%Y %H:%M')}\n"
+            f"Usa i bottoni normalmente. Per uscire: `/testfin`",
+            parse_mode='Markdown'
+        )
+        return
+    
+    if len(args) == 3:
+        # Compatibilidad con el antiguo /test: /test DDMMYYYY HHMM X
+        date_str, time_str, station_code = args[0], args[1], args[2].upper()
+        if station_code == "M":
+            station = "Montepo"
+        elif station_code == "S":
+            station = "Stesicoro"
+        elif station_code == "ML":
+            station = "milo"  # Milo es intermedia, pero podemos tratarla
+        else:
+            await update.message.reply_text("Codice stazione non valido. Usa M, S o ML.")
+            return
+        if len(date_str) != 8 or not date_str.isdigit():
+            await update.message.reply_text("Data non valida.")
+            return
+        if len(time_str) != 4 or not time_str.isdigit():
+            await update.message.reply_text("Ora non valida.")
+            return
+        day = int(date_str[0:2])
+        month = int(date_str[2:4])
+        year = int(date_str[4:8])
+        hour = int(time_str[0:2])
+        minute = int(time_str[2:4])
+        if hour > 23 or minute > 59:
+            await update.message.reply_text("Ora non valida.")
+            return
+        try:
+            simulated = CATANIA_TZ.localize(datetime(year, month, day, hour, minute))
+        except Exception as e:
+            await update.message.reply_text(f"Data non valida: {e}")
+            return
+        # Respuesta única sin cambiar el modo
+        # Usamos una copia de la función send_station_response con simulated_now
+        await send_station_response_simulated(update, context, station, simulated)
+        return
+    
+    await update.message.reply_text("Comando non riconosciuto. Usa /test DDMMYYYY HHMM o /test DDMMYYYY HHMM X")
+
+async def send_station_response_simulated(update, context, estacion_key: str, simulated_now: datetime):
+    """Función auxiliar para responder con tiempo simulado sin cambiar el modo test"""
+    # Guardamos temporalmente el tiempo simulado en chat_data, luego lo restauramos
+    chat_id = update.effective_chat.id
+    original = context.chat_data.get('test_time') if context.chat_data else None
+    if context.chat_data is None:
+        context.chat_data = {}
+    context.chat_data['test_time'] = simulated_now
+    await send_station_response(update, context, estacion_key, return_to_main=False)
+    # Restaurar
+    if original is None:
+        context.chat_data.pop('test_time', None)
+    else:
+        context.chat_data['test_time'] = original
+
+async def testfin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Desactiva el modo test y vuelve a la hora real."""
+    if context.chat_data and 'test_time' in context.chat_data:
+        del context.chat_data['test_time']
+        await update.message.reply_text("✅ Modalità test disattivata. Ora reale ripristinata.")
+    else:
+        await update.message.reply_text("⚠️ Nessuna modalità test attiva.")
+
+# ============================================================================
 # TECLADOS
 # ============================================================================
 keyboard_main = ReplyKeyboardMarkup(
@@ -613,7 +738,7 @@ BOTON_TO_KEY = {
 }
 
 # ============================================================================
-# MANEJADORES DE COMANDOS
+# MANEJADORES DE COMANDOS (modificados para usar el modo test)
 # ============================================================================
 async def cmd_montepo(update, context): await send_station_response(update, context, "montepo", return_to_main=False)
 async def cmd_stesicoro(update, context): await send_station_response(update, context, "stesicoro", return_to_main=False)
@@ -652,8 +777,9 @@ async def help_command(update, context):
         "/stesicoro - Prossimi treni a Stesicoro\n"
         "/milo - Prossimi treni a Milo\n"
         "/altri - Mostra altre stazioni\n"
-        "/fontana, /nesima, /sannullo, /cibali, /borgo, /giuffrida, /italia, /galatea, /giovanni\n\n"
-        "/test DDMMYYYY HHMM <stazione> - Simula data/ora (es. /test 05042026 0908 borgo)\n\n"
+        "/fontana, /nesima, /sannullo, /cibali, /borgo, /giuffrida, /italia, /galatea, /giovanni\n"
+        "/test DDMMYYYY HHMM - Attiva modalità test\n"
+        "/testfin - Disattiva modalità test\n\n"
         "Oppure premi i pulsanti.",
         reply_markup=keyboard_main
     )
@@ -668,29 +794,6 @@ async def handle_button(update, context):
         await send_station_response(update, context, BOTON_TO_KEY[text], return_to_main=True)
     else:
         await update.message.reply_text("Scelta non valida. Usa i pulsanti.", reply_markup=keyboard_main)
-
-async def test_command(update, context):
-    if not context.args or len(context.args) < 3:
-        await update.message.reply_text("Formato: /test DDMMYYYY HHMM <stazione>\nEsempio: /test 05042026 0908 borgo\n\nStazioni: montepo, stesicoro, milo, fontana, nesima, sannullo, cibali, borgo, giuffrida, italia, galatea, giovanni")
-        return
-    date_str, time_str, station_name = context.args[0], context.args[1], context.args[2].lower()
-    if station_name not in TIEMPOS_ESTACION:
-        await update.message.reply_text(f"Stazione '{station_name}' non valida.")
-        return
-    if len(date_str)!=8 or not date_str.isdigit() or len(time_str)!=4 or not time_str.isdigit():
-        await update.message.reply_text("Formato data/ora non valido.")
-        return
-    day, month, year = int(date_str[0:2]), int(date_str[2:4]), int(date_str[4:8])
-    hour, minute = int(time_str[0:2]), int(time_str[2:4])
-    if hour>23 or minute>59:
-        await update.message.reply_text("Ora non valida.")
-        return
-    try:
-        simulated_now = CATANIA_TZ.localize(datetime(year, month, day, hour, minute))
-    except Exception as e:
-        await update.message.reply_text(f"Data non valida: {e}")
-        return
-    await send_station_response(update, context, station_name, simulated_now, return_to_main=False)
 
 # ============================================================================
 # LOGGING Y MAIN (con Flask en hilo separado)
@@ -715,7 +818,8 @@ def main():
         ("start", start), ("help", help_command), ("montepo", cmd_montepo), ("stesicoro", cmd_stesicoro),
         ("milo", cmd_milo), ("altri", cmd_altri), ("fontana", cmd_fontana), ("nesima", cmd_nesima),
         ("sannullo", cmd_sannullo), ("cibali", cmd_cibali), ("borgo", cmd_borgo), ("giuffrida", cmd_giuffrida),
-        ("italia", cmd_italia), ("galatea", cmd_galatea), ("giovanni", cmd_giovanni), ("test", test_command)
+        ("italia", cmd_italia), ("galatea", cmd_galatea), ("giovanni", cmd_giovanni), ("test", test_command),
+        ("testfin", testfin_command)
     ]:
         app.add_handler(CommandHandler(cmd, handler))
     app.add_handler(MessageHandler(filters.Text(["Monte Po", "Stesicoro", "Altri", "← Menu", "Fontana", "Nesima", "San Nullo", "Cibali", "Milo", "Borgo", "Giuffrida", "Italia", "Galatea", "Giovanni XXIII"]), handle_button))
