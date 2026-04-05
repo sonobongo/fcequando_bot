@@ -182,62 +182,151 @@ SCHEDULES = {
 CATANIA_TZ = pytz.timezone('Europe/Rome')
 
 # ============================================================================
-# FUNCIONES DE HORARIOS
+# FUNCIONES PARA SANT'AGATA (3,4,5 febbraio)
 # ============================================================================
+def is_sant_agata(now: datetime) -> bool:
+    return now.month == 2 and now.day in [3, 4, 5]
 
-def get_opening_time(now: datetime) -> Tuple[int, int]:
-    weekday = now.weekday()
-    if weekday == 6:
-        return (7, 0)
-    return (6, 0)
+def get_first_train_sant_agata(station: str) -> time:
+    if station == "Montepo":
+        return time(6, 0)
+    else:
+        return time(6, 25)
 
-def get_closing_time(now: datetime) -> Tuple[int, int]:
-    weekday = now.weekday()
-    if weekday in [4, 5]:
-        return (1, 0)
-    return (22, 30)
+def get_last_train_sant_agata(station: str) -> time:
+    if station == "Montepo":
+        return time(1, 30)
+    else:
+        return time(2, 0)
 
-def is_metro_closed(now: datetime) -> Tuple[bool, Optional[datetime]]:
+def get_next_departure_sant_agata(station: str, now: datetime) -> Tuple[Optional[datetime], int, int, bool]:
     current_time = now.time()
-    weekday = now.weekday()
-    open_h, open_m = get_opening_time(now)
-    close_h, close_m = get_closing_time(now)
+    first = get_first_train_sant_agata(station)
+    last = get_last_train_sant_agata(station)
+    
+    # Antes del primer tren
+    if current_time < first:
+        next_dt = datetime.combine(now.date(), first)
+        next_dt = CATANIA_TZ.localize(next_dt)
+        delta = next_dt - now
+        sec = int(delta.total_seconds())
+        return (next_dt, sec // 60, sec % 60, True)
+    
+    # Después del último tren
+    if current_time >= last:
+        tomorrow = now.date() + timedelta(days=1)
+        next_dt = datetime.combine(tomorrow, first)
+        next_dt = CATANIA_TZ.localize(next_dt)
+        delta = next_dt - now
+        sec = int(delta.total_seconds())
+        return (next_dt, sec // 60, sec % 60, True)
+    
+    # Durante el servicio: calcular próxima salida usando frecuencias
+    # De 06:00 a 15:00 cada 10 minutos; de 15:00 a cierre cada 13 minutos
+    first_min = first.hour * 60 + first.minute
+    last_min = last.hour * 60 + last.minute
+    current_min = current_time.hour * 60 + current_time.minute
+    
+    if current_min < 15 * 60:
+        # Tramo de 10 minutos
+        # Primera salida a first_min, luego cada 10 minutos
+        # Encontrar la próxima salida en este tramo
+        # Si la próxima calculada supera las 15:00, pasamos al tramo de 13 minutos
+        minutes_since_first = current_min - first_min
+        if minutes_since_first < 0:
+            minutes_since_first = 0
+        intervals = (minutes_since_first + 9) // 10
+        next_min = first_min + intervals * 10
+        if next_min > 15 * 60:
+            # Cambiar a frecuencia 13 minutos desde las 15:00
+            minutes_from_15 = current_min - 15 * 60
+            if minutes_from_15 < 0:
+                minutes_from_15 = 0
+            intervals13 = (minutes_from_15 + 12) // 13
+            next_min = 15 * 60 + intervals13 * 13
+    else:
+        # Tramo de 13 minutos
+        minutes_from_15 = current_min - 15 * 60
+        intervals13 = (minutes_from_15 + 12) // 13
+        next_min = 15 * 60 + intervals13 * 13
+    
+    # Si la próxima salida se pasa del último tren, devolver primer tren de mañana
+    if next_min > last_min:
+        tomorrow = now.date() + timedelta(days=1)
+        next_dt = datetime.combine(tomorrow, first)
+        next_dt = CATANIA_TZ.localize(next_dt)
+        delta = next_dt - now
+        sec = int(delta.total_seconds())
+        return (next_dt, sec // 60, sec % 60, True)
+    
+    next_hour = next_min // 60
+    next_minute = next_min % 60
+    next_dt = datetime.combine(now.date(), time(next_hour, next_minute))
+    next_dt = CATANIA_TZ.localize(next_dt)
+    delta = next_dt - now
+    sec = int(delta.total_seconds())
+    return (next_dt, sec // 60, sec % 60, True)
+
+# ============================================================================
+# FUNCIONES DE HORARIOS (adaptadas para Sant'Agata)
+# ============================================================================
+def get_opening_time(now: datetime, station: str = None) -> Tuple[int, int]:
+    if is_sant_agata(now):
+        if station == "Montepo" or station is None:
+            return (6, 0)
+        else:
+            return (6, 25)
+    else:
+        weekday = now.weekday()
+        if weekday == 6:
+            return (7, 0)
+        else:
+            return (6, 0)
+
+def get_closing_time(now: datetime, station: str) -> Tuple[int, int]:
+    if is_sant_agata(now):
+        if station == "Montepo":
+            return (1, 30)
+        else:
+            return (2, 0)
+    else:
+        weekday = now.weekday()
+        if weekday in [4, 5]:
+            return (1, 0)
+        else:
+            return (22, 30)
+
+def is_metro_closed(now: datetime, station: str) -> Tuple[bool, Optional[datetime]]:
+    current_time = now.time()
+    open_h, open_m = get_opening_time(now, station)
+    close_h, close_m = get_closing_time(now, station)
     opening_time = time(open_h, open_m)
     closing_time = time(close_h, close_m)
     
-    if weekday in [4, 5]:
-        if current_time >= closing_time and current_time < opening_time:
+    if current_time >= closing_time or current_time < opening_time:
+        if current_time < opening_time:
             next_open = datetime.combine(now.date(), opening_time)
-            next_open = CATANIA_TZ.localize(next_open)
-            if next_open <= now:
-                next_open = datetime.combine(now.date() + timedelta(days=1), opening_time)
-                next_open = CATANIA_TZ.localize(next_open)
-            return (True, next_open)
-        return (False, None)
-    else:
-        if current_time >= closing_time or current_time < opening_time:
-            if current_time < opening_time:
-                next_open = datetime.combine(now.date(), opening_time)
-            else:
-                next_open = datetime.combine(now.date() + timedelta(days=1), opening_time)
-            next_open = CATANIA_TZ.localize(next_open)
-            return (True, next_open)
-        return (False, None)
-
-def get_schedule_list(station: str, now: datetime) -> List[time]:
-    weekday_num = now.weekday()
-    if weekday_num == 4:
-        return SCHEDULES[station]["friday"]
-    elif weekday_num == 5:
-        return SCHEDULES[station]["saturday"]
-    elif weekday_num == 6:
-        return SCHEDULES[station]["sunday"]
-    else:
-        return SCHEDULES[station]["weekday"]
+        else:
+            next_open = datetime.combine(now.date() + timedelta(days=1), opening_time)
+        next_open = CATANIA_TZ.localize(next_open)
+        return (True, next_open)
+    return (False, None)
 
 def get_next_departure(station: str, now: datetime) -> Tuple[Optional[datetime], int, int, bool]:
+    if is_sant_agata(now):
+        return get_next_departure_sant_agata(station, now)
+    
+    # Días normales
     current_time = now.time()
-    schedule_list = get_schedule_list(station, now)
+    weekday_num = now.weekday()
+    if weekday_num == 4:
+        schedule_list = SCHEDULES[station]["friday"]
+    elif weekday_num == 5:
+        schedule_list = SCHEDULES[station]["saturday"]
+    elif weekday_num == 6:
+        schedule_list = SCHEDULES[station]["sunday"]
+    else:
+        schedule_list = SCHEDULES[station]["weekday"]
     
     next_departure_time = None
     for departure in schedule_list:
@@ -257,6 +346,15 @@ def get_next_departure(station: str, now: datetime) -> Tuple[Optional[datetime],
     return (next_departure_datetime, minutes, seconds, True)
 
 def get_next_departure_after(station: str, now: datetime, after_time: time) -> Tuple[Optional[datetime], int, int, bool]:
+    """Obtiene el próximo tren después de una hora específica del mismo día."""
+    if is_sant_agata(now):
+        # Simulamos avanzando el tiempo 1 minuto después de after_time y volvemos a calcular
+        # Esto es un poco feo pero funciona. Para simplificar, usamos la función principal con un now modificado.
+        fake_now = datetime.combine(now.date(), after_time) + timedelta(minutes=1)
+        fake_now = CATANIA_TZ.localize(fake_now)
+        return get_next_departure(station, fake_now)
+    
+    # Días normales
     schedule_list = get_schedule_list(station, now)
     next_departure_time = None
     for departure in schedule_list:
@@ -273,6 +371,17 @@ def get_next_departure_after(station: str, now: datetime, after_time: time) -> T
     seconds = total_seconds % 60
     return (next_departure_datetime, minutes, seconds, True)
 
+def get_schedule_list(station: str, now: datetime) -> List[time]:
+    weekday_num = now.weekday()
+    if weekday_num == 4:
+        return SCHEDULES[station]["friday"]
+    elif weekday_num == 5:
+        return SCHEDULES[station]["saturday"]
+    elif weekday_num == 6:
+        return SCHEDULES[station]["sunday"]
+    else:
+        return SCHEDULES[station]["weekday"]
+
 def format_time(minutes: int, seconds: int) -> str:
     if minutes < 5:
         if seconds >= 30:
@@ -288,7 +397,7 @@ def format_time(minutes: int, seconds: int) -> str:
         return f"{minutes} minuti"
 
 def get_last_train_message(now: datetime) -> str:
-    if now.hour < 18:
+    if now.hour < 18 or is_sant_agata(now):
         return ""
     weekday = now.weekday()
     if weekday in [0, 1, 2, 3]:
@@ -300,51 +409,50 @@ def get_last_train_message(now: datetime) -> str:
     return f"📌 Ricorda che oggi l'ultima metropolitana da Stesicoro parte alle {last_time}."
 
 # ============================================================================
-# RESPUESTA COMÚN (para botones, /proximo y /test)
+# RESPUESTA COMÚN
 # ============================================================================
 async def send_response(update: Update, context: ContextTypes.DEFAULT_TYPE, station: str, simulated_now: datetime = None):
     now = simulated_now if simulated_now is not None else datetime.now(CATANIA_TZ)
     
-    closed, next_open = is_metro_closed(now)
+    special_msg = ""
+    if is_sant_agata(now):
+        special_msg = "🎉 Orario Speciale per Sant'Agata 🎉\n\n"
+    
+    closed, next_open = is_metro_closed(now, station)
     if closed:
         minutes_to_opening = int((next_open - now).total_seconds() // 60)
         if minutes_to_opening <= 60:
             first_train_dt, _, _, has_first = get_next_departure(station, now)
             if not has_first:
                 tomorrow = now + timedelta(days=1)
-                first_time_tomorrow = get_schedule_list(station, tomorrow)[0]
-                first_train_dt = datetime.combine(tomorrow.date(), first_time_tomorrow)
-                first_train_dt = CATANIA_TZ.localize(first_train_dt)
+                first_train_dt, _, _, _ = get_next_departure(station, tomorrow)
             station_display = "Monte Po" if station == "Montepo" else "Stesicoro"
-            msg = f"🚇 La metropolitana è chiusa in questo momento. Il primo treno da {station_display} partirà alle {first_train_dt.strftime('%H:%M')}."
+            msg = f"{special_msg}🚇 La metropolitana è chiusa in questo momento. Il primo treno da {station_display} partirà alle {first_train_dt.strftime('%H:%M')}."
         else:
             open_time_str = next_open.strftime("%H:%M")
-            msg = f"🚇 La metropolitana è chiusa in questo momento.\n🕒 Riaprirà alle {open_time_str}."
+            msg = f"{special_msg}🚇 La metropolitana è chiusa in questo momento.\n🕒 Riaprirà alle {open_time_str}."
         await update.message.reply_text(msg, reply_markup=keyboard)
         return
     
     try:
         next_dep, minutes, seconds, has_trains = get_next_departure(station, now)
         if not has_trains:
-            msg = "🚇 Non ci sono più treni oggi. Il servizio riprenderà domani mattina."
+            msg = f"{special_msg}🚇 Non ci sono più treni oggi. Il servizio riprenderà domani mattina."
             await update.message.reply_text(msg, reply_markup=keyboard)
             return
         
         station_display = "Monte Po" if station == "Montepo" else "Stesicoro"
         time_str = format_time(minutes, seconds)
         
-        # Caso especial: treno appena partito (menos de 30 segundos)
         if minutes == 0 and seconds < 30:
             next_dep2, min2, sec2, has2 = get_next_departure(station, now + timedelta(seconds=30))
             if has2:
-                msg = f"🚇 Il treno è appena partito da {station_display}. Il prossimo sarà alle {next_dep2.strftime('%H:%M')}."
+                msg = f"{special_msg}🚇 Il treno è appena partito da {station_display}. Il prossimo sarà alle {next_dep2.strftime('%H:%M')}."
             else:
-                msg = f"🚇 Il treno è appena partito da {station_display}. Non ci sono altri treni oggi."
+                msg = f"{special_msg}🚇 Il treno è appena partito da {station_display}. Non ci sono altri treni oggi."
         else:
             if minutes < 5:
-                # Para menos de 5 minutos: mostramos el tiempo restante (sin la hora)
-                msg = f"🚇 Il prossimo treno da {station_display} parte tra {time_str}."
-                # Si hay segundo tren, lo mostramos con su hora (o tiempo si es también <5 min? lo dejamos con hora)
+                msg = f"{special_msg}🚇 Il prossimo treno da {station_display} parte tra {time_str}."
                 next_dep2, min2, sec2, has2 = get_next_departure_after(station, now, next_dep.time())
                 if has2:
                     time_str2 = format_time(min2, sec2)
@@ -352,11 +460,10 @@ async def send_response(update: Update, context: ContextTypes.DEFAULT_TYPE, stat
                 else:
                     msg += f"\n\n🚆 Questo è l'ultimo treno della giornata."
             else:
-                # 5 minutos o más: mostramos el mensaje completo con hora
-                msg = f"🚇 Il prossimo treno da {station_display} parte tra {time_str}, alle {next_dep.strftime('%H:%M')}."
+                msg = f"{special_msg}🚇 Il prossimo treno da {station_display} parte tra {time_str}, alle {next_dep.strftime('%H:%M')}."
         
         last_msg = get_last_train_message(now)
-        if last_msg:
+        if last_msg and not is_sant_agata(now):
             msg += f"\n\n{last_msg}"
         await update.message.reply_text(msg, reply_markup=keyboard)
     except Exception as e:
@@ -420,6 +527,7 @@ async def proximo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await send_response(update, context, station_name)
 
 async def test_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Opcional: restringir solo al administrador
     # if ADMIN_ID and update.effective_user.id != ADMIN_ID:
     #     await update.message.reply_text("Comando non autorizzato.")
     #     return
