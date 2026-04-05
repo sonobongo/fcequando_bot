@@ -511,7 +511,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
             await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
         return
     
-    # --- Estaciones intermedias (incluye Milo) ---
+        # --- Estaciones intermedias (incluye Milo) ---
     # Verificar si el metro está cerrado (usando Monte Po como referencia)
     closed, next_open = is_metro_closed(now, "Montepo")
     if closed:
@@ -528,16 +528,17 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
         else:
             await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
         return
-    
+
     # Si no está cerrado, calcular los trenes normalmente
     info_mp, info_st = get_next_train_at_station(now, estacion_key)
     nombre = NOMBRE_MOSTRAR.get(estacion_key, estacion_key.capitalize())
     
     msg = f"{special_msg}{test_indicator}🚆 **Prossimi treni a {nombre}**\n\n"
     
-    # Dirección Monte Po
-    if info_mp:
-        paso_mp, mins, secs, next_info = info_mp
+    # --- Dirección hacia Monte Po (tren que viene de Stesicoro) ---
+    # info_st contiene el tren que viene de Stesicoro (hacia Monte Po)
+    if info_st:
+        paso_st, mins, secs, next_info = info_st
         time_str = format_time(mins, secs)
         if mins == 0 and secs < 30:
             msg += f"🔺 **Per Monte Po**: treno in arrivo.\n"
@@ -545,7 +546,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
             if mins < SHORT_TIME_THRESHOLD:
                 msg += f"🔺 **Per Monte Po**: prossimo treno passa tra {time_str}.\n"
             else:
-                msg += f"🔺 **Per Monte Po**: prossimo treno passa tra {time_str}, alle {paso_mp.strftime('%H:%M')}.\n"
+                msg += f"🔺 **Per Monte Po**: prossimo treno passa tra {time_str}, alle {paso_st.strftime('%H:%M')}.\n"
         if mins <= 1 and next_info:
             paso2, mins2, secs2 = next_info
             time_str2 = format_time(mins2, secs2)
@@ -556,9 +557,10 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
     else:
         msg += f"🔺 **Per Monte Po**: nessun treno in arrivo al momento.\n"
     
-    # Dirección Stesicoro
-    if info_st:
-        paso_st, mins, secs, next_info = info_st
+    # --- Dirección hacia Stesicoro (tren que viene de Monte Po) ---
+    # info_mp contiene el tren que viene de Monte Po (hacia Stesicoro)
+    if info_mp:
+        paso_mp, mins, secs, next_info = info_mp
         time_str = format_time(mins, secs)
         if mins == 0 and secs < 30:
             msg += f"🔻 **Per Stesicoro**: treno in arrivo.\n"
@@ -566,7 +568,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
             if mins < SHORT_TIME_THRESHOLD:
                 msg += f"🔻 **Per Stesicoro**: prossimo treno passa tra {time_str}.\n"
             else:
-                msg += f"🔻 **Per Stesicoro**: prossimo treno passa tra {time_str}, alle {paso_st.strftime('%H:%M')}.\n"
+                msg += f"🔻 **Per Stesicoro**: prossimo treno passa tra {time_str}, alle {paso_mp.strftime('%H:%M')}.\n"
         if mins <= 1 and next_info:
             paso2, mins2, secs2 = next_info
             time_str2 = format_time(mins2, secs2)
