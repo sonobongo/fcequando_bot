@@ -78,7 +78,7 @@ NOMBRE_MOSTRAR = {
 }
 
 # ============================================================================
-# IMÁGENES DE LAS ESTACIONES
+# IMÁGENES DE LAS ESTACIONES (cambia la URL base si tu repositorio es diferente)
 # ============================================================================
 STATION_IMAGE = {
     "montepo": "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/st_montepo.jpg",
@@ -129,23 +129,91 @@ def get_next_departure_sant_agata(station: str, now: datetime) -> Tuple[Optional
     current_time = now.time()
     first = get_first_train_sant_agata(station)
     last = get_last_train_sant_agata(station)
+    first_min = first.hour * 60 + first.minute
+    last_min = last.hour * 60 + last.minute
+    if last_min < first_min:
+        last_min += 24 * 60
+    current_min = current_time.hour * 60 + current_time.minute
     
-    if current_time < first:
+    if current_min < first_min:
         next_dt = datetime.combine(now.date(), first)
         next_dt = CATANIA_TZ.localize(next_dt)
         sec = int((next_dt - now).total_seconds())
         return (next_dt, sec // 60, sec % 60, True)
-    
-    if current_time >= last:
+    if current_min >= last_min:
         tomorrow = now.date() + timedelta(days=1)
         next_dt = datetime.combine(tomorrow, first)
         next_dt = CATANIA_TZ.localize(next_dt)
         sec = int((next_dt - now).total_seconds())
         return (next_dt, sec // 60, sec % 60, True)
     
+    if current_min < 15 * 60:
+        minutes_since_first = max(0, current_min - first_min)
+        intervals = (minutes_since_first + 9) // 10
+        next_min = first_min + intervals * 10
+        if next_min > 15 * 60:
+            minutes_from_15 = max(0, current_min - 15 * 60)
+            intervals13 = (minutes_from_15 + 12) // 13
+            next_min = 15 * 60 + intervals13 * 13
+    else:
+        minutes_from_15 = max(0, current_min - 15 * 60)
+        intervals13 = (minutes_from_15 + 12) // 13
+        next_min = 15 * 60 + intervals13 * 13
+    
+    if next_min > last_min:
+        tomorrow = now.date() + timedelta(days=1)
+        next_dt = datetime.combine(tomorrow, first)
+        next_dt = CATANIA_TZ.localize(next_dt)
+        sec = int((next_dt - now).total_seconds())
+        return (next_dt, sec // 60, sec % 60, True)
+    
+    next_hour = next_min // 60
+    next_minute = next_min % 60
+    next_dt = datetime.combine(now.date(), time(next_hour, next_minute))
+    next_dt = CATANIA_TZ.localize(next_dt)
+    sec = int((next_dt - now).total_seconds())
+    return (next_dt, sec // 60, sec % 60, True)
+
+# ============================================================================
+# DÍAS FESTIVOS NACIONALES (horario de domingo) y Nochevieja
+# ============================================================================
+FESTIVI_NAZIONALI = [
+    (1, 1), (1, 6), (4, 25), (5, 1), (6, 2), (8, 15), (11, 1), (12, 8), (12, 26)
+]
+
+def is_festivo_nazionale(now: datetime) -> bool:
+    if is_christmas(now) or is_new_years_eve(now) or is_sant_agata(now):
+        return False
+    if is_easter_sunday(now):
+        return False
+    return (now.month, now.day) in FESTIVI_NAZIONALI
+
+def is_new_years_eve(now: datetime) -> bool:
+    return now.month == 12 and now.day == 31
+
+def get_next_departure_new_years_eve(station: str, now: datetime) -> Tuple[Optional[datetime], int, int, bool]:
+    current_time = now.time()
+    if station == "Montepo":
+        first = time(6, 0)
+        last = time(3, 0)
+    else:
+        first = time(6, 25)
+        last = time(3, 0)
     first_min = first.hour * 60 + first.minute
-    last_min = last.hour * 60 + last.minute
+    last_min = last.hour * 60 + last.minute + 24 * 60
     current_min = current_time.hour * 60 + current_time.minute
+    
+    if current_min < first_min:
+        next_dt = datetime.combine(now.date(), first)
+        next_dt = CATANIA_TZ.localize(next_dt)
+        sec = int((next_dt - now).total_seconds())
+        return (next_dt, sec // 60, sec % 60, True)
+    if current_min >= last_min:
+        tomorrow = now.date() + timedelta(days=1)
+        next_dt = datetime.combine(tomorrow, first)
+        next_dt = CATANIA_TZ.localize(next_dt)
+        sec = int((next_dt - now).total_seconds())
+        return (next_dt, sec // 60, sec % 60, True)
     
     if current_min < 15 * 60:
         minutes_since_first = max(0, current_min - first_min)
@@ -223,20 +291,24 @@ def get_closing_warning(now: datetime) -> str:
 # FUNCIONES DE HORARIOS (comunes para Monte Po y Stesicoro)
 # ============================================================================
 def get_opening_time(now: datetime, station: str = None) -> Tuple[int, int]:
+    if is_new_years_eve(now):
+        return (6, 0) if station == "Montepo" else (6, 25)
     if is_sant_agata(now):
         first = get_first_train_sant_agata(station if station else "Montepo")
         return (first.hour, first.minute)
+    if is_festivo_nazionale(now) or now.weekday() == 6:
+        return (7, 0)
     else:
-        weekday = now.weekday()
-        if weekday == 6:
-            return (7, 0)
-        else:
-            return (6, 0)
+        return (6, 0)
 
 def get_closing_time(now: datetime, station: str) -> Tuple[int, int]:
+    if is_new_years_eve(now):
+        return (3, 0)
     if is_sant_agata(now):
         last = get_last_train_sant_agata(station)
         return (last.hour, last.minute)
+    if is_festivo_nazionale(now) or now.weekday() == 6:
+        return (22, 30)
     else:
         weekday = now.weekday()
         if weekday in [4, 5]:
@@ -278,6 +350,8 @@ def is_metro_closed(now: datetime, station: str) -> Tuple[bool, Optional[datetim
         return (False, None)
 
 def get_schedule_list(station: str, now: datetime) -> List[time]:
+    if is_festivo_nazionale(now):
+        return SCHEDULES[station]["sunday"]
     weekday_num = now.weekday()
     if weekday_num == 4:
         return SCHEDULES[station]["friday"]
@@ -289,6 +363,8 @@ def get_schedule_list(station: str, now: datetime) -> List[time]:
         return SCHEDULES[station]["weekday"]
 
 def get_next_departure(station: str, now: datetime) -> Tuple[Optional[datetime], int, int, bool]:
+    if is_new_years_eve(now):
+        return get_next_departure_new_years_eve(station, now)
     if is_sant_agata(now):
         return get_next_departure_sant_agata(station, now)
     
@@ -304,6 +380,10 @@ def get_next_departure(station: str, now: datetime) -> Tuple[Optional[datetime],
 
 def get_next_departure_after(station: str, now: datetime, after_time: time) -> Tuple[Optional[datetime], int, int, bool]:
     if is_sant_agata(now):
+        fake_now = datetime.combine(now.date(), after_time) + timedelta(minutes=1)
+        fake_now = CATANIA_TZ.localize(fake_now)
+        return get_next_departure(station, fake_now)
+    if is_new_years_eve(now):
         fake_now = datetime.combine(now.date(), after_time) + timedelta(minutes=1)
         fake_now = CATANIA_TZ.localize(fake_now)
         return get_next_departure(station, fake_now)
@@ -349,7 +429,6 @@ def get_last_train_message(now: datetime) -> str:
 def get_next_train_at_station(now: datetime, estacion_key: str) -> Tuple[Optional[Tuple], Optional[Tuple]]:
     if estacion_key not in TIEMPOS_ESTACION:
         return (None, None)
-    
     t_mp, t_st = TIEMPOS_ESTACION[estacion_key]
     
     # Dirección Monte Po -> Stesicoro
@@ -415,10 +494,9 @@ def get_next_train_at_station(now: datetime, estacion_key: str) -> Tuple[Optiona
     return (info_mp, info_st)
 
 # ============================================================================
-# RESPUESTA PARA CUALQUIER ESTACIÓN (CON SOPORTE PARA MODO TEST PERSISTENTE)
+# RESPUESTA PARA CUALQUIER ESTACIÓN (CON MODO TEST PERSISTENTE)
 # ============================================================================
 async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str, return_to_main: bool = True):
-    # Obtener la hora actual o simulada desde el contexto del chat
     simulated_time = context.chat_data.get('test_time') if context.chat_data else None
     if simulated_time:
         now = simulated_time
@@ -441,7 +519,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
             await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
         return
     
-    # --- Caso Monte Po y Stesicoro (cabeceras) ---
+    # Caso Monte Po y Stesicoro (cabeceras)
     if estacion_key in ["montepo", "stesicoro"]:
         station = "Montepo" if estacion_key == "montepo" else "Stesicoro"
         closed, next_open = is_metro_closed(now, station)
@@ -473,16 +551,14 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
         station_display = "Monte Po" if station == "Montepo" else "Stesicoro"
         dest = "Stesicoro" if station == "Montepo" else "Monte Po"
         
-        # Calcular la hora de llegada a la estación (ARR.) para saber si el tren ya está en andén
+        # Calcular hora de llegada a la estación
         if station == "Montepo":
-            arrival_time = next_dep  # En Monte Po, el tren está en andén justo a la hora de salida
-        else:  # Stesicoro
-            arrival_time = next_dep - timedelta(minutes=20)  # Tiempo de viaje desde Monte Po
+            arrival_time = next_dep
+        else:
+            arrival_time = next_dep - timedelta(minutes=20)
         
-        # Determinar si el tren está actualmente en el andén (ha llegado pero aún no ha salido)
         if now >= arrival_time and now < next_dep:
             msg = f"{special_msg}{test_indicator}🚇 Il treno è in binario. Partirà alle {next_dep.strftime('%H:%M')}."
-            # Mostrar el siguiente tren si existe
             next2, min2, sec2, has2 = get_next_departure_after(station, now, next_dep.time())
             if has2:
                 time_str2 = format_time(min2, sec2)
@@ -491,13 +567,11 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
                 msg += f"\n\n🚆 Questo è l'ultimo treno della giornata."
         else:
             if now < arrival_time:
-                # Todavía no ha llegado: mostrar tiempo hasta la salida
                 time_str = format_time(minutes, seconds)
                 if minutes < SHORT_TIME_THRESHOLD:
                     msg = f"{special_msg}{test_indicator}🚇 Prossimo treno per {dest} parte tra {time_str}."
                 else:
                     msg = f"{special_msg}{test_indicator}🚇 Prossimo treno per {dest} parte tra {time_str}, alle {next_dep.strftime('%H:%M')}."
-                # Mostrar siguiente tren si falta 1 minuto o menos
                 if minutes <= 1:
                     next2, min2, sec2, has2 = get_next_departure_after(station, now, next_dep.time())
                     if has2:
@@ -506,7 +580,6 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
                     else:
                         msg += f"\n\n🚆 Questo è l'ultimo treno della giornata."
             else:
-                # Ya ha salido: mostrar el siguiente tren
                 next2, min2, sec2, has2 = get_next_departure_after(station, now, next_dep.time())
                 if has2:
                     time_str2 = format_time(min2, sec2)
@@ -517,15 +590,13 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
         last_msg = get_last_train_message(now)
         if last_msg and not is_sant_agata(now):
             msg += f"\n\n{last_msg}"
-        
         if estacion_key in STATION_IMAGE:
             await update.message.reply_photo(photo=STATION_IMAGE[estacion_key], caption=msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
         else:
             await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
         return
     
-    # --- Estaciones intermedias (incluye Milo) ---
-    # Verificar si el metro está cerrado (usando Monte Po como referencia)
+    # Estaciones intermedias
     closed, next_open = is_metro_closed(now, "Montepo")
     if closed:
         mins_to_open = int((next_open - now).total_seconds() // 60)
@@ -541,15 +612,12 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
         else:
             await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
         return
-
-    # Si no está cerrado, calcular los trenes normalmente
+    
     info_mp, info_st = get_next_train_at_station(now, estacion_key)
     nombre = NOMBRE_MOSTRAR.get(estacion_key, estacion_key.capitalize())
-    
     msg = f"{special_msg}{test_indicator}🚆 **Prossimi treni a {nombre}**\n\n"
     
-    # --- Dirección hacia Monte Po (tren que viene de Stesicoro) ---
-    # info_st contiene el tren que viene de Stesicoro (hacia Monte Po)
+    # Dirección hacia Monte Po (tren que viene de Stesicoro)
     if info_st:
         paso_st, mins, secs, next_info = info_st
         time_str = format_time(mins, secs)
@@ -570,8 +638,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
     else:
         msg += f"🔺 **Per Monte Po**: nessun treno in arrivo al momento.\n"
     
-    # --- Dirección hacia Stesicoro (tren que viene de Monte Po) ---
-    # info_mp contiene el tren que viene de Monte Po (hacia Stesicoro)
+    # Dirección hacia Stesicoro (tren que viene de Monte Po)
     if info_mp:
         paso_mp, mins, secs, next_info = info_mp
         time_str = format_time(mins, secs)
@@ -637,7 +704,7 @@ BOTON_TO_KEY = {
 }
 
 # ============================================================================
-# MANEJADORES DE COMANDOS (modificados para usar el modo test)
+# MANEJADORES DE COMANDOS
 # ============================================================================
 async def cmd_montepo(update, context): await send_station_response(update, context, "montepo", return_to_main=False)
 async def cmd_stesicoro(update, context): await send_station_response(update, context, "stesicoro", return_to_main=False)
@@ -695,6 +762,109 @@ async def handle_button(update, context):
         await update.message.reply_text("Scelta non valida. Usa i pulsanti.", reply_markup=keyboard_main)
 
 # ============================================================================
+# COMANDOS TEST
+# ============================================================================
+async def test_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    args = context.args
+    if not args:
+        await update.message.reply_text(
+            "🧪 **Modalità test**\n\n"
+            "Per fissare una data/ora simulata e usare tutti i bottoni:\n"
+            "`/test DDMMYYYY HHMM`\n"
+            "Esempio: `/test 11022026 1102`\n\n"
+            "Per tornare alla realtà: `/testfin`\n\n"
+            "Per una singola risposta (senza cambiare modalità):\n"
+            "`/test DDMMYYYY HHMM stazione` (M, S, ML, ecc.)",
+            parse_mode='Markdown'
+        )
+        return
+    
+    if len(args) == 2:
+        date_str, time_str = args[0], args[1]
+        if len(date_str) != 8 or not date_str.isdigit():
+            await update.message.reply_text("Formato data non valido. Usa DDMMYYYY (es. 11022026).")
+            return
+        if len(time_str) != 4 or not time_str.isdigit():
+            await update.message.reply_text("Formato ora non valido. Usa HHMM (es. 1102).")
+            return
+        day = int(date_str[0:2])
+        month = int(date_str[2:4])
+        year = int(date_str[4:8])
+        hour = int(time_str[0:2])
+        minute = int(time_str[2:4])
+        if hour > 23 or minute > 59:
+            await update.message.reply_text("Ora non valida.")
+            return
+        try:
+            simulated = CATANIA_TZ.localize(datetime(year, month, day, hour, minute))
+        except Exception as e:
+            await update.message.reply_text(f"Data non valida: {e}")
+            return
+        if context.chat_data is None:
+            context.chat_data = {}
+        context.chat_data['test_time'] = simulated
+        await update.message.reply_text(
+            f"🧪 **Modalità test attivata**\n"
+            f"Ora simulata: {simulated.strftime('%d/%m/%Y %H:%M')}\n"
+            f"Usa i bottoni normalmente. Per uscire: `/testfin`",
+            parse_mode='Markdown'
+        )
+        return
+    
+    if len(args) == 3:
+        date_str, time_str, station_code = args[0], args[1], args[2].upper()
+        if station_code == "M":
+            station = "montepo"
+        elif station_code == "S":
+            station = "stesicoro"
+        elif station_code == "ML":
+            station = "milo"
+        else:
+            await update.message.reply_text("Codice stazione non valido. Usa M, S o ML.")
+            return
+        if len(date_str) != 8 or not date_str.isdigit():
+            await update.message.reply_text("Data non valida.")
+            return
+        if len(time_str) != 4 or not time_str.isdigit():
+            await update.message.reply_text("Ora non valida.")
+            return
+        day = int(date_str[0:2])
+        month = int(date_str[2:4])
+        year = int(date_str[4:8])
+        hour = int(time_str[0:2])
+        minute = int(time_str[2:4])
+        if hour > 23 or minute > 59:
+            await update.message.reply_text("Ora non valida.")
+            return
+        try:
+            simulated = CATANIA_TZ.localize(datetime(year, month, day, hour, minute))
+        except Exception as e:
+            await update.message.reply_text(f"Data non valida: {e}")
+            return
+        await send_station_response_simulated(update, context, station, simulated)
+        return
+    
+    await update.message.reply_text("Comando non riconosciuto. Usa /test DDMMYYYY HHMM o /test DDMMYYYY HHMM X")
+
+async def send_station_response_simulated(update, context, estacion_key: str, simulated_now: datetime):
+    original = context.chat_data.get('test_time') if context.chat_data else None
+    if context.chat_data is None:
+        context.chat_data = {}
+    context.chat_data['test_time'] = simulated_now
+    await send_station_response(update, context, estacion_key, return_to_main=False)
+    if original is None:
+        context.chat_data.pop('test_time', None)
+    else:
+        context.chat_data['test_time'] = original
+
+async def testfin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if context.chat_data and 'test_time' in context.chat_data:
+        del context.chat_data['test_time']
+        await update.message.reply_text("✅ Modalità test disattivata. Ora reale ripristinata.")
+    else:
+        await update.message.reply_text("⚠️ Nessuna modalità test attiva.")
+
+# ============================================================================
 # LOGGING Y MAIN (con Flask en hilo separado)
 # ============================================================================
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
@@ -706,12 +876,10 @@ def main():
         logger.error("Token mancante")
         return
 
-    # Iniciar el servidor Flask en un hilo separado
     flask_thread = threading.Thread(target=run_flask, daemon=True)
     flask_thread.start()
     logger.info("Flask server avviato sulla porta 8080")
 
-    # Construir la aplicación de Telegram
     app = Application.builder().token(TOKEN).build()
     for cmd, handler in [
         ("start", start), ("help", help_command), ("montepo", cmd_montepo), ("stesicoro", cmd_stesicoro),
