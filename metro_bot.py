@@ -424,14 +424,11 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
         dest = "Stesicoro" if station == "Montepo" else "Monte Po"
         time_str = format_time(minutes, seconds)
         
-        # Regla: si minutos < 5, no mostrar la hora; si >=5, mostrar hora
         if minutes == 0:
-            # Tren en andén
             if seconds == 0:
                 msg = f"{special_msg}🚇 Il treno è in binario. Partirà subito."
             else:
                 msg = f"{special_msg}🚇 Il treno è in binario. Partirà tra meno di un minuto."
-            # Mostrar siguiente si existe
             next2, min2, sec2, has2 = get_next_departure_after(station, now, next_dep.time())
             if has2:
                 time_str2 = format_time(min2, sec2)
@@ -439,12 +436,11 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
             else:
                 msg += f"\n\n🚆 Questo è l'ultimo treno della giornata."
         else:
-            if minutes < SHORT_TIME_THRESHOLD:  # menos de 5 minutos
+            if minutes < SHORT_TIME_THRESHOLD:
                 msg = f"{special_msg}🚇 Prossimo treno per {dest} parte tra {time_str}."
             else:
                 msg = f"{special_msg}🚇 Prossimo treno per {dest} parte tra {time_str}, alle {next_dep.strftime('%H:%M')}."
             
-            # Mostrar siguiente tren si faltan menos de NEXT_TRAIN_THRESHOLD (2 minutos)
             if minutes < NEXT_TRAIN_THRESHOLD:
                 next2, min2, sec2, has2 = get_next_departure_after(station, now, next_dep.time())
                 if has2:
@@ -459,7 +455,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
         await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
         return
     
-    # Para estaciones intermedias (incluye Milo)
+    # Para estaciones intermedias
     info_mp, info_st = get_next_train_at_station(now, estacion_key)
     nombre = NOMBRE_MOSTRAR.get(estacion_key, estacion_key.capitalize())
     
@@ -564,8 +560,7 @@ async def cmd_galatea(update, context): await send_station_response(update, cont
 async def cmd_giovanni(update, context): await send_station_response(update, context, "giovanni", return_to_main=False)
 
 async def cmd_altri(update, context):
-    # Envía un mensaje con un espacio para que Telegram muestre el teclado secundario
-    await update.message.reply_text(" ", reply_markup=keyboard_altri)
+    await update.message.reply_text("🚇 Seleziona una stazione:", reply_markup=keyboard_altri)
 
 async def start(update, context):
     user = update.effective_user
@@ -650,7 +645,7 @@ def main():
     app.add_handler(MessageHandler(filters.Text(["Monte Po", "Stesicoro", "Altri", "← Menu", "Fontana", "Nesima", "San Nullo", "Cibali", "Milo", "Borgo", "Giuffrida", "Italia", "Galatea", "Giovanni XXIII"]), handle_button))
     
     import time
-    time.sleep(2)  # Pequeña pausa para evitar conflictos
+    time.sleep(2)
     
     logger.info("Bot avviato. Premi Ctrl+C per fermare.")
     print("Bot funzionante... In attesa di messaggi.")
