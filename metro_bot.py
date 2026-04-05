@@ -41,7 +41,7 @@ CLOSED_ALL_DAY = CONFIG["closed_all_day"]
 LAST_TRAIN_START_HOUR = CONFIG["last_train_message_start_hour"]
 WARNING_HOUR = CONFIG["closing_warning_hour"]
 SHORT_TIME_THRESHOLD = CONFIG["short_time_threshold"]
-NEXT_TRAIN_THRESHOLD = CONFIG["next_train_threshold"]  # no se usa directamente, usamos <=1
+NEXT_TRAIN_THRESHOLD = CONFIG["next_train_threshold"]
 
 # ============================================================================
 # TIEMPOS DE TRAYECTO PARA CADA ESTACIÓN (desde Monte Po y desde Stesicoro)
@@ -318,11 +318,8 @@ def get_next_departure_after(station: str, now: datetime, after_time: time) -> T
     return (None, 0, 0, False)
 
 def format_time(minutes: int, seconds: int) -> str:
-    # Para 5 minutos o más, mostrar solo minutos
     if minutes >= SHORT_TIME_THRESHOLD:
         return f"{minutes} minuti"
-    
-    # Para menos de 5 minutos: mostrar minutos y posibles 30 segundos
     if minutes == 0:
         if seconds < 30:
             return "meno di un minuto"
@@ -355,7 +352,7 @@ def get_next_train_at_station(now: datetime, estacion_key: str) -> Tuple[Optiona
     
     t_mp, t_st = TIEMPOS_ESTACION[estacion_key]
     
-    # --- Dirección Monte Po -> Stesicoro ---
+    # Dirección Monte Po -> Stesicoro
     info_mp = None
     closed_mp, _ = is_metro_closed(now, "Montepo")
     if not closed_mp:
@@ -385,7 +382,7 @@ def get_next_train_at_station(now: datetime, estacion_key: str) -> Tuple[Optiona
                 next_info = (next_paso2, mins2, secs2)
             info_mp = (next_paso, mins_rest, secs_rest, next_info)
     
-    # --- Dirección Stesicoro -> Monte Po ---
+    # Dirección Stesicoro -> Monte Po
     info_st = None
     closed_st, _ = is_metro_closed(now, "Stesicoro")
     if not closed_st:
@@ -418,7 +415,7 @@ def get_next_train_at_station(now: datetime, estacion_key: str) -> Tuple[Optiona
     return (info_mp, info_st)
 
 # ============================================================================
-# RESPUESTA PARA CUALQUIER ESTACIÓN (CON IMÁGENES Y LÓGICA ACTUALIZADA)
+# RESPUESTA PARA CUALQUIER ESTACIÓN (CORREGIDA: CIERRE PARA INTERMEDIAS)
 # ============================================================================
 async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str, simulated_now: datetime = None, return_to_main: bool = True):
     now = simulated_now if simulated_now is not None else datetime.now(CATANIA_TZ)
@@ -437,7 +434,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
             await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
         return
     
-    # Caso Monte Po y Stesicoro (cabeceras)
+    # --- Caso Monte Po y Stesicoro (cabeceras) ---
     if estacion_key in ["montepo", "stesicoro"]:
         station = "Montepo" if estacion_key == "montepo" else "Stesicoro"
         closed, next_open = is_metro_closed(now, station)
@@ -487,7 +484,6 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
             else:
                 msg = f"{special_msg}🚇 Prossimo treno per {dest} parte tra {time_str}, alle {next_dep.strftime('%H:%M')}."
             
-            # Mostrar siguiente tren si falta 1 minuto o menos
             if minutes <= 1:
                 next2, min2, sec2, has2 = get_next_departure_after(station, now, next_dep.time())
                 if has2:
@@ -506,7 +502,25 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
             await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
         return
     
-    # --- Estaciones intermedias ---
+    # --- Estaciones intermedias (incluye Milo) ---
+    # Verificar si el metro está cerrado (usando Monte Po como referencia)
+    closed, next_open = is_metro_closed(now, "Montepo")
+    if closed:
+        mins_to_open = int((next_open - now).total_seconds() // 60)
+        if mins_to_open <= 60:
+            first_train, _, _, has_first = get_next_departure("Montepo", now)
+            if not has_first:
+                first_train, _, _, _ = get_next_departure("Montepo", now + timedelta(days=1))
+            msg = f"{special_msg}🚇 La metropolitana è chiusa in questo momento. Il primo treno da Monte Po partirà alle {first_train.strftime('%H:%M')}."
+        else:
+            msg = f"{special_msg}🚇 La metropolitana è chiusa in questo momento.\n🕒 Riaprirà alle {next_open.strftime('%H:%M')}."
+        if estacion_key in STATION_IMAGE:
+            await update.message.reply_photo(photo=STATION_IMAGE[estacion_key], caption=msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
+        else:
+            await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
+        return
+    
+    # Si no está cerrado, calcular los trenes normalmente
     info_mp, info_st = get_next_train_at_station(now, estacion_key)
     nombre = NOMBRE_MOSTRAR.get(estacion_key, estacion_key.capitalize())
     
@@ -523,7 +537,6 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
                 msg += f"🔺 **Per Monte Po**: prossimo treno passa tra {time_str}.\n"
             else:
                 msg += f"🔺 **Per Monte Po**: prossimo treno passa tra {time_str}, alle {paso_mp.strftime('%H:%M')}.\n"
-        # Mostrar siguiente si falta 1 minuto o menos
         if mins <= 1 and next_info:
             paso2, mins2, secs2 = next_info
             time_str2 = format_time(mins2, secs2)
