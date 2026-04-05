@@ -1,11 +1,27 @@
 import os
 import json
 import logging
+import threading
 from datetime import datetime, time, timedelta, date
 from typing import Tuple, Optional, List, Dict, Any
 import pytz
+from flask import Flask
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+
+# ============================================================================
+# SERVIDOR WEB (Flask) PARA RESPONDER A PINGS DE UPTIMEROBOT
+# ============================================================================
+flask_app = Flask(__name__)
+
+@flask_app.route('/')
+@flask_app.route('/health')
+def health():
+    return "OK", 200
+
+def run_flask():
+    port = int(os.environ.get('PORT', 8080))
+    flask_app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
 
 # ============================================================================
 # CARGAR CONFIGURACIÓN DESDE horarios.json
@@ -62,7 +78,7 @@ NOMBRE_MOSTRAR = {
 }
 
 # ============================================================================
-# IMÁGENES DE LAS ESTACIONES (cambia la URL base si tu repositorio es diferente)
+# IMÁGENES DE LAS ESTACIONES
 # ============================================================================
 STATION_IMAGE = {
     "montepo": "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/st_montepo.jpg",
@@ -331,7 +347,7 @@ def get_last_train_message(now: datetime) -> str:
     return f"📌 Ricorda che oggi l'ultima metropolitana da Stesicoro parte alle {last_time}."
 
 # ============================================================================
-# FUNCIONES PARA CUALQUIER ESTACIÓN (CORREGIDO: incluye trenes ya salidos)
+# FUNCIONES PARA CUALQUIER ESTACIÓN (incluye trenes ya salidos)
 # ============================================================================
 def get_next_train_at_station(now: datetime, estacion_key: str) -> Tuple[Optional[Tuple], Optional[Tuple]]:
     if estacion_key not in TIEMPOS_ESTACION:
@@ -664,7 +680,7 @@ async def test_command(update, context):
     await send_station_response(update, context, station_name, simulated_now, return_to_main=False)
 
 # ============================================================================
-# LOGGING Y MAIN
+# LOGGING Y MAIN (con Flask en hilo separado)
 # ============================================================================
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -674,6 +690,13 @@ def main():
     if not TOKEN:
         logger.error("Token mancante")
         return
+
+    # Iniciar el servidor Flask en un hilo separado
+    flask_thread = threading.Thread(target=run_flask, daemon=True)
+    flask_thread.start()
+    logger.info("Flask server avviato sulla porta 8080")
+
+    # Construir la aplicación de Telegram
     app = Application.builder().token(TOKEN).build()
     for cmd, handler in [
         ("start", start), ("help", help_command), ("montepo", cmd_montepo), ("stesicoro", cmd_stesicoro),
