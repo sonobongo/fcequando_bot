@@ -223,11 +223,10 @@ def is_metro_closed(now: datetime) -> Tuple[bool, Optional[datetime]]:
         else:
             return (False, None)
 
-def get_next_departure(station: str) -> Tuple[Optional[datetime], int, int, bool]:
+def get_next_departure(station: str) -> Tuple[Optional[datetime], int, int, bool, Optional[datetime]]:
     """
-    Restituisce (prossimo_treno_datetime, minuti_totali, secondi, c'è_treno_oggi)
-    I secondi sono compresi tra 0 e 59.
-    Se non ci sono treni oggi, restituisce (None, 0, 0, False)
+    Restituisce (prossimo_treno_datetime, minuti_totali, secondi, c'è_treno_oggi, partenza_immediata_datetime)
+    partenza_immediata_datetime è l'orario del treno che è appena partito (se applicabile)
     """
     now = datetime.now(CATANIA_TZ)
     current_time = now.time()
@@ -245,6 +244,7 @@ def get_next_departure(station: str) -> Tuple[Optional[datetime], int, int, bool
     else:
         schedule_list = SCHEDULES[station]["weekday"]
     
+    # Buscar el próximo tren
     next_departure_time = None
     for departure in schedule_list:
         if departure > current_time:
@@ -252,7 +252,14 @@ def get_next_departure(station: str) -> Tuple[Optional[datetime], int, int, bool
             break
     
     if next_departure_time is None:
-        return (None, 0, 0, False)
+        return (None, 0, 0, False, None)
+    
+    # Buscar el tren anterior (para saber si acabamos de perder uno)
+    previous_departure_time = None
+    for departure in reversed(schedule_list):
+        if departure <= current_time:
+            previous_departure_time = departure
+            break
     
     next_departure_datetime = datetime.combine(now.date(), next_departure_time)
     next_departure_datetime = CATANIA_TZ.localize(next_departure_datetime)
@@ -260,7 +267,13 @@ def get_next_departure(station: str) -> Tuple[Optional[datetime], int, int, bool
     total_seconds = int(delta.total_seconds())
     minutes = total_seconds // 60
     seconds = total_seconds % 60
-    return (next_departure_datetime, minutes, seconds, True)
+    
+    previous_departure_datetime = None
+    if previous_departure_time:
+        previous_departure_datetime = datetime.combine(now.date(), previous_departure_time)
+        previous_departure_datetime = CATANIA_TZ.localize(previous_departure_datetime)
+    
+    return (next_departure_datetime, minutes, seconds, True, previous_departure_datetime)
 
 def format_time(minutes: int, seconds: int) -> str:
     """Formatta il tempo in italiano con precisione di 30 secondi se minuti < 5."""
@@ -269,20 +282,20 @@ def format_time(minutes: int, seconds: int) -> str:
         if seconds >= 30:
             minutes += 1
             seconds = 0
-        # Ora mostriamo in frazioni di 30 secondi
         if minutes == 0:
             return "meno di un minuto"
         elif seconds == 0:
             return f"{minutes} minuti"
         else:
-            # Mostra come "X minuti e 30 secondi"
             return f"{minutes} minuti e 30 secondi"
     else:
-        # Per 5 o più minuti, mostriamo solo minuti arrotondati (senza secondi)
         return f"{minutes} minuti"
 
-def get_last_train_message() -> str:
-    now = datetime.now(CATANIA_TZ)
+def get_last_train_message(now: datetime) -> str:
+    """Restituisce il messaggio dell'ultima corsa solo se sono le 18:00 o oltre."""
+    # Solo dopo le 18:00
+    if now.hour < 18:
+        return ""
     weekday = now.weekday()
     if weekday in [0, 1, 2, 3]:
         last_time = "22:30"
@@ -290,7 +303,7 @@ def get_last_train_message() -> str:
         last_time = "01:00"
     else:
         last_time = "22:30"
-    return f"📌 Ricorda che oggi l'ultima metropolitana da Stesicoro parte alle {last_time}."
+    return f"\n\n📌 Ricorda che oggi l'ultima metropolitana da Stesicoro parte alle {last_time}."
 
 # ============================================================================
 # CONFIGURACIÓN DEL BOT
@@ -306,12 +319,13 @@ keyboard = ReplyKeyboardMarkup(
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
-    last_msg = get_last_train_message()
+    now = datetime.now(CATANIA_TZ)
+    last_msg = get_last_train_message(now)
     await update.message.reply_text(
         f"Ciao {user.first_name}! 👋\n\n"
         "Posso dirti quando parte il prossimo treno della metropolitana di Catania.\n"
-        "Premi uno dei pulsanti qui sotto 👇\n\n"
-        f"{last_msg}",
+        "Premi uno dei pulsanti qui sotto 👇" +
+        (f"\n\n{last_msg}" if last_msg else ""),
         reply_markup=keyboard
     )
 
@@ -343,18 +357,36 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     try:
-        next_dep, minutes, seconds, has_trains = get_next_departure(station)
+        next_dep, minutes, seconds, has_trains, prev_dep = get_next_departure(station)
         if not has_trains:
             msg = "🚇 Non ci sono più treni oggi. Il servizio riprenderà domani mattina."
             await update.message.reply_text(msg, reply_markup=keyboard)
             return
         
-        time_str = format_time(minutes, seconds)
-        if minutes == 0 and seconds < 30:
-            msg = f"🚇 Il prossimo treno a {text} parte subito.\n\n"
+        # Verificar si acabamos de perder un tren (diferencia menor a 60 segundos)
+        just_left = False
+        next_train_time_str = next_dep.strftime('%H:%M')
+        
+        if prev_dep:
+            diff = now - prev_dep
+            if diff.total_seconds() <= 60:  # Si ha pasado menos de 1 minuto desde la salida anterior
+                just_left = True
+        
+        if just_left:
+            # Buscar el siguiente tren después del actual (ya lo tenemos en next_dep)
+            msg = f"🚇 Il treno è appena partito. Il prossimo sarà alle {next_train_time_str}."
         else:
-            msg = f"🚇 Il prossimo treno a {text} parte tra {time_str}, alle {next_dep.strftime('%H:%M')}.\n\n"
-        msg += get_last_train_message()
+            time_str = format_time(minutes, seconds)
+            if minutes == 0 and seconds < 30:
+                msg = f"🚇 Il prossimo treno a {text} parte subito."
+            else:
+                msg = f"🚇 Il prossimo treno a {text} parte tra {time_str}, alle {next_train_time_str}."
+        
+        # Añadir mensaje del último tren solo si son las 18:00 o más
+        last_msg = get_last_train_message(now)
+        if last_msg:
+            msg += last_msg
+        
         await update.message.reply_text(msg, reply_markup=keyboard)
     except Exception as e:
         logger.error(e)
@@ -378,17 +410,33 @@ async def proximo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     try:
-        next_dep, minutes, seconds, has_trains = get_next_departure(station_name)
+        next_dep, minutes, seconds, has_trains, prev_dep = get_next_departure(station_name)
         if not has_trains:
             msg = "🚇 Non ci sono più treni oggi. Il servizio riprenderà domani mattina."
             await update.message.reply_text(msg, reply_markup=keyboard)
             return
-        time_str = format_time(minutes, seconds)
-        if minutes == 0 and seconds < 30:
-            msg = f"🚇 Il prossimo treno a {station_name} parte subito.\n\n"
+        
+        just_left = False
+        next_train_time_str = next_dep.strftime('%H:%M')
+        
+        if prev_dep:
+            diff = now - prev_dep
+            if diff.total_seconds() <= 60:
+                just_left = True
+        
+        if just_left:
+            msg = f"🚇 Il treno è appena partito. Il prossimo sarà alle {next_train_time_str}."
         else:
-            msg = f"🚇 Il prossimo treno a {station_name} parte tra {time_str}, alle {next_dep.strftime('%H:%M')}.\n\n"
-        msg += get_last_train_message()
+            time_str = format_time(minutes, seconds)
+            if minutes == 0 and seconds < 30:
+                msg = f"🚇 Il prossimo treno a {station_name} parte subito."
+            else:
+                msg = f"🚇 Il prossimo treno a {station_name} parte tra {time_str}, alle {next_train_time_str}."
+        
+        last_msg = get_last_train_message(now)
+        if last_msg:
+            msg += last_msg
+        
         await update.message.reply_text(msg, reply_markup=keyboard)
     except Exception as e:
         logger.error(e)
