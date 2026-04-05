@@ -1,7 +1,7 @@
 import os
 import logging
 from datetime import datetime, time, timedelta
-from typing import Tuple
+from typing import Tuple, Optional
 import pytz
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
@@ -176,7 +176,74 @@ SCHEDULES = {
 
 CATANIA_TZ = pytz.timezone('Europe/Rome')
 
-def get_next_departure(station: str) -> Tuple[datetime, int]:
+# ============================================================================
+# FUNCIONES PARA DETECTAR CIERRE DEL METRO
+# ============================================================================
+
+def get_opening_time(now: datetime) -> Tuple[int, int]:
+    """Devuelve la hora de apertura del metro (hora, minuto) según el día."""
+    weekday = now.weekday()
+    if weekday == 6:  # Domingo
+        return (7, 0)
+    else:  # Lunes a sábado
+        return (6, 0)
+
+def get_closing_time(now: datetime) -> Tuple[int, int]:
+    """Devuelve la hora de cierre del metro (hora, minuto) según el día."""
+    weekday = now.weekday()
+    if weekday in [4, 5]:  # Viernes y sábado
+        return (1, 0)   # Cierra a la 1:00 de la madrugada
+    else:  # Lunes a jueves y domingo
+        return (22, 30)
+
+def is_metro_closed(now: datetime) -> Tuple[bool, Optional[datetime]]:
+    """
+    Verifica si el metro está cerrado.
+    Retorna: (está_cerrado, próxima_apertura_datetime)
+    """
+    current_time = now.time()
+    weekday = now.weekday()
+    
+    # Obtener hora de apertura y cierre
+    open_h, open_m = get_opening_time(now)
+    close_h, close_m = get_closing_time(now)
+    
+    opening_time = time(open_h, open_m)
+    closing_time = time(close_h, close_m)
+    
+    # Caso especial: viernes/sábado cierran a la 1:00 (pasada la medianoche)
+    if weekday in [4, 5]:  # Viernes o sábado
+        # Si la hora actual es después de la 1:00, está cerrado hasta las 6:00 (apertura del mismo día)
+        if current_time >= closing_time and current_time < opening_time:
+            # Próxima apertura: hoy a las 6:00 si aún no ha pasado
+            next_open = datetime.combine(now.date(), opening_time)
+            next_open = CATANIA_TZ.localize(next_open)
+            if next_open <= now:
+                # Si ya pasaron las 6:00 (caso raro, pero por si acaso), será mañana
+                next_open = datetime.combine(now.date() + timedelta(days=1), opening_time)
+                next_open = CATANIA_TZ.localize(next_open)
+            return (True, next_open)
+        else:
+            return (False, None)
+    else:
+        # Resto de días: cierre a las 22:30, apertura al día siguiente
+        if current_time >= closing_time or current_time < opening_time:
+            # Está cerrado: o después del cierre o antes de la apertura
+            # Próxima apertura: hoy si aún no ha abierto, mañana si ya cerró
+            if current_time < opening_time:
+                next_open = datetime.combine(now.date(), opening_time)
+            else:
+                next_open = datetime.combine(now.date() + timedelta(days=1), opening_time)
+            next_open = CATANIA_TZ.localize(next_open)
+            return (True, next_open)
+        else:
+            return (False, None)
+
+def get_next_departure(station: str) -> Tuple[Optional[datetime], int, bool]:
+    """
+    Retorna (próximo_tren_datetime, minutos_restantes, hay_tren_hoy)
+    Si no hay tren hoy (cerrado), retorna (None, 0, False)
+    """
     now = datetime.now(CATANIA_TZ)
     current_time = now.time()
     weekday_num = now.weekday()
@@ -184,6 +251,7 @@ def get_next_departure(station: str) -> Tuple[datetime, int]:
     if station not in SCHEDULES:
         raise ValueError(f"Station {station} not found")
     
+    # Seleccionar lista de horarios según día
     if weekday_num == 4:  # Venerdì
         schedule_list = SCHEDULES[station]["friday"]
     elif weekday_num == 5:  # Sabato
@@ -193,6 +261,7 @@ def get_next_departure(station: str) -> Tuple[datetime, int]:
     else:  # Lunedì a Giovedì
         schedule_list = SCHEDULES[station]["weekday"]
     
+    # Buscar primer horario posterior a la hora actual
     next_departure_time = None
     for departure in schedule_list:
         if departure > current_time:
@@ -200,34 +269,31 @@ def get_next_departure(station: str) -> Tuple[datetime, int]:
             break
     
     if next_departure_time is None:
-        # Nessun altro treno oggi, prendiamo il primo di domani
-        next_departure_time = schedule_list[0]
-        next_departure_datetime = datetime.combine(now.date() + timedelta(days=1), next_departure_time)
-        next_departure_datetime = CATANIA_TZ.localize(next_departure_datetime)
-        minutes_until = int((next_departure_datetime - now).total_seconds() // 60)
-        return next_departure_datetime, minutes_until
+        # No hay más trenes hoy -> metro cerrado
+        return (None, 0, False)
     
     next_departure_datetime = datetime.combine(now.date(), next_departure_time)
     next_departure_datetime = CATANIA_TZ.localize(next_departure_datetime)
     minutes_until = int((next_departure_datetime - now).total_seconds() // 60)
-    return next_departure_datetime, minutes_until
+    return (next_departure_datetime, minutes_until, True)
 
-# --- Funzione per il messaggio dell'ultima corsa ---
+# ============================================================================
+# FUNCIÓN PARA MENSAJE DE ÚLTIMA SALIDA (sin cambios)
+# ============================================================================
 def get_last_train_message() -> str:
-    """Restituisce un messaggio con l'orario dell'ultima corsa da Stesicoro in base al giorno."""
     now = datetime.now(CATANIA_TZ)
     weekday = now.weekday()
     if weekday in [0, 1, 2, 3]:  # Lunedì a Giovedì
         last_time = "22:30"
-    elif weekday == 4:  # Venerdì
-        last_time = "01:00"
-    elif weekday == 5:  # Sabato
+    elif weekday in [4, 5]:  # Venerdì e Sabato
         last_time = "01:00"
     else:  # Domenica
         last_time = "22:30"
     return f"📌 Ricorda che oggi l'ultima metropolitana da Stesicoro parte alle {last_time}."
 
-# --- Configurazione del bot ---
+# ============================================================================
+# CONFIGURACIÓN DEL BOT
+# ============================================================================
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -266,8 +332,25 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text("Scelta non valida. Usa i pulsanti.", reply_markup=keyboard)
         return
+    
+    # Verificar si el metro está cerrado
+    now = datetime.now(CATANIA_TZ)
+    closed, next_open = is_metro_closed(now)
+    if closed:
+        open_time_str = next_open.strftime("%H:%M")
+        msg = f"🚇 Il metrò è chiuso in questo momento.\n🕒 Riaprirà alle {open_time_str}."
+        await update.message.reply_text(msg, reply_markup=keyboard)
+        return
+    
+    # Si está abierto, buscar próximo tren
     try:
-        next_dep, minutes = get_next_departure(station)
+        next_dep, minutes, has_trains = get_next_departure(station)
+        if not has_trains:
+            # No hay más trenes hoy (aunque según is_metro_closed no debería pasar, pero por si acaso)
+            msg = "🚇 Non ci sono più treni oggi. Il servizio riprenderà domani mattina."
+            await update.message.reply_text(msg, reply_markup=keyboard)
+            return
+        
         if minutes == 0:
             msg = f"🚇 Il prossimo treno a {text} parte subito.\n\n"
         else:
@@ -286,8 +369,22 @@ async def proximo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if station_name not in SCHEDULES:
         await update.message.reply_text(f"Non ho dati per '{station_name}'. Stazioni disponibili: Stesicoro, Montepo.", reply_markup=keyboard)
         return
+    
+    # Verificar cierre
+    now = datetime.now(CATANIA_TZ)
+    closed, next_open = is_metro_closed(now)
+    if closed:
+        open_time_str = next_open.strftime("%H:%M")
+        msg = f"🚇 Il metrò è chiuso in questo momento.\n🕒 Riaprirà alle {open_time_str}."
+        await update.message.reply_text(msg, reply_markup=keyboard)
+        return
+    
     try:
-        next_dep, minutes = get_next_departure(station_name)
+        next_dep, minutes, has_trains = get_next_departure(station_name)
+        if not has_trains:
+            msg = "🚇 Non ci sono più treni oggi. Il servizio riprenderà domani mattina."
+            await update.message.reply_text(msg, reply_markup=keyboard)
+            return
         if minutes == 0:
             msg = f"🚇 Il prossimo treno a {station_name} parte subito.\n\n"
         else:
