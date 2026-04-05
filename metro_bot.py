@@ -310,34 +310,24 @@ def get_last_train_message(now: datetime) -> str:
     return f"📌 Ricorda che oggi l'ultima metropolitana da Stesicoro parte alle {last_time}."
 
 # ============================================================================
-# FUNCIONES PARA CUALQUIER ESTACIÓN (CORREGIDO: incluye trenes ya salidos)
+# FUNCIONES PARA CUALQUIER ESTACIÓN (CORREGIDO)
 # ============================================================================
 def get_next_train_at_station(now: datetime, estacion_key: str) -> Tuple[Optional[Tuple], Optional[Tuple]]:
-    """
-    Retorna (info_tren_hacia_Stesicoro, info_tren_hacia_MontePo)
-    Cada info es (hora_paso_por_estacion, minutos_restantes, segundos_restantes, siguiente_info)
-    donde siguiente_info es (hora_paso, minutos, segundos) o None.
-    Corregido para tener en cuenta trenes ya salidos pero aún no llegados.
-    """
     if estacion_key not in TIEMPOS_ESTACION:
         return (None, None)
     
     t_mp, t_st = TIEMPOS_ESTACION[estacion_key]
-    now_time = now.time()
     
     # --- Dirección Monte Po -> Stesicoro ---
     info_mp = None
     closed_mp, _ = is_metro_closed(now, "Montepo")
     if not closed_mp:
-        # Obtener todos los horarios de salida de Montepo para hoy
         schedule_list = get_schedule_list("Montepo", now)
-        # Calcular horas de paso por la estación intermedia
         pasos = []
         for salida in schedule_list:
             paso_dt = datetime.combine(now.date(), salida) + timedelta(minutes=t_mp)
             paso_dt = CATANIA_TZ.localize(paso_dt)
             pasos.append(paso_dt)
-        # Encontrar el primer paso que sea > ahora
         next_paso = None
         next_index = -1
         for i, paso in enumerate(pasos):
@@ -349,7 +339,6 @@ def get_next_train_at_station(now: datetime, estacion_key: str) -> Tuple[Optiona
             delta = next_paso - now
             mins_rest = int(delta.total_seconds() // 60)
             secs_rest = int(delta.total_seconds() % 60)
-            # Siguiente tren después de este (misma dirección)
             next_info = None
             if next_index + 1 < len(pasos):
                 next_paso2 = pasos[next_index + 1]
@@ -434,14 +423,12 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
         station_display = "Monte Po" if station == "Montepo" else "Stesicoro"
         dest = "Stesicoro" if station == "Montepo" else "Monte Po"
         
-        # --- NUEVA LÓGICA PARA MENSAJE DE ANDÉN ---
+        # --- MENSAJE DE ANDÉN (sin "PER" mayúsculas) ---
         if minutes == 0:
-            # El tren está en el andén (sale en menos de 60 segundos)
             if seconds == 0:
                 msg = f"{special_msg}🚇 Il treno è in binario. Partirà subito."
             else:
                 msg = f"{special_msg}🚇 Il treno è in binario. Partirà tra meno di un minuto."
-            # Mostrar el siguiente tren si existe
             next2, min2, sec2, has2 = get_next_departure_after(station, now, next_dep.time())
             if has2:
                 time_str2 = format_time(min2, sec2)
@@ -449,7 +436,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
             else:
                 msg += f"\n\n🚆 Questo è l'ultimo treno della giornata."
         elif minutes == 0 and seconds < 30:
-            # Caso residual: treno appena partito (no debería ocurrir porque minutes==0 ya cubre todo, pero lo dejamos)
+            # residual
             next2, min2, sec2, has2 = get_next_departure(station, now + timedelta(seconds=30))
             if has2:
                 msg = f"{special_msg}🚇 Il treno è appena partito da {station_display}. Il prossimo per {dest} sarà alle {next2.strftime('%H:%M')}."
@@ -457,14 +444,14 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
                 msg = f"{special_msg}🚇 Il treno è appena partito da {station_display}. Non ci sono altri treni oggi."
         else:
             time_str = format_time(minutes, seconds)
-            # Mostrar mensaje principal
+            # Mensaje principal (sin "PER" mayúsculas)
             if minutes < NEXT_TRAIN_THRESHOLD:
-                msg = f"{special_msg}🚇 Prossimo treno PER {dest} parte tra {time_str}."
+                msg = f"{special_msg}🚇 Prossimo treno per {dest} parte tra {time_str}."
             elif minutes < SHORT_TIME_THRESHOLD:
-                msg = f"{special_msg}🚇 Prossimo treno PER {dest} parte tra {time_str}."
+                msg = f"{special_msg}🚇 Prossimo treno per {dest} parte tra {time_str}."
             else:
-                msg = f"{special_msg}🚇 Prossimo treno PER {dest} parte tra {time_str}, alle {next_dep.strftime('%H:%M')}."
-            # Mostrar siguiente tren si existe y faltan menos de NEXT_TRAIN_THRESHOLD minutos
+                msg = f"{special_msg}🚇 Prossimo treno per {dest} parte tra {time_str}, alle {next_dep.strftime('%H:%M')}."
+            # Mostrar siguiente si falta menos de NEXT_TRAIN_THRESHOLD
             if minutes < NEXT_TRAIN_THRESHOLD:
                 next2, min2, sec2, has2 = get_next_departure_after(station, now, next_dep.time())
                 if has2:
@@ -479,42 +466,44 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
         await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
         return
     
-    # Para estaciones intermedias (incluye Milo)
+    # --- ESTACIONES INTERMEDIAS ---
     info_mp, info_st = get_next_train_at_station(now, estacion_key)
     nombre = NOMBRE_MOSTRAR.get(estacion_key, estacion_key.capitalize())
     
     msg = f"{special_msg}🚆 **Prossimi treni a {nombre}**\n\n"
     
-    # Dirección hacia Stesicoro (tren que viene de Monte Po)
+    # Siempre mostrar primero la dirección Monte Po (flecha arriba) y luego Stesicoro (flecha abajo)
+    # Flecha arriba roja: 🔴⬆️  (usamos 🔴 para que sea roja, pero Telegram no tiene flecha roja nativa; combinamos 🔴 + ⬆️)
+    # Para simplificar y que sea visual, usaremos 🔴⬆️ y 🔴⬇️
+    # Monte Po (hacia arriba)
     if info_mp:
         paso_mp, mins, secs, next_info = info_mp
         time_str = format_time(mins, secs)
         if mins == 0 and secs < 30:
-            msg += f"🚇 **Per Stesicoro**: treno in arrivo.\n"
+            msg += f"🔴⬆️ **Monte Po**: treno in arrivo.\n"
         else:
-            msg += f"🚇 **Per Stesicoro**: prossimo treno passa tra {time_str}, alle {paso_mp.strftime('%H:%M')}.\n"
-        # Mostrar siguiente si faltan menos de NEXT_TRAIN_THRESHOLD minutos
+            msg += f"🔴⬆️ **Monte Po**: prossimo treno passa tra {time_str}, alle {paso_mp.strftime('%H:%M')}.\n"
         if mins < NEXT_TRAIN_THRESHOLD and next_info:
             paso2, mins2, secs2 = next_info
             time_str2 = format_time(mins2, secs2)
             msg += f"   Il successivo passerà tra {time_str2}, alle {paso2.strftime('%H:%M')}.\n"
     else:
-        msg += f"🚫 **Per Stesicoro**: nessun treno in arrivo al momento.\n"
+        msg += f"🔴⬆️ **Monte Po**: nessun treno in arrivo al momento.\n"
     
-    # Dirección hacia Monte Po (tren que viene de Stesicoro)
+    # Stesicoro (hacia abajo)
     if info_st:
         paso_st, mins, secs, next_info = info_st
         time_str = format_time(mins, secs)
         if mins == 0 and secs < 30:
-            msg += f"🚇 **Per Monte Po**: treno in arrivo.\n"
+            msg += f"🔴⬇️ **Stesicoro**: treno in arrivo.\n"
         else:
-            msg += f"🚇 **Per Monte Po**: prossimo treno passa tra {time_str}, alle {paso_st.strftime('%H:%M')}.\n"
+            msg += f"🔴⬇️ **Stesicoro**: prossimo treno passa tra {time_str}, alle {paso_st.strftime('%H:%M')}.\n"
         if mins < NEXT_TRAIN_THRESHOLD and next_info:
             paso2, mins2, secs2 = next_info
             time_str2 = format_time(mins2, secs2)
             msg += f"   Il successivo passerà tra {time_str2}, alle {paso2.strftime('%H:%M')}.\n"
     else:
-        msg += f"🚫 **Per Monte Po**: nessun treno in arrivo al momento.\n"
+        msg += f"🔴⬇️ **Stesicoro**: nessun treno in arrivo al momento.\n"
     
     last_msg = get_last_train_message(now)
     if last_msg and not is_sant_agata(now):
@@ -574,7 +563,8 @@ async def cmd_galatea(update, context): await send_station_response(update, cont
 async def cmd_giovanni(update, context): await send_station_response(update, context, "giovanni", return_to_main=False)
 
 async def cmd_altri(update, context):
-    await update.message.reply_text("🚇 **Altre stazioni**\nSeleziona una stazione:", reply_markup=keyboard_altri, parse_mode='Markdown')
+    # No enviamos mensaje de texto, solo mostramos el teclado secundario
+    await update.message.reply_text("", reply_markup=keyboard_altri)
 
 async def start(update, context):
     user = update.effective_user
@@ -638,7 +628,7 @@ async def test_command(update, context):
     await send_station_response(update, context, station_name, simulated_now, return_to_main=False)
 
 # ============================================================================
-# CONFIGURACIÓN DEL LOGGING
+# LOGGING Y MAIN
 # ============================================================================
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -658,9 +648,8 @@ def main():
         app.add_handler(CommandHandler(cmd, handler))
     app.add_handler(MessageHandler(filters.Text(["Monte Po", "Stesicoro", "Altri", "← Menu", "Fontana", "Nesima", "San Nullo", "Cibali", "Milo", "Borgo", "Giuffrida", "Italia", "Galatea", "Giovanni XXIII"]), handle_button))
     
-    # Pequeña pausa para evitar conflictos con webhook residuales
     import time
-    time.sleep(2)
+    time.sleep(2)  # pausa para evitar conflictos
     
     logger.info("Bot avviato. Premi Ctrl+C per fermare.")
     print("Bot funzionante... In attesa di messaggi.")
