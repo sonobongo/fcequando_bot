@@ -1,8 +1,9 @@
 import os
 import logging
-from datetime import datetime, time, timedelta
+from datetime import datetime, time, timedelta, date
 from typing import Tuple, Optional, List
 import pytz
+import calendar
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
@@ -222,35 +223,27 @@ def get_next_departure_sant_agata(station: str, now: datetime) -> Tuple[Optional
         return (next_dt, sec // 60, sec % 60, True)
     
     # Durante el servicio: calcular próxima salida usando frecuencias
-    # De 06:00 a 15:00 cada 10 minutos; de 15:00 a cierre cada 13 minutos
     first_min = first.hour * 60 + first.minute
     last_min = last.hour * 60 + last.minute
     current_min = current_time.hour * 60 + current_time.minute
     
     if current_min < 15 * 60:
-        # Tramo de 10 minutos
-        # Primera salida a first_min, luego cada 10 minutos
-        # Encontrar la próxima salida en este tramo
-        # Si la próxima calculada supera las 15:00, pasamos al tramo de 13 minutos
         minutes_since_first = current_min - first_min
         if minutes_since_first < 0:
             minutes_since_first = 0
         intervals = (minutes_since_first + 9) // 10
         next_min = first_min + intervals * 10
         if next_min > 15 * 60:
-            # Cambiar a frecuencia 13 minutos desde las 15:00
             minutes_from_15 = current_min - 15 * 60
             if minutes_from_15 < 0:
                 minutes_from_15 = 0
             intervals13 = (minutes_from_15 + 12) // 13
             next_min = 15 * 60 + intervals13 * 13
     else:
-        # Tramo de 13 minutos
         minutes_from_15 = current_min - 15 * 60
         intervals13 = (minutes_from_15 + 12) // 13
         next_min = 15 * 60 + intervals13 * 13
     
-    # Si la próxima salida se pasa del último tren, devolver primer tren de mañana
     if next_min > last_min:
         tomorrow = now.date() + timedelta(days=1)
         next_dt = datetime.combine(tomorrow, first)
@@ -268,7 +261,52 @@ def get_next_departure_sant_agata(station: str, now: datetime) -> Tuple[Optional
     return (next_dt, sec // 60, sec % 60, True)
 
 # ============================================================================
-# FUNCIONES DE HORARIOS (adaptadas para Sant'Agata)
+# FUNCIONES PARA FESTIVIDADES CON CIERRE TOTAL (25 DICIEMBRE, DOMINGO DE PASCUA a partir de 2027)
+# ============================================================================
+def is_christmas(now: datetime) -> bool:
+    return now.month == 12 and now.day == 25
+
+def is_easter_sunday(now: datetime) -> bool:
+    """Calcula si la fecha es domingo de Pascua (para años entre 2020 y 2035). Solo aplica cierre a partir de 2027."""
+    year = now.year
+    # Solo aplicar cierre a partir de 2027
+    if year < 2027:
+        return False
+    a = year % 19
+    b = year // 100
+    c = year % 100
+    d = b // 4
+    e = b % 4
+    f = (b + 8) // 25
+    g = (b - f + 1) // 3
+    h = (19 * a + b - d - g + 15) % 30
+    i = c // 4
+    k = c % 4
+    l = (32 + 2 * e + 2 * i - h - k) % 7
+    m = (a + 11 * h + 22 * l) // 451
+    month = (h + l - 7 * m + 114) // 31
+    day = ((h + l - 7 * m + 114) % 31) + 1
+    easter = date(year, month, day)
+    return now.date() == easter and now.weekday() == 6
+
+def is_closed_all_day(now: datetime) -> bool:
+    """Retorna True si el metro está cerrado todo el día (25 diciembre o domingo de Pascua a partir de 2027)."""
+    return is_christmas(now) or is_easter_sunday(now)
+
+def get_closing_warning(now: datetime) -> str:
+    """Si es el día anterior a un cierre total (entre las 8:00 y 23:59), devuelve mensaje de aviso."""
+    tomorrow = now + timedelta(days=1)
+    if is_closed_all_day(tomorrow):
+        if now.hour >= 8:
+            if is_christmas(tomorrow):
+                fest_name = "Natale (25 dicembre)"
+            else:
+                fest_name = "Pasqua"
+            return f"⚠️ Attenzione: domani, {fest_name}, la metropolitana sarà CHIUSA tutto il giorno. ⚠️"
+    return ""
+
+# ============================================================================
+# FUNCIONES DE HORARIOS (adaptadas para Sant'Agata y festivos)
 # ============================================================================
 def get_opening_time(now: datetime, station: str = None) -> Tuple[int, int]:
     if is_sant_agata(now):
@@ -297,20 +335,41 @@ def get_closing_time(now: datetime, station: str) -> Tuple[int, int]:
             return (22, 30)
 
 def is_metro_closed(now: datetime, station: str) -> Tuple[bool, Optional[datetime]]:
+    # Si es día de cierre total (Navidad o Pascua a partir de 2027)
+    if is_closed_all_day(now):
+        tomorrow = now + timedelta(days=1)
+        open_h, open_m = get_opening_time(tomorrow, station)
+        next_open = datetime.combine(tomorrow.date(), time(open_h, open_m))
+        next_open = CATANIA_TZ.localize(next_open)
+        return (True, next_open)
+    
     current_time = now.time()
     open_h, open_m = get_opening_time(now, station)
     close_h, close_m = get_closing_time(now, station)
     opening_time = time(open_h, open_m)
     closing_time = time(close_h, close_m)
     
-    if current_time >= closing_time or current_time < opening_time:
-        if current_time < opening_time:
-            next_open = datetime.combine(now.date(), opening_time)
+    # Manejo de horarios que cruzan medianoche (cierre al día siguiente)
+    if close_h < open_h or (close_h == open_h and close_m < open_m):
+        # El cierre es al día siguiente (ej. 01:30)
+        if current_time >= opening_time or current_time < closing_time:
+            return (False, None)
         else:
-            next_open = datetime.combine(now.date() + timedelta(days=1), opening_time)
-        next_open = CATANIA_TZ.localize(next_open)
-        return (True, next_open)
-    return (False, None)
+            next_open = datetime.combine(now.date(), opening_time)
+            if next_open <= now:
+                next_open = datetime.combine(now.date() + timedelta(days=1), opening_time)
+            next_open = CATANIA_TZ.localize(next_open)
+            return (True, next_open)
+    else:
+        # Horario normal (cierre el mismo día)
+        if current_time >= closing_time or current_time < opening_time:
+            if current_time < opening_time:
+                next_open = datetime.combine(now.date(), opening_time)
+            else:
+                next_open = datetime.combine(now.date() + timedelta(days=1), opening_time)
+            next_open = CATANIA_TZ.localize(next_open)
+            return (True, next_open)
+        return (False, None)
 
 def get_next_departure(station: str, now: datetime) -> Tuple[Optional[datetime], int, int, bool]:
     if is_sant_agata(now):
@@ -348,13 +407,10 @@ def get_next_departure(station: str, now: datetime) -> Tuple[Optional[datetime],
 def get_next_departure_after(station: str, now: datetime, after_time: time) -> Tuple[Optional[datetime], int, int, bool]:
     """Obtiene el próximo tren después de una hora específica del mismo día."""
     if is_sant_agata(now):
-        # Simulamos avanzando el tiempo 1 minuto después de after_time y volvemos a calcular
-        # Esto es un poco feo pero funciona. Para simplificar, usamos la función principal con un now modificado.
         fake_now = datetime.combine(now.date(), after_time) + timedelta(minutes=1)
         fake_now = CATANIA_TZ.localize(fake_now)
         return get_next_departure(station, fake_now)
     
-    # Días normales
     schedule_list = get_schedule_list(station, now)
     next_departure_time = None
     for departure in schedule_list:
@@ -397,7 +453,7 @@ def format_time(minutes: int, seconds: int) -> str:
         return f"{minutes} minuti"
 
 def get_last_train_message(now: datetime) -> str:
-    if now.hour < 18 or is_sant_agata(now):
+    if now.hour < 18 or is_sant_agata(now) or is_closed_all_day(now):
         return ""
     weekday = now.weekday()
     if weekday in [0, 1, 2, 3]:
@@ -409,10 +465,15 @@ def get_last_train_message(now: datetime) -> str:
     return f"📌 Ricorda che oggi l'ultima metropolitana da Stesicoro parte alle {last_time}."
 
 # ============================================================================
-# RESPUESTA COMÚN
+# RESPUESTA COMÚN (para botones, /proximo y /test)
 # ============================================================================
 async def send_response(update: Update, context: ContextTypes.DEFAULT_TYPE, station: str, simulated_now: datetime = None):
     now = simulated_now if simulated_now is not None else datetime.now(CATANIA_TZ)
+    
+    # Aviso de cierre al día siguiente (si aplica)
+    warning_msg = get_closing_warning(now)
+    if warning_msg:
+        await update.message.reply_text(warning_msg, reply_markup=keyboard)
     
     special_msg = ""
     if is_sant_agata(now):
@@ -444,6 +505,7 @@ async def send_response(update: Update, context: ContextTypes.DEFAULT_TYPE, stat
         station_display = "Monte Po" if station == "Montepo" else "Stesicoro"
         time_str = format_time(minutes, seconds)
         
+        # Caso especial: treno appena partito (menos de 30 segundos)
         if minutes == 0 and seconds < 30:
             next_dep2, min2, sec2, has2 = get_next_departure(station, now + timedelta(seconds=30))
             if has2:
@@ -451,7 +513,8 @@ async def send_response(update: Update, context: ContextTypes.DEFAULT_TYPE, stat
             else:
                 msg = f"{special_msg}🚇 Il treno è appena partito da {station_display}. Non ci sono altri treni oggi."
         else:
-            if minutes < 5:
+            if minutes < 2:
+                # Menos de 2 minutos: mostramos tiempo sin hora y añadimos siguiente tren
                 msg = f"{special_msg}🚇 Il prossimo treno da {station_display} parte tra {time_str}."
                 next_dep2, min2, sec2, has2 = get_next_departure_after(station, now, next_dep.time())
                 if has2:
@@ -459,7 +522,11 @@ async def send_response(update: Update, context: ContextTypes.DEFAULT_TYPE, stat
                     msg += f"\n\n🚆 Il prossimo treno successivo partirà tra {time_str2}, alle {next_dep2.strftime('%H:%M')}."
                 else:
                     msg += f"\n\n🚆 Questo è l'ultimo treno della giornata."
+            elif minutes < 5:
+                # Entre 2 y 5 minutos: mostramos solo el tiempo restante, sin hora y sin siguiente tren
+                msg = f"{special_msg}🚇 Il prossimo treno da {station_display} parte tra {time_str}."
             else:
+                # 5 minutos o más: mensaje completo con hora
                 msg = f"{special_msg}🚇 Il prossimo treno da {station_display} parte tra {time_str}, alle {next_dep.strftime('%H:%M')}."
         
         last_msg = get_last_train_message(now)
