@@ -419,21 +419,19 @@ def get_next_train_at_station(now: datetime, estacion_key: str) -> Tuple[Optiona
 # ============================================================================
 async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str, return_to_main: bool = True):
     # Obtener la hora actual o simulada desde el contexto del chat
-    chat_id = update.effective_chat.id
     simulated_time = context.chat_data.get('test_time') if context.chat_data else None
     if simulated_time:
         now = simulated_time
-        # Mostrar un pequeño indicador de que estamos en modo test (opcional)
-        # Lo añadiremos al mensaje más adelante
+        test_indicator = "🧪 [TEST MODE] "
     else:
         now = datetime.now(CATANIA_TZ)
+        test_indicator = ""
     
     warning = get_closing_warning(now)
     if warning:
         await update.message.reply_text(warning, reply_markup=keyboard_main if return_to_main else keyboard_altri)
     
     special_msg = SANT_AGATA.get("message", "") + "\n\n" if is_sant_agata(now) else ""
-    test_indicator = "🧪 [TEST MODE] " if simulated_time else ""
     
     if is_closed_all_day(now):
         msg = f"{special_msg}{test_indicator}🚇 Oggi la metropolitana è chiusa tutto il giorno.\n🕒 Riaprirà domani mattina."
@@ -474,13 +472,17 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
         
         station_display = "Monte Po" if station == "Montepo" else "Stesicoro"
         dest = "Stesicoro" if station == "Montepo" else "Monte Po"
-        time_str = format_time(minutes, seconds)
         
-        if minutes == 0:
-            if seconds == 0:
-                msg = f"{special_msg}{test_indicator}🚇 Il treno è in binario. Partirà subito."
-            else:
-                msg = f"{special_msg}{test_indicator}🚇 Il treno è in binario. Partirà tra meno di un minuto."
+        # Calcular la hora de llegada a la estación (ARR.) para saber si el tren ya está en andén
+        if station == "Montepo":
+            arrival_time = next_dep  # En Monte Po, el tren está en andén justo a la hora de salida
+        else:  # Stesicoro
+            arrival_time = next_dep - timedelta(minutes=20)  # Tiempo de viaje desde Monte Po
+        
+        # Determinar si el tren está actualmente en el andén (ha llegado pero aún no ha salido)
+        if now >= arrival_time and now < next_dep:
+            msg = f"{special_msg}{test_indicator}🚇 Il treno è in binario. Partirà alle {next_dep.strftime('%H:%M')}."
+            # Mostrar el siguiente tren si existe
             next2, min2, sec2, has2 = get_next_departure_after(station, now, next_dep.time())
             if has2:
                 time_str2 = format_time(min2, sec2)
@@ -488,18 +490,29 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
             else:
                 msg += f"\n\n🚆 Questo è l'ultimo treno della giornata."
         else:
-            if minutes < SHORT_TIME_THRESHOLD:
-                msg = f"{special_msg}{test_indicator}🚇 Prossimo treno per {dest} parte tra {time_str}."
+            if now < arrival_time:
+                # Todavía no ha llegado: mostrar tiempo hasta la salida
+                time_str = format_time(minutes, seconds)
+                if minutes < SHORT_TIME_THRESHOLD:
+                    msg = f"{special_msg}{test_indicator}🚇 Prossimo treno per {dest} parte tra {time_str}."
+                else:
+                    msg = f"{special_msg}{test_indicator}🚇 Prossimo treno per {dest} parte tra {time_str}, alle {next_dep.strftime('%H:%M')}."
+                # Mostrar siguiente tren si falta 1 minuto o menos
+                if minutes <= 1:
+                    next2, min2, sec2, has2 = get_next_departure_after(station, now, next_dep.time())
+                    if has2:
+                        time_str2 = format_time(min2, sec2)
+                        msg += f"\n\n🚆 Il prossimo treno successivo partirà tra {time_str2}, alle {next2.strftime('%H:%M')}."
+                    else:
+                        msg += f"\n\n🚆 Questo è l'ultimo treno della giornata."
             else:
-                msg = f"{special_msg}{test_indicator}🚇 Prossimo treno per {dest} parte tra {time_str}, alle {next_dep.strftime('%H:%M')}."
-            
-            if minutes <= 1:
+                # Ya ha salido: mostrar el siguiente tren
                 next2, min2, sec2, has2 = get_next_departure_after(station, now, next_dep.time())
                 if has2:
                     time_str2 = format_time(min2, sec2)
-                    msg += f"\n\n🚆 Il prossimo treno successivo partirà tra {time_str2}, alle {next2.strftime('%H:%M')}."
+                    msg = f"{special_msg}{test_indicator}🚇 Il treno è appena partito da {station_display}. Il prossimo per {dest} sarà alle {next2.strftime('%H:%M')}."
                 else:
-                    msg += f"\n\n🚆 Questo è l'ultimo treno della giornata."
+                    msg = f"{special_msg}{test_indicator}🚇 Il treno è appena partito da {station_display}. Non ci sono altri treni oggi."
         
         last_msg = get_last_train_message(now)
         if last_msg and not is_sant_agata(now):
@@ -511,7 +524,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
             await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
         return
     
-        # --- Estaciones intermedias (incluye Milo) ---
+    # --- Estaciones intermedias (incluye Milo) ---
     # Verificar si el metro está cerrado (usando Monte Po como referencia)
     closed, next_open = is_metro_closed(now, "Montepo")
     if closed:
@@ -587,122 +600,6 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
         await update.message.reply_photo(photo=STATION_IMAGE[estacion_key], caption=msg, reply_markup=keyboard_main if return_to_main else keyboard_altri, parse_mode='Markdown')
     else:
         await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri, parse_mode='Markdown')
-
-# ============================================================================
-# COMANDOS TEST
-# ============================================================================
-async def test_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Comando /test: sin argumentos -> ayuda; con 2 args -> fija modo test; con 3 args -> respuesta única (compatibilidad)"""
-    args = context.args
-    chat_id = update.effective_chat.id
-    
-    if not args:
-        await update.message.reply_text(
-            "🧪 **Modalità test**\n\n"
-            "Per fissare una data/ora simulata e usare tutti i bottoni:\n"
-            "`/test DDMMYYYY HHMM`\n"
-            "Esempio: `/test 11022026 1102`\n\n"
-            "Per tornare alla realtà: `/testfin`\n\n"
-            "Per una singola risposta (senza cambiare modalità):\n"
-            "`/test DDMMYYYY HHMM stazione` (M, S, ML, ecc.)",
-            parse_mode='Markdown'
-        )
-        return
-    
-    if len(args) == 2:
-        # Modo test persistente: /test DDMMYYYY HHMM
-        date_str, time_str = args[0], args[1]
-        if len(date_str) != 8 or not date_str.isdigit():
-            await update.message.reply_text("Formato data non valido. Usa DDMMYYYY (es. 11022026).")
-            return
-        if len(time_str) != 4 or not time_str.isdigit():
-            await update.message.reply_text("Formato ora non valido. Usa HHMM (es. 1102).")
-            return
-        day = int(date_str[0:2])
-        month = int(date_str[2:4])
-        year = int(date_str[4:8])
-        hour = int(time_str[0:2])
-        minute = int(time_str[2:4])
-        if hour > 23 or minute > 59:
-            await update.message.reply_text("Ora non valida.")
-            return
-        try:
-            simulated = CATANIA_TZ.localize(datetime(year, month, day, hour, minute))
-        except Exception as e:
-            await update.message.reply_text(f"Data non valida: {e}")
-            return
-        # Guardar en chat_data
-        if context.chat_data is None:
-            context.chat_data = {}
-        context.chat_data['test_time'] = simulated
-        await update.message.reply_text(
-            f"🧪 **Modalità test attivata**\n"
-            f"Ora simulata: {simulated.strftime('%d/%m/%Y %H:%M')}\n"
-            f"Usa i bottoni normalmente. Per uscire: `/testfin`",
-            parse_mode='Markdown'
-        )
-        return
-    
-    if len(args) == 3:
-        # Compatibilidad con el antiguo /test: /test DDMMYYYY HHMM X
-        date_str, time_str, station_code = args[0], args[1], args[2].upper()
-        if station_code == "M":
-            station = "Montepo"
-        elif station_code == "S":
-            station = "Stesicoro"
-        elif station_code == "ML":
-            station = "milo"  # Milo es intermedia, pero podemos tratarla
-        else:
-            await update.message.reply_text("Codice stazione non valido. Usa M, S o ML.")
-            return
-        if len(date_str) != 8 or not date_str.isdigit():
-            await update.message.reply_text("Data non valida.")
-            return
-        if len(time_str) != 4 or not time_str.isdigit():
-            await update.message.reply_text("Ora non valida.")
-            return
-        day = int(date_str[0:2])
-        month = int(date_str[2:4])
-        year = int(date_str[4:8])
-        hour = int(time_str[0:2])
-        minute = int(time_str[2:4])
-        if hour > 23 or minute > 59:
-            await update.message.reply_text("Ora non valida.")
-            return
-        try:
-            simulated = CATANIA_TZ.localize(datetime(year, month, day, hour, minute))
-        except Exception as e:
-            await update.message.reply_text(f"Data non valida: {e}")
-            return
-        # Respuesta única sin cambiar el modo
-        # Usamos una copia de la función send_station_response con simulated_now
-        await send_station_response_simulated(update, context, station, simulated)
-        return
-    
-    await update.message.reply_text("Comando non riconosciuto. Usa /test DDMMYYYY HHMM o /test DDMMYYYY HHMM X")
-
-async def send_station_response_simulated(update, context, estacion_key: str, simulated_now: datetime):
-    """Función auxiliar para responder con tiempo simulado sin cambiar el modo test"""
-    # Guardamos temporalmente el tiempo simulado en chat_data, luego lo restauramos
-    chat_id = update.effective_chat.id
-    original = context.chat_data.get('test_time') if context.chat_data else None
-    if context.chat_data is None:
-        context.chat_data = {}
-    context.chat_data['test_time'] = simulated_now
-    await send_station_response(update, context, estacion_key, return_to_main=False)
-    # Restaurar
-    if original is None:
-        context.chat_data.pop('test_time', None)
-    else:
-        context.chat_data['test_time'] = original
-
-async def testfin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Desactiva el modo test y vuelve a la hora real."""
-    if context.chat_data and 'test_time' in context.chat_data:
-        del context.chat_data['test_time']
-        await update.message.reply_text("✅ Modalità test disattivata. Ora reale ripristinata.")
-    else:
-        await update.message.reply_text("⚠️ Nessuna modalità test attiva.")
 
 # ============================================================================
 # TECLADOS
