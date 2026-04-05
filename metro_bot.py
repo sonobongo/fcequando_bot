@@ -285,17 +285,23 @@ def get_next_departure_after(station: str, now: datetime, after_time: time) -> T
     return (None, 0, 0, False)
 
 def format_time(minutes: int, seconds: int) -> str:
-    if minutes < SHORT_TIME_THRESHOLD:
-        if seconds >= 30:
-            minutes += 1
-        if minutes == 0:
-            return "meno di un minuto"
-        elif minutes == 1:
-            return "1 minuto"
-        else:
-            return f"{minutes} minuti"
-    else:
+    # Para 5 minutos o más, mostrar solo minutos
+    if minutes >= SHORT_TIME_THRESHOLD:
         return f"{minutes} minuti"
+    
+    # Para menos de 5 minutos: mostrar minutos y posibles 30 segundos
+    if minutes == 0:
+        if seconds < 30:
+            return "meno di un minuto"
+        else:
+            return "30 secondi"
+    else:
+        if seconds < 30:
+            # Mostrar solo minutos (ej. "2 minuti")
+            return f"{minutes} minuti"
+        else:
+            # Mostrar minutos + 30 segundos (ej. "2 minuti e 30 secondi")
+            return f"{minutes} minuti e 30 secondi"
 
 def get_last_train_message(now: datetime) -> str:
     if now.hour < LAST_TRAIN_START_HOUR or is_sant_agata(now) or is_closed_all_day(now):
