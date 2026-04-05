@@ -358,18 +358,22 @@ def get_next_train_at_station(now: datetime, estacion_key: str) -> Tuple[Optiona
     
     return (info_mp, info_st)
 
-async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str, simulated_now: datetime = None):
+async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str, simulated_now: datetime = None, return_to_main: bool = True):
+    """
+    Envía la respuesta de la estación.
+    Si return_to_main es True, después de la respuesta se restaura el teclado principal.
+    """
     now = simulated_now if simulated_now is not None else datetime.now(CATANIA_TZ)
     
     warning = get_closing_warning(now)
     if warning:
-        await update.message.reply_text(warning, reply_markup=keyboard)
+        await update.message.reply_text(warning, reply_markup=keyboard_main if return_to_main else keyboard_altri)
     
     special_msg = SANT_AGATA.get("message", "") + "\n\n" if is_sant_agata(now) else ""
     
     if is_closed_all_day(now):
         msg = f"{special_msg}🚇 Oggi la metropolitana è chiusa tutto il giorno.\n🕒 Riaprirà domani mattina."
-        await update.message.reply_text(msg, reply_markup=keyboard)
+        await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
         return
     
     # Caso especial para Monte Po y Stesicoro (salida desde la estación)
@@ -386,13 +390,13 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
                 msg = f"{special_msg}🚇 La metropolitana è chiusa in questo momento. Il primo treno da {station_display} partirà alle {first_train.strftime('%H:%M')}."
             else:
                 msg = f"{special_msg}🚇 La metropolitana è chiusa in questo momento.\n🕒 Riaprirà alle {next_open.strftime('%H:%M')}."
-            await update.message.reply_text(msg, reply_markup=keyboard)
+            await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
             return
         
         next_dep, minutes, seconds, has_trains = get_next_departure(station, now)
         if not has_trains:
             msg = f"{special_msg}🚇 Non ci sono più treni oggi. Il servizio riprenderà domani mattina."
-            await update.message.reply_text(msg, reply_markup=keyboard)
+            await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
             return
         
         station_display = "Monte Po" if station == "Montepo" else "Stesicoro"
@@ -422,7 +426,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
         last_msg = get_last_train_message(now)
         if last_msg and not is_sant_agata(now):
             msg += f"\n\n{last_msg}"
-        await update.message.reply_text(msg, reply_markup=keyboard)
+        await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
         return
     
     # Para estaciones intermedias
@@ -475,79 +479,94 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
     if last_msg and not is_sant_agata(now):
         msg += f"\n{last_msg}"
     
-    await update.message.reply_text(msg, reply_markup=keyboard, parse_mode='Markdown')
+    await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri, parse_mode='Markdown')
 
 # ============================================================================
-# MANEJADORES DE COMANDOS PARA CADA ESTACIÓN
+# TECLADOS
 # ============================================================================
-async def cmd_montepo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await send_station_response(update, context, "montepo")
-
-async def cmd_stesicoro(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await send_station_response(update, context, "stesicoro")
-
-async def cmd_milo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await send_station_response(update, context, "milo")
-
-async def cmd_fontana(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await send_station_response(update, context, "fontana")
-
-async def cmd_nesima(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await send_station_response(update, context, "nesima")
-
-async def cmd_sannullo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await send_station_response(update, context, "sannullo")
-
-async def cmd_cibali(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await send_station_response(update, context, "cibali")
-
-async def cmd_borgo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await send_station_response(update, context, "borgo")
-
-async def cmd_giuffrida(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await send_station_response(update, context, "giuffrida")
-
-async def cmd_italia(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await send_station_response(update, context, "italia")
-
-async def cmd_galatea(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await send_station_response(update, context, "galatea")
-
-async def cmd_giovanni(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await send_station_response(update, context, "giovanni")
-
-async def cmd_altri(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    msg = (
-        "🚇 **Altre stazioni disponibili**\n\n"
-        "Usa uno di questi comandi:\n"
-        "/fontana - Fontana\n"
-        "/nesima - Nesima\n"
-        "/sannullo - San Nullo\n"
-        "/cibali - Cibali\n"
-        "/borgo - Borgo\n"
-        "/giuffrida - Giuffrida\n"
-        "/italia - Italia\n"
-        "/galatea - Galatea\n"
-        "/giovanni - Giovanni XXIII\n\n"
-        "Comandi già esistenti:\n"
-        "/montepo, /stesicoro, /milo\n\n"
-        "Puoi anche premere i pulsanti qui sotto."
-    )
-    await update.message.reply_text(msg, reply_markup=keyboard, parse_mode='Markdown')
-
-# ============================================================================
-# CONFIGURACIÓN DEL BOT (teclado y comandos)
-# ============================================================================
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-keyboard = ReplyKeyboardMarkup(
+# Teclado principal (3 botones)
+keyboard_main = ReplyKeyboardMarkup(
     [
         [KeyboardButton("Monte Po"), KeyboardButton("Altri"), KeyboardButton("Stesicoro")]
     ],
     resize_keyboard=True,
     one_time_keyboard=False
 )
+
+# Teclado secundario (estaciones intermedias + botón para volver)
+keyboard_altri = ReplyKeyboardMarkup(
+    [
+        ["Fontana", "Nesima", "San Nullo"],
+        ["Cibali", "Milo", "Borgo"],
+        ["Giuffrida", "Italia", "Galatea"],
+        ["Giovanni XXIII", "← Menu"]
+    ],
+    resize_keyboard=True,
+    one_time_keyboard=False
+)
+
+# Mapeo de nombres de botón a clave de estación
+BOTON_TO_KEY = {
+    "Monte Po": "montepo",
+    "Stesicoro": "stesicoro",
+    "Fontana": "fontana",
+    "Nesima": "nesima",
+    "San Nullo": "sannullo",
+    "Cibali": "cibali",
+    "Milo": "milo",
+    "Borgo": "borgo",
+    "Giuffrida": "giuffrida",
+    "Italia": "italia",
+    "Galatea": "galatea",
+    "Giovanni XXIII": "giovanni"
+}
+
+# ============================================================================
+# MANEJADORES DE COMANDOS (se mantienen igual, pero llaman a send_station_response con return_to_main=False para no cambiar el teclado)
+# ============================================================================
+async def cmd_montepo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await send_station_response(update, context, "montepo", return_to_main=False)
+
+async def cmd_stesicoro(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await send_station_response(update, context, "stesicoro", return_to_main=False)
+
+async def cmd_milo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await send_station_response(update, context, "milo", return_to_main=False)
+
+async def cmd_fontana(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await send_station_response(update, context, "fontana", return_to_main=False)
+
+async def cmd_nesima(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await send_station_response(update, context, "nesima", return_to_main=False)
+
+async def cmd_sannullo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await send_station_response(update, context, "sannullo", return_to_main=False)
+
+async def cmd_cibali(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await send_station_response(update, context, "cibali", return_to_main=False)
+
+async def cmd_borgo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await send_station_response(update, context, "borgo", return_to_main=False)
+
+async def cmd_giuffrida(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await send_station_response(update, context, "giuffrida", return_to_main=False)
+
+async def cmd_italia(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await send_station_response(update, context, "italia", return_to_main=False)
+
+async def cmd_galatea(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await send_station_response(update, context, "galatea", return_to_main=False)
+
+async def cmd_giovanni(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await send_station_response(update, context, "giovanni", return_to_main=False)
+
+async def cmd_altri(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Envía el teclado con las estaciones secundarias."""
+    await update.message.reply_text(
+        "🚇 **Altre stazioni**\nSeleziona una stazione:", 
+        reply_markup=keyboard_altri,
+        parse_mode='Markdown'
+    )
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -558,7 +577,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Posso dirti quando passa il prossimo treno della metropolitana di Catania.\n"
         "Premi uno dei pulsanti qui sotto o usa i comandi /montepo, /stesicoro, /milo, /altri, /fontana, ecc.\n\n"
         f"{last_msg}",
-        reply_markup=keyboard
+        reply_markup=keyboard_main
     )
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -573,19 +592,25 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/fontana, /nesima, /sannullo, /cibali, /borgo, /giuffrida, /italia, /galatea, /giovanni\n\n"
         "/test DDMMYYYY HHMM <stazione> - Simula data/ora (es. /test 05042026 0908 borgo)\n\n"
         "Oppure premi i pulsanti.",
-        reply_markup=keyboard
+        reply_markup=keyboard_main
     )
 
 async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
-    if text == "Monte Po":
-        await send_station_response(update, context, "montepo")
-    elif text == "Stesicoro":
-        await send_station_response(update, context, "stesicoro")
-    elif text == "Altri":
+    if text == "Altri":
         await cmd_altri(update, context)
+    elif text == "← Menu":
+        # Volver al menú principal
+        await update.message.reply_text(
+            "🔙 Ritorno al menu principale.", 
+            reply_markup=keyboard_main
+        )
+    elif text in BOTON_TO_KEY:
+        estacion_key = BOTON_TO_KEY[text]
+        # Después de responder, volvemos al menú principal (return_to_main=True)
+        await send_station_response(update, context, estacion_key, return_to_main=True)
     else:
-        await update.message.reply_text("Scelta non valida. Usa i pulsanti.", reply_markup=keyboard)
+        await update.message.reply_text("Scelta non valida. Usa i pulsanti.", reply_markup=keyboard_main)
 
 async def test_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args or len(context.args) < 3:
@@ -622,7 +647,7 @@ async def test_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"Data non valida: {e}")
         return
     
-    await send_station_response(update, context, station_name, simulated_now)
+    await send_station_response(update, context, station_name, simulated_now, return_to_main=False)
 
 def main():
     TOKEN = os.environ.get('TELEGRAM_TOKEN')
@@ -649,7 +674,8 @@ def main():
     app.add_handler(CommandHandler("giovanni", cmd_giovanni))
     app.add_handler(CommandHandler("test", test_command))
     
-    app.add_handler(MessageHandler(filters.Text(["Monte Po", "Stesicoro", "Altri"]), handle_button))
+    # Manejador de botones (incluye los nuevos)
+    app.add_handler(MessageHandler(filters.Text(["Monte Po", "Stesicoro", "Altri", "← Menu", "Fontana", "Nesima", "San Nullo", "Cibali", "Milo", "Borgo", "Giuffrida", "Italia", "Galatea", "Giovanni XXIII"]), handle_button))
     
     logger.info("Bot avviato. Premi Ctrl+C per fermare.")
     print("Bot funzionante... In attesa di messaggi.")
