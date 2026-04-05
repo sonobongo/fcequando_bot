@@ -25,7 +25,7 @@ CLOSED_ALL_DAY = CONFIG["closed_all_day"]
 LAST_TRAIN_START_HOUR = CONFIG["last_train_message_start_hour"]
 WARNING_HOUR = CONFIG["closing_warning_hour"]
 SHORT_TIME_THRESHOLD = CONFIG["short_time_threshold"]
-NEXT_TRAIN_THRESHOLD = CONFIG["next_train_threshold"]
+NEXT_TRAIN_THRESHOLD = CONFIG["next_train_threshold"]  # no se usa directamente, usamos <=1
 
 # ============================================================================
 # TIEMPOS DE TRAYECTO PARA CADA ESTACIÓN (desde Monte Po y desde Stesicoro)
@@ -61,6 +61,24 @@ NOMBRE_MOSTRAR = {
     "stesicoro": "Stesicoro"
 }
 
+# ============================================================================
+# IMÁGENES DE LAS ESTACIONES (cambia la URL base si tu repositorio es diferente)
+# ============================================================================
+STATION_IMAGE = {
+    "montepo": "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/st_montepo.jpg",
+    "fontana": "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/st_fontana.jpg",
+    "nesima": "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/st_nesima.jpg",
+    "sannullo": "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/st_sannullo.jpg",
+    "cibali": "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/st_cibali.jpg",
+    "milo": "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/st_milo.jpg",
+    "borgo": "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/st_borgo.jpg",
+    "giuffrida": "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/st_giuffrida.jpg",
+    "italia": "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/st_italia.jpg",
+    "galatea": "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/st_galatea.jpg",
+    "giovanni": "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/st_giovanni.jpg",
+    "stesicoro": "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/st_stesicoro.jpg",
+}
+
 # Convertir strings "HH:MM" a objetos time
 def str_to_time(t_str: str) -> time:
     h, m = map(int, t_str.split(':'))
@@ -75,7 +93,6 @@ def convert_schedule(sched_dict: Dict[str, List[str]]) -> Dict[str, Dict[str, Li
     return result
 
 SCHEDULES = convert_schedule(SCHEDULE_DATA)
-
 CATANIA_TZ = pytz.timezone('Europe/Rome')
 
 # ============================================================================
@@ -297,10 +314,8 @@ def format_time(minutes: int, seconds: int) -> str:
             return "30 secondi"
     else:
         if seconds < 30:
-            # Mostrar solo minutos (ej. "2 minuti")
             return f"{minutes} minuti"
         else:
-            # Mostrar minutos + 30 segundos (ej. "2 minuti e 30 secondi")
             return f"{minutes} minuti e 30 secondi"
 
 def get_last_train_message(now: datetime) -> str:
@@ -387,7 +402,7 @@ def get_next_train_at_station(now: datetime, estacion_key: str) -> Tuple[Optiona
     return (info_mp, info_st)
 
 # ============================================================================
-# RESPUESTA PARA CUALQUIER ESTACIÓN
+# RESPUESTA PARA CUALQUIER ESTACIÓN (CON IMÁGENES Y LÓGICA ACTUALIZADA)
 # ============================================================================
 async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str, simulated_now: datetime = None, return_to_main: bool = True):
     now = simulated_now if simulated_now is not None else datetime.now(CATANIA_TZ)
@@ -400,10 +415,13 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
     
     if is_closed_all_day(now):
         msg = f"{special_msg}🚇 Oggi la metropolitana è chiusa tutto il giorno.\n🕒 Riaprirà domani mattina."
-        await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
+        if estacion_key in STATION_IMAGE:
+            await update.message.reply_photo(photo=STATION_IMAGE[estacion_key], caption=msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
+        else:
+            await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
         return
     
-    # Caso especial para Monte Po y Stesicoro (salida desde la estación)
+    # Caso Monte Po y Stesicoro (cabeceras)
     if estacion_key in ["montepo", "stesicoro"]:
         station = "Montepo" if estacion_key == "montepo" else "Stesicoro"
         closed, next_open = is_metro_closed(now, station)
@@ -417,13 +435,19 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
                 msg = f"{special_msg}🚇 La metropolitana è chiusa in questo momento. Il primo treno da {station_display} partirà alle {first_train.strftime('%H:%M')}."
             else:
                 msg = f"{special_msg}🚇 La metropolitana è chiusa in questo momento.\n🕒 Riaprirà alle {next_open.strftime('%H:%M')}."
-            await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
+            if estacion_key in STATION_IMAGE:
+                await update.message.reply_photo(photo=STATION_IMAGE[estacion_key], caption=msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
+            else:
+                await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
             return
         
         next_dep, minutes, seconds, has_trains = get_next_departure(station, now)
         if not has_trains:
             msg = f"{special_msg}🚇 Non ci sono più treni oggi. Il servizio riprenderà domani mattina."
-            await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
+            if estacion_key in STATION_IMAGE:
+                await update.message.reply_photo(photo=STATION_IMAGE[estacion_key], caption=msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
+            else:
+                await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
             return
         
         station_display = "Monte Po" if station == "Montepo" else "Stesicoro"
@@ -447,6 +471,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
             else:
                 msg = f"{special_msg}🚇 Prossimo treno per {dest} parte tra {time_str}, alle {next_dep.strftime('%H:%M')}."
             
+            # Mostrar siguiente tren si falta 1 minuto o menos
             if minutes <= 1:
                 next2, min2, sec2, has2 = get_next_departure_after(station, now, next_dep.time())
                 if has2:
@@ -458,15 +483,17 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
         last_msg = get_last_train_message(now)
         if last_msg and not is_sant_agata(now):
             msg += f"\n\n{last_msg}"
-        await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
+        
+        if estacion_key in STATION_IMAGE:
+            await update.message.reply_photo(photo=STATION_IMAGE[estacion_key], caption=msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
+        else:
+            await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
         return
     
-    # ========== INICIO DEL BLOQUE DE ESTACIONES INTERMEDIAS ==========
-    # Para estaciones intermedias (incluye Milo)
+    # --- Estaciones intermedias ---
     info_mp, info_st = get_next_train_at_station(now, estacion_key)
     nombre = NOMBRE_MOSTRAR.get(estacion_key, estacion_key.capitalize())
     
-    # Construir el mensaje de texto (igual para todas)
     msg = f"{special_msg}🚆 **Prossimi treni a {nombre}**\n\n"
     
     # Dirección Monte Po
@@ -480,6 +507,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
                 msg += f"🔺 **Per Monte Po**: prossimo treno passa tra {time_str}.\n"
             else:
                 msg += f"🔺 **Per Monte Po**: prossimo treno passa tra {time_str}, alle {paso_mp.strftime('%H:%M')}.\n"
+        # Mostrar siguiente si falta 1 minuto o menos
         if mins <= 1 and next_info:
             paso2, mins2, secs2 = next_info
             time_str2 = format_time(mins2, secs2)
@@ -501,7 +529,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
                 msg += f"🔻 **Per Stesicoro**: prossimo treno passa tra {time_str}.\n"
             else:
                 msg += f"🔻 **Per Stesicoro**: prossimo treno passa tra {time_str}, alle {paso_st.strftime('%H:%M')}.\n"
-        if mins < NEXT_TRAIN_THRESHOLD and next_info:
+        if mins <= 1 and next_info:
             paso2, mins2, secs2 = next_info
             time_str2 = format_time(mins2, secs2)
             if mins2 < SHORT_TIME_THRESHOLD:
@@ -515,13 +543,10 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
     if last_msg and not is_sant_agata(now):
         msg += f"\n{last_msg}"
     
-    # --- Enviar imagen para Galatea ---
-    if estacion_key == "galatea":
-        image_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/st_galatea.jpg"
-        await update.message.reply_photo(photo=image_url, caption=msg, reply_markup=keyboard_main if return_to_main else keyboard_altri, parse_mode='Markdown')
+    if estacion_key in STATION_IMAGE:
+        await update.message.reply_photo(photo=STATION_IMAGE[estacion_key], caption=msg, reply_markup=keyboard_main if return_to_main else keyboard_altri, parse_mode='Markdown')
     else:
         await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri, parse_mode='Markdown')
-    # ========== FIN DEL BLOQUE DE ESTACIONES INTERMEDIAS ==========
 
 # ============================================================================
 # TECLADOS
@@ -575,7 +600,7 @@ async def cmd_galatea(update, context): await send_station_response(update, cont
 async def cmd_giovanni(update, context): await send_station_response(update, context, "giovanni", return_to_main=False)
 
 async def cmd_altri(update, context):
-    await update.message.reply_text("🚇 Seleziona una stazione:", reply_markup=keyboard_altri)
+    await update.message.reply_text("⬇️ Altre stazioni:", reply_markup=keyboard_altri)
 
 async def start(update, context):
     user = update.effective_user
@@ -639,7 +664,7 @@ async def test_command(update, context):
     await send_station_response(update, context, station_name, simulated_now, return_to_main=False)
 
 # ============================================================================
-# CONFIGURACIÓN DEL LOGGING
+# LOGGING Y MAIN
 # ============================================================================
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
