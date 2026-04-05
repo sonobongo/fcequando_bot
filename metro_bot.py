@@ -257,7 +257,6 @@ def get_next_departure(station: str, now: datetime) -> Tuple[Optional[datetime],
     return (next_departure_datetime, minutes, seconds, True)
 
 def get_next_departure_after(station: str, now: datetime, after_time: time) -> Tuple[Optional[datetime], int, int, bool]:
-    """Obtiene el próximo tren después de una hora específica del mismo día."""
     schedule_list = get_schedule_list(station, now)
     next_departure_time = None
     for departure in schedule_list:
@@ -317,7 +316,7 @@ async def send_response(update: Update, context: ContextTypes.DEFAULT_TYPE, stat
                 first_train_dt = datetime.combine(tomorrow.date(), first_time_tomorrow)
                 first_train_dt = CATANIA_TZ.localize(first_train_dt)
             station_display = "Monte Po" if station == "Montepo" else "Stesicoro"
-            msg = f"🚇 La metropolitana è chiusa in questo momento. Il primo treno DA {station_display} partirà alle {first_train_dt.strftime('%H:%M')}."
+            msg = f"🚇 La metropolitana è chiusa in questo momento. Il primo treno da {station_display} partirà alle {first_train_dt.strftime('%H:%M')}."
         else:
             open_time_str = next_open.strftime("%H:%M")
             msg = f"🚇 La metropolitana è chiusa in questo momento.\n🕒 Riaprirà alle {open_time_str}."
@@ -334,24 +333,27 @@ async def send_response(update: Update, context: ContextTypes.DEFAULT_TYPE, stat
         station_display = "Monte Po" if station == "Montepo" else "Stesicoro"
         time_str = format_time(minutes, seconds)
         
+        # Caso especial: treno appena partito (menos de 30 segundos)
         if minutes == 0 and seconds < 30:
-            # Tren appena partito: mostramos el siguiente
             next_dep2, min2, sec2, has2 = get_next_departure(station, now + timedelta(seconds=30))
             if has2:
-                msg = f"🚇 Il treno è appena partito DA {station_display}. Il prossimo sarà alle {next_dep2.strftime('%H:%M')}."
+                msg = f"🚇 Il treno è appena partito da {station_display}. Il prossimo sarà alle {next_dep2.strftime('%H:%M')}."
             else:
-                msg = f"🚇 Il treno è appena partito DA {station_display}. Non ci sono altri treni oggi."
+                msg = f"🚇 Il treno è appena partito da {station_display}. Non ci sono altri treni oggi."
         else:
-            if minutes <= 2:
-                # Si faltan 2 minutos o menos, no mostramos el tren actual, solo el siguiente
+            if minutes < 5:
+                # Para menos de 5 minutos: mostramos el tiempo restante (sin la hora)
+                msg = f"🚇 Il prossimo treno da {station_display} parte tra {time_str}."
+                # Si hay segundo tren, lo mostramos con su hora (o tiempo si es también <5 min? lo dejamos con hora)
                 next_dep2, min2, sec2, has2 = get_next_departure_after(station, now, next_dep.time())
                 if has2:
                     time_str2 = format_time(min2, sec2)
-                    msg = f"🚇 Il prossimo treno successivo partirà tra {time_str2}, alle {next_dep2.strftime('%H:%M')}."
+                    msg += f"\n\n🚆 Il prossimo treno successivo partirà tra {time_str2}, alle {next_dep2.strftime('%H:%M')}."
                 else:
-                    msg = f"🚇 Questo è l'ultimo treno della giornata. Partirà tra {time_str}, alle {next_dep.strftime('%H:%M')}."
+                    msg += f"\n\n🚆 Questo è l'ultimo treno della giornata."
             else:
-                msg = f"🚇 Il prossimo treno DA {station_display} parte tra {time_str}, alle {next_dep.strftime('%H:%M')}."
+                # 5 minutos o más: mostramos el mensaje completo con hora
+                msg = f"🚇 Il prossimo treno da {station_display} parte tra {time_str}, alle {next_dep.strftime('%H:%M')}."
         
         last_msg = get_last_train_message(now)
         if last_msg:
