@@ -1,6 +1,5 @@
 import os
 import logging
-import re
 from datetime import datetime, time, timedelta
 from typing import Tuple, Optional, List
 import pytz
@@ -8,10 +7,9 @@ from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
 # ============================================================================
-# CONFIGURACIÓN
+# CONFIGURACIÓN (opcional: restringir comando /test a un usuario)
 # ============================================================================
-# Opcional: descomenta y pon tu ID de Telegram (obtenlo con @userinfobot)
-# ADMIN_ID = 123456789
+# ADMIN_ID = 123456789  # Reemplaza con tu ID de Telegram (obtenlo con @userinfobot)
 
 # ============================================================================
 # HORARIOS DE STESICORO (desde Stesicoro hacia Monte Po)
@@ -310,8 +308,25 @@ async def send_response(update: Update, context: ContextTypes.DEFAULT_TYPE, stat
     
     closed, next_open = is_metro_closed(now)
     if closed:
-        open_time_str = next_open.strftime("%H:%M")
-        msg = f"🚇 Il metrò è chiuso in questo momento.\n🕒 Riaprirà alle {open_time_str}."
+        # Calcular cuánto falta para la apertura general (primer tren desde Monte Po)
+        minutes_to_opening = int((next_open - now).total_seconds() // 60)
+        if minutes_to_opening <= 60:
+            # Estamos dentro de la última hora antes de la apertura.
+            # Mostramos la hora del primer tren de la estación consultada.
+            # Obtener el primer tren de hoy (o de mañana si ya pasó el último)
+            first_train_dt, _, _, has_first = get_next_departure(station, now)
+            if not has_first:
+                # No hay más trenes hoy (por ejemplo, después de la última salida)
+                # Buscar el primer tren de mañana
+                tomorrow = now + timedelta(days=1)
+                first_time_tomorrow = get_schedule_list(station, tomorrow)[0]
+                first_train_dt = datetime.combine(tomorrow.date(), first_time_tomorrow)
+                first_train_dt = CATANIA_TZ.localize(first_train_dt)
+            station_display = "Monte Po" if station == "Montepo" else "Stesicoro"
+            msg = f"🚇 Il metrò è chiuso in questo momento. Il primo treno da {station_display} partirà alle {first_train_dt.strftime('%H:%M')}."
+        else:
+            open_time_str = next_open.strftime("%H:%M")
+            msg = f"🚇 Il metrò è chiuso in questo momento.\n🕒 Riaprirà alle {open_time_str}."
         await update.message.reply_text(msg, reply_markup=keyboard)
         return
     
@@ -327,7 +342,7 @@ async def send_response(update: Update, context: ContextTypes.DEFAULT_TYPE, stat
         
         # Mensaje principal
         if minutes == 0 and seconds < 30:
-            # Tren appena partito: ya mostramos el siguiente
+            # Tren appena partito: mostramos el siguiente
             next_dep2, min2, sec2, has2 = get_next_departure(station, now + timedelta(seconds=30))
             if has2:
                 msg = f"🚇 Il treno è appena partito. Il prossimo sarà alle {next_dep2.strftime('%H:%M')}."
@@ -337,7 +352,6 @@ async def send_response(update: Update, context: ContextTypes.DEFAULT_TYPE, stat
             msg = f"🚇 Il prossimo treno a {station_display} parte tra {time_str}, alle {next_dep.strftime('%H:%M')}."
             # Si faltan 2 minutos o menos, añadir información del siguiente tren
             if minutes <= 2:
-                # Buscar el siguiente tren después de la hora de salida del actual
                 next_dep2, min2, sec2, has2 = get_next_departure_after(station, now, next_dep.time())
                 if has2:
                     if min2 == 0:
