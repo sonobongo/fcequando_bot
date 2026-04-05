@@ -4,7 +4,6 @@ import logging
 from datetime import datetime, time, timedelta, date
 from typing import Tuple, Optional, List, Dict, Any
 import pytz
-import calendar
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
@@ -29,10 +28,10 @@ SHORT_TIME_THRESHOLD = CONFIG["short_time_threshold"]
 NEXT_TRAIN_THRESHOLD = CONFIG["next_train_threshold"]
 
 # ============================================================================
-# TIEMPOS DE TRAYECTO HACIA MILO (en minutos) - CORREGIDOS
+# TIEMPOS DE TRAYECTO HACIA MILO (desde origen)
 # ============================================================================
-TIEMPO_MONTE_PO_A_MILO = 9    # Según horario real: Monte Po 10:10 -> Milo 10:19
-TIEMPO_STESICORO_A_MILO = 11  # Milo 10:19 -> Stesicoro 10:30
+TIEMPO_MONTE_PO_A_MILO = 9   # Monte Po -> Milo
+TIEMPO_STESICORO_A_MILO = 11 # Stesicoro -> Milo
 
 # Convertir strings "HH:MM" a objetos time
 def str_to_time(t_str: str) -> time:
@@ -52,7 +51,7 @@ SCHEDULES = convert_schedule(SCHEDULE_DATA)
 CATANIA_TZ = pytz.timezone('Europe/Rome')
 
 # ============================================================================
-# FUNCIONES PARA SANT'AGATA
+# FUNCIONES PARA SANT'AGATA (igual que antes)
 # ============================================================================
 def is_sant_agata(now: datetime) -> bool:
     return (now.month == SANT_AGATA["month"] and 
@@ -160,7 +159,7 @@ def get_closing_warning(now: datetime) -> str:
     return ""
 
 # ============================================================================
-# FUNCIONES DE HORARIOS (normales)
+# FUNCIONES DE HORARIOS (normales) - comunes para Monte Po y Stesicoro
 # ============================================================================
 def get_opening_time(now: datetime, station: str = None) -> Tuple[int, int]:
     if is_sant_agata(now):
@@ -198,7 +197,6 @@ def is_metro_closed(now: datetime, station: str) -> Tuple[bool, Optional[datetim
     opening_time = time(open_h, open_m)
     closing_time = time(close_h, close_m)
     
-    # Manejo de horarios que cruzan medianoche (Sant'Agata)
     if close_h < open_h or (close_h == open_h and close_m < open_m):
         if current_time >= opening_time or current_time < closing_time:
             return (False, None)
@@ -284,38 +282,57 @@ def get_last_train_message(now: datetime) -> str:
     return f"📌 Ricorda che oggi l'ultima metropolitana da Stesicoro parte alle {last_time}."
 
 # ============================================================================
-# FUNCIONES PARA MILO (cálculo de llegada desde cada dirección)
+# FUNCIONES PARA MILO (próximo tren en cada dirección)
 # ============================================================================
-def get_milo_arrival(now: datetime) -> Tuple[Optional[str], Optional[str]]:
+def get_next_train_at_milo(now: datetime) -> Tuple[Optional[Tuple[datetime, str]], Optional[Tuple[datetime, str]]]:
     """
-    Retorna (llegada_desde_MontePo, llegada_desde_Stesicoro) en formato string "HH:MM"
-    o None si no hay servicio en esa dirección.
+    Retorna (tren_hacia_Stesicoro, tren_hacia_Montepo)
+    Cada elemento es una tupla (hora_paso_por_Milo, tiempo_formateado, minutos, segundos, siguiente_info)
+    Para simplificar, devolvemos los mismos campos que en las otras funciones.
     """
-    # Desde Monte Po
-    closed, _ = is_metro_closed(now, "Montepo")
-    if not closed:
-        next_dep, minutes, seconds, has = get_next_departure("Montepo", now)
-        if has:
-            arrival_time = next_dep + timedelta(minutes=TIEMPO_MONTE_PO_A_MILO)
-            arrival_str = arrival_time.strftime("%H:%M")
-        else:
-            arrival_str = None
-    else:
-        arrival_str = None
+    # Tren desde Monte Po hacia Stesicoro (pasa por Milo)
+    closed_mp, _ = is_metro_closed(now, "Montepo")
+    info_mp = None
+    if not closed_mp:
+        next_dep_mp, mins_mp, secs_mp, has_mp = get_next_departure("Montepo", now)
+        if has_mp:
+            paso_mp = next_dep_mp + timedelta(minutes=TIEMPO_MONTE_PO_A_MILO)
+            # Calcular tiempo restante hasta paso_mp
+            delta_mp = paso_mp - now
+            mins_rest = int(delta_mp.total_seconds() // 60)
+            secs_rest = int(delta_mp.total_seconds() % 60)
+            # Siguiente tren después de este (para la misma dirección)
+            next_dep2_mp, mins2_mp, secs2_mp, has2_mp = get_next_departure_after("Montepo", now, next_dep_mp.time())
+            next_info_mp = None
+            if has2_mp:
+                paso2_mp = next_dep2_mp + timedelta(minutes=TIEMPO_MONTE_PO_A_MILO)
+                delta2_mp = paso2_mp - now
+                mins2_rest = int(delta2_mp.total_seconds() // 60)
+                secs2_rest = int(delta2_mp.total_seconds() % 60)
+                next_info_mp = (paso2_mp, mins2_rest, secs2_rest)
+            info_mp = (paso_mp, mins_rest, secs_rest, next_info_mp)
     
-    # Desde Stesicoro
-    closed2, _ = is_metro_closed(now, "Stesicoro")
-    if not closed2:
-        next_dep2, minutes2, seconds2, has2 = get_next_departure("Stesicoro", now)
-        if has2:
-            arrival_time2 = next_dep2 + timedelta(minutes=TIEMPO_STESICORO_A_MILO)
-            arrival_str2 = arrival_time2.strftime("%H:%M")
-        else:
-            arrival_str2 = None
-    else:
-        arrival_str2 = None
+    # Tren desde Stesicoro hacia Monte Po (pasa por Milo)
+    closed_st, _ = is_metro_closed(now, "Stesicoro")
+    info_st = None
+    if not closed_st:
+        next_dep_st, mins_st, secs_st, has_st = get_next_departure("Stesicoro", now)
+        if has_st:
+            paso_st = next_dep_st + timedelta(minutes=TIEMPO_STESICORO_A_MILO)
+            delta_st = paso_st - now
+            mins_rest = int(delta_st.total_seconds() // 60)
+            secs_rest = int(delta_st.total_seconds() % 60)
+            next_dep2_st, mins2_st, secs2_st, has2_st = get_next_departure_after("Stesicoro", now, next_dep_st.time())
+            next_info_st = None
+            if has2_st:
+                paso2_st = next_dep2_st + timedelta(minutes=TIEMPO_STESICORO_A_MILO)
+                delta2_st = paso2_st - now
+                mins2_rest = int(delta2_st.total_seconds() // 60)
+                secs2_rest = int(delta2_st.total_seconds() % 60)
+                next_info_st = (paso2_st, mins2_rest, secs2_rest)
+            info_st = (paso_st, mins_rest, secs_rest, next_info_st)
     
-    return (arrival_str, arrival_str2)
+    return (info_mp, info_st)
 
 async def send_milo_response(update: Update, context: ContextTypes.DEFAULT_TYPE, simulated_now: datetime = None):
     now = simulated_now if simulated_now is not None else datetime.now(CATANIA_TZ)
@@ -326,27 +343,58 @@ async def send_milo_response(update: Update, context: ContextTypes.DEFAULT_TYPE,
     
     special_msg = SANT_AGATA.get("message", "") + "\n\n" if is_sant_agata(now) else ""
     
-    # Verificar si todo el servicio está cerrado (por festivo total)
-    # Usamos Montepo como referencia
-    closed_total, _ = is_metro_closed(now, "Montepo")
-    if closed_total and is_closed_all_day(now):
+    # Si es día de cierre total, mostrar mensaje único
+    if is_closed_all_day(now):
         msg = f"{special_msg}🚇 Oggi la metropolitana è chiusa tutto il giorno.\n🕒 Riaprirà domani mattina."
         await update.message.reply_text(msg, reply_markup=keyboard)
         return
     
-    arrival_mp, arrival_st = get_milo_arrival(now)
+    info_mp, info_st = get_next_train_at_milo(now)
     
-    msg = f"{special_msg}🚆 **Prossimi arrivi a Milo**\n\n"
+    msg = f"{special_msg}🚆 **Prossimi treni a Milo**\n\n"
     
-    if arrival_mp:
-        msg += f"🟢 **Da Monte Po**: alle {arrival_mp}\n"
+    # Dirección hacia Stesicoro (tren que viene de Monte Po)
+    if info_mp:
+        paso_mp, mins, secs, next_info = info_mp
+        time_str = format_time(mins, secs)
+        if mins == 0 and secs < 30:
+            msg += f"🚇 **Per Stesicoro**: treno appena passato da Milo.\n"
+            # Mostrar siguiente si existe
+            if next_info:
+                paso2, mins2, secs2 = next_info
+                time_str2 = format_time(mins2, secs2)
+                msg += f"   Il prossimo passerà tra {time_str2}, alle {paso2.strftime('%H:%M')}.\n"
+            else:
+                msg += f"   Nessun altro treno oggi.\n"
+        else:
+            msg += f"🚇 **Per Stesicoro**: prossimo treno passa tra {time_str}, alle {paso_mp.strftime('%H:%M')}.\n"
+            if mins < NEXT_TRAIN_THRESHOLD and next_info:
+                paso2, mins2, secs2 = next_info
+                time_str2 = format_time(mins2, secs2)
+                msg += f"   Il successivo passerà tra {time_str2}, alle {paso2.strftime('%H:%M')}.\n"
     else:
-        msg += f"🔴 **Da Monte Po**: servizio non disponibile al momento\n"
+        msg += f"🚫 **Per Stesicoro**: nessun treno in arrivo al momento.\n"
     
-    if arrival_st:
-        msg += f"🟢 **Da Stesicoro**: alle {arrival_st}\n"
+    # Dirección hacia Monte Po (tren que viene de Stesicoro)
+    if info_st:
+        paso_st, mins, secs, next_info = info_st
+        time_str = format_time(mins, secs)
+        if mins == 0 and secs < 30:
+            msg += f"🚇 **Per Monte Po**: treno appena passato da Milo.\n"
+            if next_info:
+                paso2, mins2, secs2 = next_info
+                time_str2 = format_time(mins2, secs2)
+                msg += f"   Il prossimo passerà tra {time_str2}, alle {paso2.strftime('%H:%M')}.\n"
+            else:
+                msg += f"   Nessun altro treno oggi.\n"
+        else:
+            msg += f"🚇 **Per Monte Po**: prossimo treno passa tra {time_str}, alle {paso_st.strftime('%H:%M')}.\n"
+            if mins < NEXT_TRAIN_THRESHOLD and next_info:
+                paso2, mins2, secs2 = next_info
+                time_str2 = format_time(mins2, secs2)
+                msg += f"   Il successivo passerà tra {time_str2}, alle {paso2.strftime('%H:%M')}.\n"
     else:
-        msg += f"🔴 **Da Stesicoro**: servizio non disponibile al momento\n"
+        msg += f"🚫 **Per Monte Po**: nessun treno in arrivo al momento.\n"
     
     last_msg = get_last_train_message(now)
     if last_msg and not is_sant_agata(now):
@@ -355,7 +403,7 @@ async def send_milo_response(update: Update, context: ContextTypes.DEFAULT_TYPE,
     await update.message.reply_text(msg, reply_markup=keyboard, parse_mode='Markdown')
 
 # ============================================================================
-# RESPUESTA COMÚN PARA MONTE PO Y STESICORO (igual que antes, pero adaptada)
+# RESPUESTA PARA MONTE PO Y STESICORO (igual que antes, pero ajustada)
 # ============================================================================
 async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TYPE, station: str, simulated_now: datetime = None):
     now = simulated_now if simulated_now is not None else datetime.now(CATANIA_TZ)
@@ -387,17 +435,19 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
         return
     
     station_display = "Monte Po" if station == "Montepo" else "Stesicoro"
+    # Determinar destino (siempre el opuesto)
+    dest = "Stesicoro" if station == "Montepo" else "Monte Po"
     time_str = format_time(minutes, seconds)
     
     if minutes == 0 and seconds < 30:
         next2, min2, sec2, has2 = get_next_departure(station, now + timedelta(seconds=30))
         if has2:
-            msg = f"{special_msg}🚇 Il treno è appena partito da {station_display}. Il prossimo sarà alle {next2.strftime('%H:%M')}."
+            msg = f"{special_msg}🚇 Il treno è appena partito da {station_display}. Il prossimo per {dest} sarà alle {next2.strftime('%H:%M')}."
         else:
             msg = f"{special_msg}🚇 Il treno è appena partito da {station_display}. Non ci sono altri treni oggi."
     else:
         if minutes < NEXT_TRAIN_THRESHOLD:
-            msg = f"{special_msg}🚇 Il prossimo treno da {station_display} parte tra {time_str}."
+            msg = f"{special_msg}🚇 Prossimo treno PER {dest} parte tra {time_str}."
             next2, min2, sec2, has2 = get_next_departure_after(station, now, next_dep.time())
             if has2:
                 time_str2 = format_time(min2, sec2)
@@ -405,9 +455,9 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
             else:
                 msg += f"\n\n🚆 Questo è l'ultimo treno della giornata."
         elif minutes < SHORT_TIME_THRESHOLD:
-            msg = f"{special_msg}🚇 Il prossimo treno da {station_display} parte tra {time_str}."
+            msg = f"{special_msg}🚇 Prossimo treno PER {dest} parte tra {time_str}."
         else:
-            msg = f"{special_msg}🚇 Il prossimo treno da {station_display} parte tra {time_str}, alle {next_dep.strftime('%H:%M')}."
+            msg = f"{special_msg}🚇 Prossimo treno PER {dest} parte tra {time_str}, alle {next_dep.strftime('%H:%M')}."
     
     last_msg = get_last_train_message(now)
     if last_msg and not is_sant_agata(now):
@@ -420,7 +470,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Teclado con tres botones
+# Teclado con el orden solicitado: Monte Po, Milo, Stesicoro
 keyboard = ReplyKeyboardMarkup(
     [[KeyboardButton("Monte Po"), KeyboardButton("Milo"), KeyboardButton("Stesicoro")]],
     resize_keyboard=True,
@@ -446,7 +496,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/help - Questo aiuto\n"
         "/proximo <stazione> - Prossimo treno (es. /proximo Montepo)\n"
         "/test DDMMYYYY HHMM X - Simula data/ora. X = M (Montepo), S (Stesicoro), ML (Milo)\n\n"
-        "Oppure premi i pulsanti Monte Po, Stesicoro o Milo.",
+        "Oppure premi i pulsanti Monte Po, Milo o Stesicoro.",
         reply_markup=keyboard
     )
 
@@ -466,16 +516,15 @@ async def proximo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Esempio: /proximo Montepo  oppure  /proximo Stesicoro", reply_markup=keyboard)
         return
     station_name = " ".join(context.args).capitalize()
-    if station_name not in SCHEDULES:
-        await update.message.reply_text(f"Non ho dati per '{station_name}'. Stazioni disponibili: Stesicoro, Montepo.", reply_markup=keyboard)
+    if station_name == "Milo":
+        await send_milo_response(update, context)
+    elif station_name not in SCHEDULES:
+        await update.message.reply_text(f"Non ho dati per '{station_name}'. Stazioni disponibili: Stesicoro, Montepo, Milo.", reply_markup=keyboard)
         return
-    await send_station_response(update, context, station_name)
+    else:
+        await send_station_response(update, context, station_name)
 
 async def test_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # if ADMIN_ID and update.effective_user.id != ADMIN_ID:
-    #     await update.message.reply_text("Comando non autorizzato.")
-    #     return
-    
     if not context.args or len(context.args) < 3:
         await update.message.reply_text("Formato: /test DDMMYYYY HHMM X\nEsempio: /test 15012027 0901 M\nX = M (Montepo), S (Stesicoro), ML (Milo)")
         return
