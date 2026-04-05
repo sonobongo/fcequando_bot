@@ -2,7 +2,7 @@ import os
 import logging
 import re
 from datetime import datetime, time, timedelta
-from typing import Tuple, Optional
+from typing import Tuple, Optional, List
 import pytz
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
@@ -184,7 +184,7 @@ SCHEDULES = {
 CATANIA_TZ = pytz.timezone('Europe/Rome')
 
 # ============================================================================
-# FUNCIONES DE HORARIOS (versión con soporte para tiempo simulado)
+# FUNCIONES DE HORARIOS
 # ============================================================================
 
 def get_opening_time(now: datetime) -> Tuple[int, int]:
@@ -226,21 +226,20 @@ def is_metro_closed(now: datetime) -> Tuple[bool, Optional[datetime]]:
             return (True, next_open)
         return (False, None)
 
+def get_schedule_list(station: str, now: datetime) -> List[time]:
+    weekday_num = now.weekday()
+    if weekday_num == 4:
+        return SCHEDULES[station]["friday"]
+    elif weekday_num == 5:
+        return SCHEDULES[station]["saturday"]
+    elif weekday_num == 6:
+        return SCHEDULES[station]["sunday"]
+    else:
+        return SCHEDULES[station]["weekday"]
+
 def get_next_departure(station: str, now: datetime) -> Tuple[Optional[datetime], int, int, bool]:
     current_time = now.time()
-    weekday_num = now.weekday()
-    
-    if station not in SCHEDULES:
-        raise ValueError(f"Station {station} not found")
-    
-    if weekday_num == 4:
-        schedule_list = SCHEDULES[station]["friday"]
-    elif weekday_num == 5:
-        schedule_list = SCHEDULES[station]["saturday"]
-    elif weekday_num == 6:
-        schedule_list = SCHEDULES[station]["sunday"]
-    else:
-        schedule_list = SCHEDULES[station]["weekday"]
+    schedule_list = get_schedule_list(station, now)
     
     next_departure_time = None
     for departure in schedule_list:
@@ -251,6 +250,24 @@ def get_next_departure(station: str, now: datetime) -> Tuple[Optional[datetime],
     if next_departure_time is None:
         return (None, 0, 0, False)
     
+    next_departure_datetime = datetime.combine(now.date(), next_departure_time)
+    next_departure_datetime = CATANIA_TZ.localize(next_departure_datetime)
+    delta = next_departure_datetime - now
+    total_seconds = int(delta.total_seconds())
+    minutes = total_seconds // 60
+    seconds = total_seconds % 60
+    return (next_departure_datetime, minutes, seconds, True)
+
+def get_next_departure_after(station: str, now: datetime, after_time: time) -> Tuple[Optional[datetime], int, int, bool]:
+    """Obtiene el próximo tren después de una hora específica del mismo día."""
+    schedule_list = get_schedule_list(station, now)
+    next_departure_time = None
+    for departure in schedule_list:
+        if departure > after_time:
+            next_departure_time = departure
+            break
+    if next_departure_time is None:
+        return (None, 0, 0, False)
     next_departure_datetime = datetime.combine(now.date(), next_departure_time)
     next_departure_datetime = CATANIA_TZ.localize(next_departure_datetime)
     delta = next_departure_datetime - now
@@ -274,7 +291,6 @@ def format_time(minutes: int, seconds: int) -> str:
         return f"{minutes} minuti"
 
 def get_last_train_message(now: datetime) -> str:
-    # Solo a partir de las 18:00
     if now.hour < 18:
         return ""
     weekday = now.weekday()
@@ -290,7 +306,6 @@ def get_last_train_message(now: datetime) -> str:
 # RESPUESTA COMÚN (para botones, /proximo y /test)
 # ============================================================================
 async def send_response(update: Update, context: ContextTypes.DEFAULT_TYPE, station: str, simulated_now: datetime = None):
-    """Función auxiliar para enviar la respuesta, con posibilidad de tiempo simulado."""
     now = simulated_now if simulated_now is not None else datetime.now(CATANIA_TZ)
     
     closed, next_open = is_metro_closed(now)
@@ -309,9 +324,10 @@ async def send_response(update: Update, context: ContextTypes.DEFAULT_TYPE, stat
         
         station_display = "Monte Po" if station == "Montepo" else "Stesicoro"
         time_str = format_time(minutes, seconds)
+        
+        # Mensaje principal
         if minutes == 0 and seconds < 30:
-            # El tren acaba de salir (justo ahora o hace menos de 30 segundos)
-            # Buscar el siguiente tren después de este
+            # Tren appena partito: ya mostramos el siguiente
             next_dep2, min2, sec2, has2 = get_next_departure(station, now + timedelta(seconds=30))
             if has2:
                 msg = f"🚇 Il treno è appena partito. Il prossimo sarà alle {next_dep2.strftime('%H:%M')}."
@@ -319,6 +335,16 @@ async def send_response(update: Update, context: ContextTypes.DEFAULT_TYPE, stat
                 msg = f"🚇 Il treno è appena partito. Non ci sono altri treni oggi."
         else:
             msg = f"🚇 Il prossimo treno a {station_display} parte tra {time_str}, alle {next_dep.strftime('%H:%M')}."
+            # Si faltan 2 minutos o menos, añadir información del siguiente tren
+            if minutes <= 2:
+                # Buscar el siguiente tren después de la hora de salida del actual
+                next_dep2, min2, sec2, has2 = get_next_departure_after(station, now, next_dep.time())
+                if has2:
+                    if min2 == 0:
+                        msg += f"\n\n🚆 Il prossimo treno successivo partirà subito dopo, alle {next_dep2.strftime('%H:%M')}."
+                    else:
+                        time_str2 = format_time(min2, sec2)
+                        msg += f"\n\n🚆 Il prossimo treno successivo partirà tra {time_str2}, alle {next_dep2.strftime('%H:%M')}."
         
         last_msg = get_last_train_message(now)
         if last_msg:
@@ -385,7 +411,6 @@ async def proximo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await send_response(update, context, station_name)
 
 async def test_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Comando segreto per test: /test DDMMYYYY HHMM X"""
     # Opcional: restringir solo al administrador
     # if ADMIN_ID and update.effective_user.id != ADMIN_ID:
     #     await update.message.reply_text("Comando non autorizzato.")
@@ -399,7 +424,6 @@ async def test_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     time_str = context.args[1]
     station_letter = context.args[2].upper()
     
-    # Validar estación
     if station_letter == "M":
         station = "Montepo"
     elif station_letter == "S":
@@ -408,7 +432,6 @@ async def test_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Lettera stazione non valida. Usa M per Montepo o S per Stesicoro.")
         return
     
-    # Parsear fecha DDMMYYYY
     if len(date_str) != 8 or not date_str.isdigit():
         await update.message.reply_text("Data non valida. Usa DDMMYYYY (es. 15012027).")
         return
@@ -416,7 +439,6 @@ async def test_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     month = int(date_str[2:4])
     year = int(date_str[4:8])
     
-    # Parsear hora HHMM
     if len(time_str) != 4 or not time_str.isdigit():
         await update.message.reply_text("Ora non valida. Usa HHMM (es. 0901).")
         return
