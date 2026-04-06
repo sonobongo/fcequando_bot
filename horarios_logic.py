@@ -165,7 +165,7 @@ FESTIVI_NAZIONALI = [
 ]
 
 def is_new_years_eve(now: datetime) -> bool:
-    # 31 de diciembre, o 1 de enero antes de las 3:00
+    # 31 de diciembre o 1 de enero antes de las 3:00
     if now.month == 12 and now.day == 31:
         return True
     if now.month == 1 and now.day == 1 and now.hour < 3:
