@@ -411,6 +411,11 @@ def format_time(minutes: int, seconds: int) -> str:
             return "meno di un minuto"
         else:
             return "30 secondi"
+    elif minutes == 1:
+        if seconds < 30:
+            return "1 minuto"
+        else:
+            return "1 minuto e 30 secondi"
     else:
         if seconds < 30:
             return f"{minutes} minuti"
