@@ -380,17 +380,40 @@ def is_metro_closed(now: datetime, station: str) -> Tuple[bool, Optional[datetim
         return (False, None)
 
 def get_schedule_list(station: str, now: datetime) -> List[time]:
+    # Si es festivo nacional, usar domingo
     if is_festivo_nazionale(now):
         return SCHEDULES[station]["sunday"]
+    
+    current_time = now.time()
+    # Obtener la lista normal del día actual
     weekday_num = now.weekday()
     if weekday_num == 4:
-        return SCHEDULES[station]["friday"]
+        normal_list = SCHEDULES[station]["friday"]
     elif weekday_num == 5:
-        return SCHEDULES[station]["saturday"]
+        normal_list = SCHEDULES[station]["saturday"]
     elif weekday_num == 6:
-        return SCHEDULES[station]["sunday"]
+        normal_list = SCHEDULES[station]["sunday"]
     else:
-        return SCHEDULES[station]["weekday"]
+        normal_list = SCHEDULES[station]["weekday"]
+    
+    # Si la hora actual es antes del primer tren del día (madrugada)
+    first_train = normal_list[0] if normal_list else None
+    if first_train and current_time < first_train:
+        # Mirar el día anterior (puede tener trenes nocturnos)
+        yesterday = now - timedelta(days=1)
+        y_weekday = yesterday.weekday()
+        if y_weekday == 4:
+            yesterday_list = SCHEDULES[station]["friday"]
+        elif y_weekday == 5:
+            yesterday_list = SCHEDULES[station]["saturday"]
+        elif y_weekday == 6:
+            yesterday_list = SCHEDULES[station]["sunday"]
+        else:
+            yesterday_list = SCHEDULES[station]["weekday"]
+        # Si el día anterior tiene algún tren después de medianoche (hora < 6:00), usar esa lista
+        if any(t.hour < 6 for t in yesterday_list):
+            return yesterday_list
+    return normal_list
 
 def get_next_departure(station: str, now: datetime) -> Tuple[Optional[datetime], int, int, bool]:
     if is_new_years_eve(now):
