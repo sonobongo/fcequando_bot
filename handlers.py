@@ -10,7 +10,7 @@ CATANIA_TZ = pytz.timezone('Europe/Rome')
 # ============================================================================
 # VARIABLES GLOBALES PARA TAREAS ACTIVAS
 # ============================================================================
-active_timers = {}       # chat_id -> task (cuenta atrás automática en cabeceras)
+active_timers = {}       # chat_id -> task (actualización cada 30 segundos)
 
 # ============================================================================
 # TECLADOS
@@ -48,35 +48,39 @@ BOTON_TO_KEY = {
 }
 
 # ============================================================================
-# CUENTA ATRÁS AUTOMÁTICA PARA CABECERAS (cuando faltan <=3 minutos)
+# ACTUALIZACIÓN PERIÓDICA CADA 30 SEGUNDOS (SOLO PARA CABECERAS CON <=4 MINUTOS)
 # ============================================================================
-async def auto_countdown(chat_id: int, update: Update, context: ContextTypes.DEFAULT_TYPE, station_display: str, dest: str, departure_time: datetime, return_to_main: bool):
-    """Envía un mensaje de cuenta atrás que se actualiza cada segundo hasta la salida del tren."""
-    remaining = departure_time - datetime.now(CATANIA_TZ)
-    total_sec = int(remaining.total_seconds())
-    if total_sec < 0:
-        total_sec = 0
-    minutes = total_sec // 60
-    seconds = total_sec % 60
-    time_str = f"{minutes:02d}:{seconds:02d}"
-    msg_text = f"🚇 Il treno per {dest} parte tra **{time_str}**"
-    message = await update.message.reply_text(msg_text, parse_mode='Markdown', reply_markup=keyboard_main if return_to_main else keyboard_altri)
+async def update_binario(chat_id: int, update: Update, context: ContextTypes.DEFAULT_TYPE, station_display: str, dest: str, departure_time: datetime, return_to_main: bool, photo_file_id: str = None):
+    """Envía un mensaje con imagen (si existe) y lo actualiza cada 30 segundos con el tiempo restante."""
+    now = datetime.now(CATANIA_TZ)
+    remaining = departure_time - now
+    mins_rest = int(remaining.total_seconds() // 60)
+    secs_rest = int(remaining.total_seconds() % 60)
+    time_str_rest = format_time(mins_rest, secs_rest)
+    msg_text = f"🚇 Il treno è in binario. Partirà tra **{time_str_rest}**."
+    
+    # Enviar mensaje inicial (con imagen si existe)
+    if photo_file_id:
+        message = await update.message.reply_photo(photo=photo_file_id, caption=msg_text, parse_mode='Markdown', reply_markup=keyboard_main if return_to_main else keyboard_altri)
+    else:
+        message = await update.message.reply_text(msg_text, parse_mode='Markdown', reply_markup=keyboard_main if return_to_main else keyboard_altri)
+    
     try:
         while True:
+            await asyncio.sleep(30)  # espera 30 segundos
             now = datetime.now(CATANIA_TZ)
             remaining = departure_time - now
             if remaining.total_seconds() <= 0:
-                await message.edit_text(f"🚇 Il treno per {dest} è partito!")
+                await message.edit_caption(caption=f"🚇 Il treno per {dest} è partito!")
                 break
-            total_sec = int(remaining.total_seconds())
-            minutes = total_sec // 60
-            seconds = total_sec % 60
-            if total_sec <= 20:
-                await message.edit_text(f"🚇 **Partenza immediata!** Il treno per {dest} parte tra meno di 20 secondi.", parse_mode='Markdown')
+            mins_rest = int(remaining.total_seconds() // 60)
+            secs_rest = int(remaining.total_seconds() % 60)
+            time_str_rest = format_time(mins_rest, secs_rest)
+            new_caption = f"🚇 Il treno è in binario. Partirà tra **{time_str_rest}**."
+            if photo_file_id:
+                await message.edit_caption(caption=new_caption, parse_mode='Markdown')
             else:
-                time_str = f"{minutes:02d}:{seconds:02d}"
-                await message.edit_text(f"🚇 Il treno per {dest} parte tra **{time_str}**", parse_mode='Markdown')
-            await asyncio.sleep(1)
+                await message.edit_text(new_caption, parse_mode='Markdown')
     except Exception:
         pass
     finally:
@@ -152,16 +156,17 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
         secs_rest = int(remaining.total_seconds() % 60)
         time_str_rest = format_time(mins_rest, secs_rest)
         
-        # --- CUENTA ATRÁS AUTOMÁTICA (si faltan 3 minutos o menos y el tren está en andén) ---
-        # Ahora funciona tanto en modo real como en modo test
-        if mins_rest <= 3 and now >= arrival_time:
+        # --- CUENTA ATRÁS CON ACTUALIZACIÓN CADA 30 SEGUNDOS (solo en modo REAL y si faltan <=4 minutos) ---
+        if simulated_time is None and mins_rest <= 4 and now >= arrival_time:
             chat_id = update.effective_chat.id
             # Cancelar temporizador anterior si existe
             if chat_id in active_timers:
                 active_timers[chat_id].cancel()
                 del active_timers[chat_id]
+            # Obtener file_id de la imagen (si existe) para reutilizarla en las actualizaciones
+            photo_file_id = STATION_IMAGE.get(estacion_key, None)
             # Crear nueva tarea
-            task = asyncio.create_task(auto_countdown(chat_id, update, context, station_display, dest, next_dep, return_to_main))
+            task = asyncio.create_task(update_binario(chat_id, update, context, station_display, dest, next_dep, return_to_main, photo_file_id))
             active_timers[chat_id] = task
             # No enviamos mensaje adicional (la tarea envía el suyo propio)
             return
@@ -169,7 +174,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
         
         # Si no se activó la cuenta atrás, mostrar mensaje normal (estático)
         if now >= arrival_time and now < next_dep:
-            # Mensaje de andén (solo si faltan más de 3 minutos)
+            # Mensaje de andén (solo si faltan más de 4 minutos, o es modo test)
             msg = f"{special_msg}{test_indicator}🚇 Il treno è in binario. Partirà tra **{time_str_rest}**."
             if mins_rest <= NEXT_TRAIN_THRESHOLD:
                 next2, min2, sec2, has2 = get_next_departure_after(station, now, next_dep.time())
