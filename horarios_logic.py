@@ -27,18 +27,20 @@ NEXT_TRAIN_THRESHOLD = CONFIG["next_train_threshold"]
 # ============================================================================
 # TIEMPOS DE TRAYECTO PARA CADA ESTACIÓN (desde Monte Po y desde Stesicoro)
 # ============================================================================
+# Actualizados según mediciones reales y cierre temporal de Giuffrida (hasta 19/04/2026)
+# Borgo → Giuffrida: 1:18 → 1 minuto (redondeado)
 TIEMPOS_ESTACION = {
     "montepo":    (0, 20),
     "fontana":    (1, 19),
-    "nesima":     (3, 17),
-    "sannullo":   (5, 15),
-    "cibali":     (7, 13),
-    "milo":       (9, 11),
-    "borgo":      (11, 9),
-    "giuffrida":  (13, 7),
-    "italia":     (14, 6),
-    "galatea":    (16, 4),
-    "giovanni":   (17, 3),
+    "nesima":     (2, 18),
+    "sannullo":   (4, 16),
+    "cibali":     (6, 14),
+    "milo":       (8, 12),
+    "borgo":      (10, 10),
+    "giuffrida":  (11, 9),   # Ajustado por cierre (antes 12)
+    "italia":     (12, 8),   # Ajustado (antes 13)
+    "galatea":    (14, 6),   # Ajustado (antes 15)
+    "giovanni":   (16, 4),   # Ajustado (antes 17)
     "stesicoro":  (20, 0)
 }
 
@@ -76,9 +78,7 @@ STATION_IMAGE = {
     "stesicoro": "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/st_stesicoro.jpg",
 }
 
-# ============================================================================
-# CONVERSIÓN DE HORARIOS
-# ============================================================================
+# Convertir strings "HH:MM" a objetos time
 def str_to_time(t_str: str) -> time:
     h, m = map(int, t_str.split(':'))
     return time(h, m)
@@ -108,73 +108,55 @@ def get_first_train_sant_agata(station: str) -> time:
 def get_last_train_sant_agata(station: str) -> time:
     return str_to_time(SANT_AGATA["special_hours"][station]["last"])
 
-def get_next_departure(station: str, now: datetime) -> Tuple[Optional[datetime], int, int, bool]:
-    # Excepciones especiales (Nochevieja, Sant'Agata)
-    if is_new_years_eve(now):
-        return get_next_departure_new_years_eve(station, now)
-    if is_sant_agata(now):
-        return get_next_departure_sant_agata(station, now)
-    
+def get_next_departure_sant_agata(station: str, now: datetime) -> Tuple[Optional[datetime], int, int, bool]:
     current_time = now.time()
+    first = get_first_train_sant_agata(station)
+    last = get_last_train_sant_agata(station)
+    first_min = first.hour * 60 + first.minute
+    last_min = last.hour * 60 + last.minute
+    if last_min < first_min:
+        last_min += 24 * 60
     current_min = current_time.hour * 60 + current_time.minute
     
-    # Obtener el horario del día actual
-    schedule_list_today = get_schedule_list(station, now)
-    
-    # Buscar el primer tren del día actual que sea > ahora
-    next_dep_time = None
-    for dep_time in schedule_list_today:
-        if dep_time > current_time:
-            next_dep_time = dep_time
-            break
-    
-    # Si encontramos un tren hoy, devolverlo
-    if next_dep_time:
-        next_dt = datetime.combine(now.date(), next_dep_time)
+    if current_min < first_min:
+        next_dt = datetime.combine(now.date(), first)
         next_dt = CATANIA_TZ.localize(next_dt)
-        delta = int((next_dt - now).total_seconds())
-        return (next_dt, delta // 60, delta % 60, True)
+        sec = int((next_dt - now).total_seconds())
+        return (next_dt, sec // 60, sec % 60, True)
+    if current_min >= last_min:
+        tomorrow = now.date() + timedelta(days=1)
+        next_dt = datetime.combine(tomorrow, first)
+        next_dt = CATANIA_TZ.localize(next_dt)
+        sec = int((next_dt - now).total_seconds())
+        return (next_dt, sec // 60, sec % 60, True)
     
-    # Si no hay trenes hoy (porque la hora actual es después del último o antes del primero),
-    # comprobar si estamos en la madrugada (antes del primer tren del día) y el día anterior tenía trenes después de medianoche.
-    # Para ello, obtenemos el primer tren del día actual.
-    first_train_today = schedule_list_today[0] if schedule_list_today else None
-    if first_train_today and current_time < first_train_today:
-        # Estamos antes del primer tren de hoy (madrugada). Usar el horario del día anterior.
-        yesterday = now - timedelta(days=1)
-        schedule_list_yesterday = get_schedule_list(station, yesterday)
-        # Buscar el último tren de ayer (el que pasa después de medianoche)
-        # Necesitamos el primer tren de ayer que sea mayor que la hora actual (pero teniendo en cuenta que ayer sus horas son anteriores a hoy)
-        # Lo más simple: recalcular la hora actual como si fuera ayer (sumando 24h)
-        current_min_yesterday = current_min + 24 * 60
-        for dep_time in schedule_list_yesterday:
-            dep_min = dep_time.hour * 60 + dep_time.minute
-            # Si el tren de ayer es después de medianoche (dep_min < 6*60? No, algunos pueden ser > 24*60? No, las horas son 00-23)
-            # Para comparar, convertimos dep_min a minutos desde el inicio del día de ayer, pero si es después de medianoche, dep_min es pequeño (ej. 00:38)
-            # Queremos que se consideren solo los que son después de medianoche (dep_min < 6*60) y que sean mayores que current_min
-            if dep_min > current_min:
-                # Es un tren de ayer que sale después de la hora actual (ej. 00:38 > 00:47? No, sería menor)
-                pass
-            # En realidad, necesitamos encontrar el primer tren de ayer cuya hora (en el mismo día ayer) sea mayor que current_min, pero como current_min es pequeño (0-60), los trenes de ayer con dep_min pequeños (ej. 00:38) son menores que 00:47, por lo que no los tomaría. Debemos tratar la hora actual como si fuera del día ayer sumando 24h.
-        # Mejor: convertir la hora actual a minutos del día de ayer (sumando 24h) y luego buscar en la lista de ayer (sin modificar).
-        current_min_adjusted = current_min + 24 * 60
-        for dep_time in schedule_list_yesterday:
-            dep_min = dep_time.hour * 60 + dep_time.minute
-            if dep_min > current_min_adjusted - 24*60:
-                # Este tren es después de medianoche (dep_min pequeño) y después de la hora actual?
-                # Si dep_min es, por ejemplo, 38 (00:38) y current_min es 47, entonces dep_min (38) no es mayor que 47. Por tanto, no lo considera.
-                # Necesitamos buscar el primer tren de ayer que sea mayor que la hora actual en la misma escala (con dep_min + 24*60)
-                pass
-        # Es más sencillo: si estamos en madrugada, simplemente tomar el primer tren de ayer que sea después de medianoche (cualquiera) y que sea el primero de ese día después de medianoche.
-        # Pero para no complicar, la solución más robusta es generar todos los horarios de ayer y filtrar los que están después de medianoche (dep_min < 6*60) y luego elegir el primero mayor que current_min.
+    if current_min < 15 * 60:
+        minutes_since_first = max(0, current_min - first_min)
+        intervals = (minutes_since_first + 9) // 10
+        next_min = first_min + intervals * 10
+        if next_min > 15 * 60:
+            minutes_from_15 = max(0, current_min - 15 * 60)
+            intervals13 = (minutes_from_15 + 12) // 13
+            next_min = 15 * 60 + intervals13 * 13
     else:
-        # No hay trenes hoy (ya pasó el último) -> mañana
-        tomorrow = now + timedelta(days=1)
-        first_train_tomorrow = get_schedule_list(station, tomorrow)[0]
-        next_dt = datetime.combine(tomorrow.date(), first_train_tomorrow)
+        minutes_from_15 = max(0, current_min - 15 * 60)
+        intervals13 = (minutes_from_15 + 12) // 13
+        next_min = 15 * 60 + intervals13 * 13
+    
+    if next_min > last_min:
+        tomorrow = now.date() + timedelta(days=1)
+        next_dt = datetime.combine(tomorrow, first)
         next_dt = CATANIA_TZ.localize(next_dt)
-        delta = int((next_dt - now).total_seconds())
-        return (next_dt, delta // 60, delta % 60, True)
+        sec = int((next_dt - now).total_seconds())
+        return (next_dt, sec // 60, sec % 60, True)
+    
+    next_hour = next_min // 60
+    next_minute = next_min % 60
+    next_dt = datetime.combine(now.date(), time(next_hour, next_minute))
+    next_dt = CATANIA_TZ.localize(next_dt)
+    sec = int((next_dt - now).total_seconds())
+    return (next_dt, sec // 60, sec % 60, True)
+
 # ============================================================================
 # DÍAS FESTIVOS NACIONALES (horario de domingo) y Nochevieja
 # ============================================================================
@@ -183,65 +165,60 @@ FESTIVI_NAZIONALI = [
 ]
 
 def is_new_years_eve(now: datetime) -> bool:
-    # 31 de diciembre o 1 de enero antes de las 3:00
     if now.month == 12 and now.day == 31:
         return True
     if now.month == 1 and now.day == 1 and now.hour < 3:
         return True
     return False
 
-def get_next_departure(station: str, now: datetime) -> Tuple[Optional[datetime], int, int, bool]:
-    # Excepciones especiales
-    if is_new_years_eve(now):
-        return get_next_departure_new_years_eve(station, now)
-    if is_sant_agata(now):
-        return get_next_departure_sant_agata(station, now)
-    
+def get_next_departure_new_years_eve(station: str, now: datetime) -> Tuple[Optional[datetime], int, int, bool]:
     current_time = now.time()
-    # Primero, intentamos con el día actual
-    schedule_today = get_schedule_list(station, now)
-    next_dep_time = None
-    for dep_time in schedule_today:
-        if dep_time > current_time:
-            next_dep_time = dep_time
+    if station == "Montepo":
+        first = time(6, 0)
+        last = time(3, 0)
+    else:
+        first = time(6, 25)
+        last = time(3, 0)
+    first_min = first.hour * 60 + first.minute
+    last_min_next_day = last.hour * 60 + last.minute + 24 * 60
+    current_min = current_time.hour * 60 + current_time.minute
+    
+    all_departures = []
+    t = first_min
+    while t < 15 * 60:
+        all_departures.append(t)
+        t += 10
+    t = 15 * 60
+    while t < 24 * 60:
+        all_departures.append(t)
+        t += 13
+    t = 24 * 60
+    while t < last_min_next_day:
+        all_departures.append(t)
+        t += 13
+    
+    next_min = None
+    for dep in all_departures:
+        if dep > current_min:
+            next_min = dep
             break
     
-    if next_dep_time:
-        next_dt = datetime.combine(now.date(), next_dep_time)
-        next_dt = CATANIA_TZ.localize(next_dt)
-        delta = int((next_dt - now).total_seconds())
-        return (next_dt, delta // 60, delta % 60, True)
+    if next_min is None:
+        return (None, 0, 0, False)
     
-    # No hay trenes hoy. ¿Estamos en la madrugada (antes del primer tren del día)?
-    first_train_today = schedule_today[0] if schedule_today else None
-    if first_train_today and current_time < first_train_today:
-        # Madrugada: usar el horario del día anterior (que pudo tener trenes después de medianoche)
-        yesterday = now - timedelta(days=1)
-        schedule_yesterday = get_schedule_list(station, yesterday)
-        # Buscar el primer tren de ayer que sea después de la hora actual (teniendo en cuenta que los trenes de ayer después de medianoche tienen hora pequeña)
-        # Convertimos la hora actual a minutos desde la medianoche de ayer (sumando 24h)
-        current_min = current_time.hour * 60 + current_time.minute
-        current_min_yesterday = current_min + 24 * 60
-        for dep_time in schedule_yesterday:
-            dep_min = dep_time.hour * 60 + dep_time.minute
-            # Si el tren de ayer es después de medianoche (dep_min < 6*60) o es un tren normal, lo comparamos con current_min_yesterday
-            # Para que sea válido, debe ser mayor que la hora actual en la escala de ayer.
-            # Si dep_min es, por ejemplo, 38 (00:38) y current_min es 47, entonces dep_min (38) no es mayor que 47. Pero al sumar 24h a current_min, tenemos 24*60+47 = 1487. dep_min 38 no es mayor. Entonces no lo tomaría. Eso es correcto porque 00:38 ya pasó.
-            # Necesitamos buscar el primer tren de ayer que sea mayor que la hora actual, pero considerando que esos trenes están en el mismo día ayer.
-            # En realidad, la comparación debe ser: dep_min > current_min (sin sumar 24h) porque tanto current_min como dep_min están en el rango 0-1440.
-            # Pero si current_min = 47, dep_min = 38, entonces 38 no es mayor. Así que no se toma. Eso está bien porque el tren de las 00:38 ya pasó.
-            # El siguiente podría ser 01:00 (60) que sí es mayor que 47. Ese es el que debe devolver.
-            if dep_min > current_min:
-                # Encontramos un tren de ayer que sale después de la hora actual (dentro del mismo día ayer)
-                # Pero cuidado: ese tren ya debería haber salido ayer? No, porque ayer a las 00:47 todavía no había llegado la 01:00.
-                # La fecha de ese tren es ayer, pero la hora es posterior a la actual. Sin embargo, la hora actual es del día de hoy, pero en la madrugada.
-                # En realidad, el tren de las 01:00 de ayer (viernes noche) corresponde a las 01:00 del sábado (hoy). Por tanto, debemos tratarlo como un tren de hoy.
-                # Para evitar confusiones, la forma correcta es: si estamos en madrugada (current_time < first_train_today), entonces el próximo tren es el primer tren del día anterior que sea después de medianoche (es decir, dep_min < 6*60? No, puede ser 01:00 que es 60).
-                # Lo más seguro es: generar todos los horarios del día anterior y luego ajustar la fecha sumando un día si el horario es después de medianoche? Mejor: si dep_min < 6*60 (es decir, antes de las 6), entonces ese tren pertenece al día siguiente (hoy). Pero 01:00 es < 6, así que ese tren debería considerarse como de hoy a las 01:00.
-                # Por tanto, podemos calcular: if dep_min < first_train_today_min: entonces la fecha real es hoy.
-                # En lugar de complicar, usa el mismo enfoque que para Sant'Agata: generas todos los horarios del día anterior y los ajustas.
-                # Te propongo una solución más directa: 
-                pass
+    if next_min >= 24 * 60:
+        next_date = now.date() + timedelta(days=1)
+        next_min_actual = next_min - 24 * 60
+    else:
+        next_date = now.date()
+        next_min_actual = next_min
+    next_hour = next_min_actual // 60
+    next_minute = next_min_actual % 60
+    next_dt = datetime.combine(next_date, time(next_hour, next_minute))
+    next_dt = CATANIA_TZ.localize(next_dt)
+    sec = int((next_dt - now).total_seconds())
+    return (next_dt, sec // 60, sec % 60, True)
+
 # ============================================================================
 # FUNCIONES PARA CIERRE TOTAL (Navidad, Pascua desde 2027)
 # ============================================================================
@@ -274,7 +251,6 @@ def is_easter_sunday(now: datetime) -> bool:
     return now.date() == easter and now.weekday() == 6
 
 def is_easter_monday(now: datetime) -> bool:
-    """Retorna True se la data è il Lunedì dell'Angelo (lunes de Pascua)."""
     year = now.year
     a = year % 19
     b = year // 100
@@ -380,12 +356,10 @@ def is_metro_closed(now: datetime, station: str) -> Tuple[bool, Optional[datetim
         return (False, None)
 
 def get_schedule_list(station: str, now: datetime) -> List[time]:
-    # Si es festivo nacional, usar domingo
     if is_festivo_nazionale(now):
         return SCHEDULES[station]["sunday"]
     
     current_time = now.time()
-    # Obtener la lista normal del día actual
     weekday_num = now.weekday()
     if weekday_num == 4:
         normal_list = SCHEDULES[station]["friday"]
@@ -396,10 +370,8 @@ def get_schedule_list(station: str, now: datetime) -> List[time]:
     else:
         normal_list = SCHEDULES[station]["weekday"]
     
-    # Si la hora actual es antes del primer tren del día (madrugada)
     first_train = normal_list[0] if normal_list else None
     if first_train and current_time < first_train:
-        # Mirar el día anterior (puede tener trenes nocturnos)
         yesterday = now - timedelta(days=1)
         y_weekday = yesterday.weekday()
         if y_weekday == 4:
@@ -410,7 +382,6 @@ def get_schedule_list(station: str, now: datetime) -> List[time]:
             yesterday_list = SCHEDULES[station]["sunday"]
         else:
             yesterday_list = SCHEDULES[station]["weekday"]
-        # Si el día anterior tiene algún tren después de medianoche (hora < 6:00), usar esa lista
         if any(t.hour < 6 for t in yesterday_list):
             return yesterday_list
     return normal_list
