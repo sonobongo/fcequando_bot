@@ -112,10 +112,9 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
             secs_rest = int(remaining.total_seconds() % 60)
             time_str_rest = format_time(mins_rest, secs_rest)
             if mins_rest < SHORT_TIME_THRESHOLD:
-                msg = f"{special_msg}{test_indicator}🚇 Il treno è in binario. Partirà tra {time_str_rest}."
+                msg = f"{special_msg}{test_indicator}🚇 Il treno è in binario. Partirà tra **{time_str_rest}**."
             else:
                 msg = f"{special_msg}{test_indicator}🚇 Il treno è in binario. Partirà alle {next_dep.strftime('%H:%M')}."
-            # Mostrar siguiente tren si falta 2 minutos o menos (cambiado de < a <=)
             if mins_rest <= NEXT_TRAIN_THRESHOLD:
                 next2, min2, sec2, has2 = get_next_departure_after(station, now, next_dep.time())
                 if has2:
@@ -127,9 +126,9 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
             if now < arrival_time:
                 time_str = format_time(minutes, seconds)
                 if minutes < SHORT_TIME_THRESHOLD:
-                    msg = f"{special_msg}{test_indicator}🚇 Prossimo treno per {dest} parte tra {time_str}."
+                    msg = f"{special_msg}{test_indicator}🚇 Prossimo treno per {dest} parte tra **{time_str}**."
                 else:
-                    msg = f"{special_msg}{test_indicator}🚇 Prossimo treno per {dest} parte tra {time_str}, alle {next_dep.strftime('%H:%M')}."
+                    msg = f"{special_msg}{test_indicator}🚇 Prossimo treno per {dest} parte tra **{time_str}**, alle {next_dep.strftime('%H:%M')}."
                 if minutes <= 1:
                     next2, min2, sec2, has2 = get_next_departure_after(station, now, next_dep.time())
                     if has2:
@@ -149,9 +148,9 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
         if last_msg and not is_sant_agata(now):
             msg += f"\n\n{last_msg}"
         if estacion_key in STATION_IMAGE:
-            await update.message.reply_photo(photo=STATION_IMAGE[estacion_key], caption=msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
+            await update.message.reply_photo(photo=STATION_IMAGE[estacion_key], caption=msg, reply_markup=keyboard_main if return_to_main else keyboard_altri, parse_mode='Markdown')
         else:
-            await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
+            await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri, parse_mode='Markdown')
         return
     
     # Estaciones intermedias
@@ -183,9 +182,9 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
             msg += f"🔺 **Per Monte Po**: treno in arrivo.\n"
         else:
             if mins < SHORT_TIME_THRESHOLD:
-                msg += f"🔺 **Per Monte Po**: prossimo treno passa tra {time_str}.\n"
+                msg += f"🔺 **Per Monte Po**: prossimo treno passa tra **{time_str}**.\n"
             else:
-                msg += f"🔺 **Per Monte Po**: prossimo treno passa tra {time_str}, alle {paso_st.strftime('%H:%M')}.\n"
+                msg += f"🔺 **Per Monte Po**: prossimo treno passa tra **{time_str}**, alle {paso_st.strftime('%H:%M')}.\n"
         if mins <= 1 and next_info:
             paso2, mins2, secs2 = next_info
             time_str2 = format_time(mins2, secs2)
@@ -204,9 +203,9 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
             msg += f"🔻 **Per Stesicoro**: treno in arrivo.\n"
         else:
             if mins < SHORT_TIME_THRESHOLD:
-                msg += f"🔻 **Per Stesicoro**: prossimo treno passa tra {time_str}.\n"
+                msg += f"🔻 **Per Stesicoro**: prossimo treno passa tra **{time_str}**.\n"
             else:
-                msg += f"🔻 **Per Stesicoro**: prossimo treno passa tra {time_str}, alle {paso_mp.strftime('%H:%M')}.\n"
+                msg += f"🔻 **Per Stesicoro**: prossimo treno passa tra **{time_str}**, alle {paso_mp.strftime('%H:%M')}.\n"
         if mins <= 1 and next_info:
             paso2, mins2, secs2 = next_info
             time_str2 = format_time(mins2, secs2)
