@@ -25,10 +25,8 @@ SHORT_TIME_THRESHOLD = CONFIG["short_time_threshold"]
 NEXT_TRAIN_THRESHOLD = CONFIG["next_train_threshold"]
 
 # ============================================================================
-# TIEMPOS DE TRAYECTO PARA CADA ESTACIÓN (desde Monte Po y desde Stesicoro)
+# TIEMPOS DE TRAYECTO ACTUALIZADOS (con cierre temporal de Giuffrida)
 # ============================================================================
-# Actualizados según mediciones reales y cierre temporal de Giuffrida (hasta 19/04/2026)
-# Borgo → Giuffrida: 1:18 → 1 minuto (redondeado)
 TIEMPOS_ESTACION = {
     "montepo":    (0, 20),
     "fontana":    (1, 19),
@@ -37,10 +35,10 @@ TIEMPOS_ESTACION = {
     "cibali":     (6, 14),
     "milo":       (8, 12),
     "borgo":      (10, 10),
-    "giuffrida":  (11, 9),   # Ajustado por cierre (antes 12)
-    "italia":     (12, 8),   # Ajustado (antes 13)
-    "galatea":    (14, 6),   # Ajustado (antes 15)
-    "giovanni":   (16, 4),   # Ajustado (antes 17)
+    "giuffrida":  (11, 9),   # reducido por cierre
+    "italia":     (12, 8),
+    "galatea":    (14, 6),
+    "giovanni":   (16, 4),
     "stesicoro":  (20, 0)
 }
 
@@ -61,7 +59,7 @@ NOMBRE_MOSTRAR = {
 }
 
 # ============================================================================
-# IMÁGENES DE LAS ESTACIONES (cambia la URL si tu repositorio es diferente)
+# IMÁGENES DE LAS ESTACIONES
 # ============================================================================
 STATION_IMAGE = {
     "montepo": "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/st_montepo.jpg",
@@ -158,7 +156,7 @@ def get_next_departure_sant_agata(station: str, now: datetime) -> Tuple[Optional
     return (next_dt, sec // 60, sec % 60, True)
 
 # ============================================================================
-# DÍAS FESTIVOS NACIONALES (horario de domingo) y Nochevieja
+# DÍAS FESTIVOS NACIONALES Y NOCHEVIEJA
 # ============================================================================
 FESTIVI_NAZIONALI = [
     (1, 1), (1, 6), (4, 25), (5, 1), (6, 2), (8, 15), (11, 1), (12, 8), (12, 26)
@@ -220,7 +218,7 @@ def get_next_departure_new_years_eve(station: str, now: datetime) -> Tuple[Optio
     return (next_dt, sec // 60, sec % 60, True)
 
 # ============================================================================
-# FUNCIONES PARA CIERRE TOTAL (Navidad, Pascua desde 2027)
+# CIERRES TOTALES (NAVIDAD, PASCUA)
 # ============================================================================
 def is_christmas(now: datetime) -> bool:
     return (now.month == CLOSED_ALL_DAY["christmas"]["month"] and 
@@ -294,7 +292,7 @@ def is_festivo_nazionale(now: datetime) -> bool:
     return (now.month, now.day) in FESTIVI_NAZIONALI
 
 # ============================================================================
-# FUNCIONES DE HORARIOS (comunes para Monte Po y Stesicoro)
+# FUNCIONES DE HORARIOS (comunes)
 # ============================================================================
 def get_opening_time(now: datetime, station: str = None) -> Tuple[int, int]:
     if is_new_years_eve(now):
@@ -453,7 +451,7 @@ def get_last_train_message(now: datetime) -> str:
     return f"📌 Ricorda che oggi l'ultima metropolitana da Stesicoro parte alle {last_time}."
 
 # ============================================================================
-# FUNCIONES PARA CUALQUIER ESTACIÓN (incluye trenes ya salidos)
+# FUNCIONES PARA ESTACIONES INTERMEDIAS
 # ============================================================================
 def get_next_train_at_station(now: datetime, estacion_key: str) -> Tuple[Optional[Tuple], Optional[Tuple]]:
     if estacion_key not in TIEMPOS_ESTACION:
