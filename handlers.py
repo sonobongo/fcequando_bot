@@ -2,7 +2,9 @@ from datetime import datetime, timedelta
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import ContextTypes
 from horarios_logic import *
+from real import active_real_tasks, real_time_updater
 import pytz
+import asyncio
 
 CATANIA_TZ = pytz.timezone('Europe/Rome')
 
@@ -113,7 +115,6 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
         
         # Decidir si mostrar mensaje de "in binario" solo si faltan 4 minutos o menos
         if now >= arrival_time and mins_rest <= 4:
-            # Mensaje de andén (solo cuando faltan 4 minutos o menos)
             msg = f"{special_msg}{test_indicator}🚇 Il treno è in binario. Partirà tra **{time_str_rest}**."
             if mins_rest <= NEXT_TRAIN_THRESHOLD:
                 next2, min2, sec2, has2 = get_next_departure_after(station, now, next_dep.time())
@@ -123,8 +124,6 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
                 else:
                     msg += f"\n\n🚆 Questo è l'ultimo treno della giornata."
         else:
-            # Mensaje normal (tren aún no ha llegado o faltan más de 4 minutos)
-            # Usar el tiempo calculado originalmente (minutes, seconds) que son los que faltan para la salida
             time_str = format_time(minutes, seconds)
             if minutes < SHORT_TIME_THRESHOLD:
                 msg = f"{special_msg}{test_indicator}🚇 Prossimo treno per {dest} parte tra **{time_str}**."
@@ -261,7 +260,9 @@ async def help_command(update, context):
         "/altri - Mostra altre stazioni\n"
         "/fontana, /nesima, /sannullo, /cibali, /borgo, /giuffrida, /italia, /galatea, /giovanni\n"
         "/test DDMMYYYY HHMM - Attiva modalità test\n"
-        "/testfin - Disattiva modalità test\n\n"
+        "/testfin - Disattiva modalità test\n"
+        "/real - Attiva monitoraggio real-time (ogni minuto)\n"
+        "/realfin - Disattiva monitoraggio real-time\n\n"
         "Oppure premi i pulsanti.",
         reply_markup=keyboard_main
     )
@@ -273,12 +274,55 @@ async def handle_button(update, context):
     elif text == "← Menu":
         await update.message.reply_text("🔙 Ritorno al menu principale.", reply_markup=keyboard_main)
     elif text in BOTON_TO_KEY:
-        await send_station_response(update, context, BOTON_TO_KEY[text], return_to_main=True)
+        estacion_key = BOTON_TO_KEY[text]
+        # Verificar si estamos en modo real
+        if context.chat_data and context.chat_data.get('waiting_for_station_real'):
+            chat_id = update.effective_chat.id
+            # Cancelar tarea anterior si existe
+            if chat_id in active_real_tasks:
+                active_real_tasks[chat_id].cancel()
+                del active_real_tasks[chat_id]
+            # Crear nueva tarea
+            task = asyncio.create_task(real_time_updater(chat_id, context, estacion_key))
+            active_real_tasks[chat_id] = task
+            context.chat_data['waiting_for_station_real'] = False
+            await update.message.reply_text(f"🔴 Monitoraggio real avviato per {text}. Riceverai aggiornamenti ogni minuto.\nPer fermarlo, usa /realfin.")
+        else:
+            await send_station_response(update, context, estacion_key, return_to_main=True)
     else:
         await update.message.reply_text("Scelta non valida. Usa i pulsanti.", reply_markup=keyboard_main)
 
 # ============================================================================
-# COMANDOS TEST
+# COMANDOS REAL
+# ============================================================================
+async def real_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    # Cancelar cualquier monitor previo para este chat
+    if chat_id in active_real_tasks:
+        active_real_tasks[chat_id].cancel()
+        del active_real_tasks[chat_id]
+    context.chat_data['waiting_for_station_real'] = True
+    await update.message.reply_text(
+        "🔴 **Modalità real attivata**\n"
+        "Ora premi uno dei pulsanti (Monte Po o Stesicoro) per selezionare la stazione.\n"
+        "Riceverai aggiornamenti ogni minuto fino alla partenza del treno.\n"
+        "Per uscire, usa /realfin.",
+        parse_mode='Markdown'
+    )
+
+async def realfin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    if chat_id in active_real_tasks:
+        active_real_tasks[chat_id].cancel()
+        del active_real_tasks[chat_id]
+        await update.message.reply_text("✅ Monitoraggio real terminato.")
+    else:
+        await update.message.reply_text("⚠️ Nessun monitoraggio real attivo.")
+    if context.chat_data:
+        context.chat_data.pop('waiting_for_station_real', None)
+
+# ============================================================================
+# COMANDOS TEST (sin cambios)
 # ============================================================================
 async def send_station_response_simulated(update, context, estacion_key: str, simulated_now: datetime):
     original = context.chat_data.get('test_time') if context.chat_data else None
