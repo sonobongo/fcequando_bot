@@ -67,7 +67,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
             await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
         return
     
-    # Caso Monte Po y Stesicoro (cabeceras)
+      # Caso Monte Po y Stesicoro (cabeceras)
     if estacion_key in ["montepo", "stesicoro"]:
         station = "Montepo" if estacion_key == "montepo" else "Stesicoro"
         closed, next_open = is_metro_closed(now, station)
@@ -106,12 +106,12 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
             arrival_time = next_dep - timedelta(minutes=20)
         
         # Caso 1: El tren ya está en el andén (ha llegado pero aún no ha salido)
-                if now >= arrival_time and now < next_dep:
+        if now >= arrival_time and now < next_dep:
             remaining = next_dep - now
             mins_rest = int(remaining.total_seconds() // 60)
             secs_rest = int(remaining.total_seconds() % 60)
             time_str_rest = format_time(mins_rest, secs_rest)
-            # Siempre mostrar el tiempo restante, no la hora
+            # Siempre mostrar tiempo restante, nunca la hora
             msg = f"{special_msg}{test_indicator}🚇 Il treno è in binario. Partirà tra **{time_str_rest}**."
             if mins_rest <= NEXT_TRAIN_THRESHOLD:
                 next2, min2, sec2, has2 = get_next_departure_after(station, now, next_dep.time())
@@ -135,6 +135,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
                     else:
                         msg += f"\n\n🚆 Questo è l'ultimo treno della giornata."
             else:
+                # Ya ha salido: mostrar el siguiente tren
                 next2, min2, sec2, has2 = get_next_departure_after(station, now, next_dep.time())
                 if has2:
                     time_str2 = format_time(min2, sec2)
