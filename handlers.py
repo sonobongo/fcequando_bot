@@ -115,7 +115,8 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
                 msg = f"{special_msg}{test_indicator}🚇 Il treno è in binario. Partirà tra {time_str_rest}."
             else:
                 msg = f"{special_msg}{test_indicator}🚇 Il treno è in binario. Partirà alle {next_dep.strftime('%H:%M')}."
-            if mins_rest < NEXT_TRAIN_THRESHOLD:
+            # Mostrar siguiente tren si falta 2 minutos o menos (cambiado de < a <=)
+            if mins_rest <= NEXT_TRAIN_THRESHOLD:
                 next2, min2, sec2, has2 = get_next_departure_after(station, now, next_dep.time())
                 if has2:
                     time_str2 = format_time(min2, sec2)
