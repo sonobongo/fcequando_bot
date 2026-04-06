@@ -1,12 +1,17 @@
+import asyncio
 from datetime import datetime, timedelta
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import ContextTypes
 from horarios_logic import *
-from real import active_real_tasks, real_time_updater
 import pytz
-import asyncio
 
 CATANIA_TZ = pytz.timezone('Europe/Rome')
+
+# ============================================================================
+# VARIABLES GLOBALES PARA TAREAS ACTIVAS
+# ============================================================================
+active_real_tasks = {}   # chat_id -> task (monitor cada minuto)
+active_timers = {}       # chat_id -> task (cuenta atrás)
 
 # ============================================================================
 # TECLADOS
@@ -44,7 +49,7 @@ BOTON_TO_KEY = {
 }
 
 # ============================================================================
-# RESPUESTA PARA CUALQUIER ESTACIÓN (CON MODO TEST PERSISTENTE)
+# RESPUESTA NORMAL PARA CUALQUIER ESTACIÓN (CON MODO TEST PERSISTENTE)
 # ============================================================================
 async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str, return_to_main: bool = True):
     simulated_time = context.chat_data.get('test_time') if context.chat_data else None
@@ -107,13 +112,13 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
         else:
             arrival_time = next_dep - timedelta(minutes=20)
         
-        # Calcular minutos restantes hasta la salida
+        # Calcular minutos restantes
         remaining = next_dep - now
         mins_rest = int(remaining.total_seconds() // 60)
         secs_rest = int(remaining.total_seconds() % 60)
         time_str_rest = format_time(mins_rest, secs_rest)
         
-        # Decidir si mostrar mensaje de "in binario" solo si faltan 4 minutos o menos
+        # Mostrar "in binario" solo si faltan 4 minutos o menos
         if now >= arrival_time and mins_rest <= 4:
             msg = f"{special_msg}{test_indicator}🚇 Il treno è in binario. Partirà tra **{time_str_rest}**."
             if mins_rest <= NEXT_TRAIN_THRESHOLD:
@@ -219,6 +224,61 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
         await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri, parse_mode='Markdown')
 
 # ============================================================================
+# MONITOR REAL (cada minuto)
+# ============================================================================
+async def real_time_updater(chat_id: int, context: ContextTypes.DEFAULT_TYPE, estacion_key: str):
+    station = "Montepo" if estacion_key == "montepo" else "Stesicoro"
+    station_display = "Monte Po" if station == "Montepo" else "Stesicoro"
+    dest = "Stesicoro" if station == "Montepo" else "Monte Po"
+    
+    while True:
+        if chat_id not in active_real_tasks:
+            break
+        now = datetime.now(CATANIA_TZ)
+        closed, _ = is_metro_closed(now, station)
+        if closed:
+            await context.bot.send_message(chat_id=chat_id, text=f"🚇 La metropolitana è chiusa. Monitoraggio terminato.")
+            break
+        next_dep, minutes, seconds, has_trains = get_next_departure(station, now)
+        if not has_trains:
+            await context.bot.send_message(chat_id=chat_id, text=f"🚇 Non ci sono più treni oggi. Monitoraggio terminato.")
+            break
+        time_str = format_time(minutes, seconds)
+        if minutes == 0 and seconds < 30:
+            await context.bot.send_message(chat_id=chat_id, text=f"🚇 Il treno per {dest} sta partendo ora! Monitoraggio terminato.")
+            break
+        else:
+            await context.bot.send_message(chat_id=chat_id, text=f"🚇 Prossimo treno per {dest} tra **{time_str}** (alle {next_dep.strftime('%H:%M')}).", parse_mode='Markdown')
+        await asyncio.sleep(60)
+    
+    if chat_id in active_real_tasks:
+        del active_real_tasks[chat_id]
+
+# ============================================================================
+# CUENTA ATRÁS (TIMER)
+# ============================================================================
+async def countdown_timer(chat_id: int, context: ContextTypes.DEFAULT_TYPE, station: str, departure_time: datetime):
+    message = await context.bot.send_message(chat_id=chat_id, text="Inizio conto alla rovescia...")
+    try:
+        while True:
+            now = datetime.now(CATANIA_TZ)
+            remaining = departure_time - now
+            if remaining.total_seconds() <= 0:
+                await message.edit_text("🚇 Il treno è partito! Conto alla rovescia terminato.")
+                break
+            total_seconds = int(remaining.total_seconds())
+            minutes = total_seconds // 60
+            seconds = total_seconds % 60
+            time_str = f"{minutes:02d}:{seconds:02d}"
+            await message.edit_text(f"🚆 **Conto alla rovescia per {station}**\n\nTempo rimasto: `{time_str}`", parse_mode='Markdown')
+            await asyncio.sleep(1)
+    except Exception:
+        pass
+    finally:
+        if chat_id in active_timers:
+            del active_timers[chat_id]
+
+# ============================================================================
 # MANEJADORES DE COMANDOS
 # ============================================================================
 async def cmd_montepo(update, context): await send_station_response(update, context, "montepo", return_to_main=False)
@@ -262,7 +322,9 @@ async def help_command(update, context):
         "/test DDMMYYYY HHMM - Attiva modalità test\n"
         "/testfin - Disattiva modalità test\n"
         "/real - Attiva monitoraggio real-time (ogni minuto)\n"
-        "/realfin - Disattiva monitoraggio real-time\n\n"
+        "/realfin - Disattiva monitoraggio real-time\n"
+        "/timer - Avvia conto alla rovescia per Monte Po o Stesicoro\n"
+        "/timerstop - Ferma conto alla rovescia\n\n"
         "Oppure premi i pulsanti.",
         reply_markup=keyboard_main
     )
@@ -275,18 +337,43 @@ async def handle_button(update, context):
         await update.message.reply_text("🔙 Ritorno al menu principale.", reply_markup=keyboard_main)
     elif text in BOTON_TO_KEY:
         estacion_key = BOTON_TO_KEY[text]
-        # Verificar si estamos en modo real
+        # Modo real
         if context.chat_data and context.chat_data.get('waiting_for_station_real'):
             chat_id = update.effective_chat.id
-            # Cancelar tarea anterior si existe
             if chat_id in active_real_tasks:
                 active_real_tasks[chat_id].cancel()
                 del active_real_tasks[chat_id]
-            # Crear nueva tarea
             task = asyncio.create_task(real_time_updater(chat_id, context, estacion_key))
             active_real_tasks[chat_id] = task
             context.chat_data['waiting_for_station_real'] = False
             await update.message.reply_text(f"🔴 Monitoraggio real avviato per {text}. Riceverai aggiornamenti ogni minuto.\nPer fermarlo, usa /realfin.")
+        # Modo timer
+        elif context.chat_data and context.chat_data.get('waiting_for_timer_station'):
+            if estacion_key not in ["montepo", "stesicoro"]:
+                await update.message.reply_text("⚠️ Il timer è disponibile solo per Monte Po e Stesicoro.")
+                context.chat_data.pop('waiting_for_timer_station', None)
+                return
+            station_name = "Monte Po" if estacion_key == "montepo" else "Stesicoro"
+            now = datetime.now(CATANIA_TZ)
+            closed, _ = is_metro_closed(now, estacion_key.capitalize())
+            if closed:
+                await update.message.reply_text(f"🚇 La metropolitana è chiusa. Impossibile avviare il timer.")
+                context.chat_data.pop('waiting_for_timer_station', None)
+                return
+            next_dep, minutes, seconds, has_trains = get_next_departure(estacion_key.capitalize(), now)
+            if not has_trains:
+                await update.message.reply_text(f"🚇 Non ci sono treni oggi. Timer non avviato.")
+                context.chat_data.pop('waiting_for_timer_station', None)
+                return
+            chat_id = update.effective_chat.id
+            if chat_id in active_timers:
+                await update.message.reply_text("⚠️ C'è già un timer attivo. Usa /timerstop prima di avviarne un altro.")
+                context.chat_data.pop('waiting_for_timer_station', None)
+                return
+            task = asyncio.create_task(countdown_timer(chat_id, context, station_name, next_dep))
+            active_timers[chat_id] = task
+            context.chat_data.pop('waiting_for_timer_station', None)
+            await update.message.reply_text(f"⏱️ Timer avviato per {station_name}. Il prossimo treno parte alle {next_dep.strftime('%H:%M')}.\nPer fermarlo, usa /timerstop.")
         else:
             await send_station_response(update, context, estacion_key, return_to_main=True)
     else:
@@ -297,7 +384,6 @@ async def handle_button(update, context):
 # ============================================================================
 async def real_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
-    # Cancelar cualquier monitor previo para este chat
     if chat_id in active_real_tasks:
         active_real_tasks[chat_id].cancel()
         del active_real_tasks[chat_id]
@@ -322,7 +408,34 @@ async def realfin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.chat_data.pop('waiting_for_station_real', None)
 
 # ============================================================================
-# COMANDOS TEST (sin cambios)
+# COMANDOS TIMER
+# ============================================================================
+async def timer_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    if chat_id in active_timers:
+        await update.message.reply_text("⚠️ C'è già un conto alla rovescia attivo. Usa /timerstop per fermarlo.")
+        return
+    context.chat_data['waiting_for_timer_station'] = True
+    await update.message.reply_text(
+        "⏱️ **Modalità timer**\n"
+        "Ora premi uno dei pulsanti (Monte Po o Stesicoro) per iniziare il conto alla rovescia.\n"
+        "Per fermare il timer, usa /timerstop.",
+        parse_mode='Markdown'
+    )
+
+async def timerstop_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    if chat_id in active_timers:
+        active_timers[chat_id].cancel()
+        del active_timers[chat_id]
+        await update.message.reply_text("✅ Conto alla rovescia fermato.")
+    else:
+        await update.message.reply_text("⚠️ Nessun timer attivo.")
+    if context.chat_data:
+        context.chat_data.pop('waiting_for_timer_station', None)
+
+# ============================================================================
+# COMANDOS TEST
 # ============================================================================
 async def send_station_response_simulated(update, context, estacion_key: str, simulated_now: datetime):
     original = context.chat_data.get('test_time') if context.chat_data else None
