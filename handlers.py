@@ -106,15 +106,13 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
             arrival_time = next_dep - timedelta(minutes=20)
         
         # Caso 1: El tren ya está en el andén (ha llegado pero aún no ha salido)
-        if now >= arrival_time and now < next_dep:
+                if now >= arrival_time and now < next_dep:
             remaining = next_dep - now
             mins_rest = int(remaining.total_seconds() // 60)
             secs_rest = int(remaining.total_seconds() % 60)
             time_str_rest = format_time(mins_rest, secs_rest)
-            if mins_rest < SHORT_TIME_THRESHOLD:
-                msg = f"{special_msg}{test_indicator}🚇 Il treno è in binario. Partirà tra **{time_str_rest}**."
-            else:
-                msg = f"{special_msg}{test_indicator}🚇 Il treno è in binario. Partirà alle {next_dep.strftime('%H:%M')}."
+            # Siempre mostrar el tiempo restante, no la hora
+            msg = f"{special_msg}{test_indicator}🚇 Il treno è in binario. Partirà tra **{time_str_rest}**."
             if mins_rest <= NEXT_TRAIN_THRESHOLD:
                 next2, min2, sec2, has2 = get_next_departure_after(station, now, next_dep.time())
                 if has2:
