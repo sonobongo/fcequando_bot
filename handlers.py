@@ -67,7 +67,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
             await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
         return
     
-      # Caso Monte Po y Stesicoro (cabeceras)
+    # Caso Monte Po y Stesicoro (cabeceras)
     if estacion_key in ["montepo", "stesicoro"]:
         station = "Montepo" if estacion_key == "montepo" else "Stesicoro"
         closed, next_open = is_metro_closed(now, station)
@@ -105,13 +105,15 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
         else:
             arrival_time = next_dep - timedelta(minutes=20)
         
-        # Caso 1: El tren ya está en el andén (ha llegado pero aún no ha salido)
-        if now >= arrival_time and now < next_dep:
-            remaining = next_dep - now
-            mins_rest = int(remaining.total_seconds() // 60)
-            secs_rest = int(remaining.total_seconds() % 60)
-            time_str_rest = format_time(mins_rest, secs_rest)
-            # Siempre mostrar tiempo restante, nunca la hora
+        # Calcular minutos restantes hasta la salida
+        remaining = next_dep - now
+        mins_rest = int(remaining.total_seconds() // 60)
+        secs_rest = int(remaining.total_seconds() % 60)
+        time_str_rest = format_time(mins_rest, secs_rest)
+        
+        # Decidir si mostrar mensaje de "in binario" solo si faltan 4 minutos o menos
+        if now >= arrival_time and mins_rest <= 4:
+            # Mensaje de andén (solo cuando faltan 4 minutos o menos)
             msg = f"{special_msg}{test_indicator}🚇 Il treno è in binario. Partirà tra **{time_str_rest}**."
             if mins_rest <= NEXT_TRAIN_THRESHOLD:
                 next2, min2, sec2, has2 = get_next_departure_after(station, now, next_dep.time())
@@ -121,27 +123,20 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
                 else:
                     msg += f"\n\n🚆 Questo è l'ultimo treno della giornata."
         else:
-            if now < arrival_time:
-                time_str = format_time(minutes, seconds)
-                if minutes < SHORT_TIME_THRESHOLD:
-                    msg = f"{special_msg}{test_indicator}🚇 Prossimo treno per {dest} parte tra **{time_str}**."
-                else:
-                    msg = f"{special_msg}{test_indicator}🚇 Prossimo treno per {dest} parte tra **{time_str}**, alle {next_dep.strftime('%H:%M')}."
-                if minutes <= 1:
-                    next2, min2, sec2, has2 = get_next_departure_after(station, now, next_dep.time())
-                    if has2:
-                        time_str2 = format_time(min2, sec2)
-                        msg += f"\n\n🚆 Il prossimo treno successivo partirà tra {time_str2}, alle {next2.strftime('%H:%M')}."
-                    else:
-                        msg += f"\n\n🚆 Questo è l'ultimo treno della giornata."
+            # Mensaje normal (tren aún no ha llegado o faltan más de 4 minutos)
+            # Usar el tiempo calculado originalmente (minutes, seconds) que son los que faltan para la salida
+            time_str = format_time(minutes, seconds)
+            if minutes < SHORT_TIME_THRESHOLD:
+                msg = f"{special_msg}{test_indicator}🚇 Prossimo treno per {dest} parte tra **{time_str}**."
             else:
-                # Ya ha salido: mostrar el siguiente tren
+                msg = f"{special_msg}{test_indicator}🚇 Prossimo treno per {dest} parte tra **{time_str}**, alle {next_dep.strftime('%H:%M')}."
+            if minutes <= 1:
                 next2, min2, sec2, has2 = get_next_departure_after(station, now, next_dep.time())
                 if has2:
                     time_str2 = format_time(min2, sec2)
-                    msg = f"{special_msg}{test_indicator}🚇 Il treno è appena partito da {station_display}. Il prossimo per {dest} sarà alle {next2.strftime('%H:%M')}."
+                    msg += f"\n\n🚆 Il prossimo treno successivo partirà tra {time_str2}, alle {next2.strftime('%H:%M')}."
                 else:
-                    msg = f"{special_msg}{test_indicator}🚇 Il treno è appena partito da {station_display}. Non ci sono altri treni oggi."
+                    msg += f"\n\n🚆 Questo è l'ultimo treno della giornata."
         
         last_msg = get_last_train_message(now)
         if last_msg and not is_sant_agata(now):
