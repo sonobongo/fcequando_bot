@@ -6,9 +6,6 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters
 from horarios_logic import *
 from handlers import *
 
-# ============================================================================
-# SERVIDOR WEB (Flask) PARA RESPONDER A PINGS DE UPTIMEROBOT
-# ============================================================================
 flask_app = Flask(__name__)
 
 @flask_app.route('/')
@@ -20,9 +17,6 @@ def run_flask():
     port = int(os.environ.get('PORT', 8080))
     flask_app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
 
-# ============================================================================
-# LOGGING Y MAIN
-# ============================================================================
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
