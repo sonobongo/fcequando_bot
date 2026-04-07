@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import ContextTypes
 from horarios_logic import *
+from horarios_logic import get_station_image  # importación explícita
 import pytz
 
 CATANIA_TZ = pytz.timezone('Europe/Rome')
@@ -103,7 +104,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
         station_display = "Monte Po" if station == "Montepo" else "Stesicoro"
         dest = "Stesicoro" if station == "Montepo" else "Monte Po"
         
-        # Calcular minutos restantes exactos (sin redondear)
+        # Calcular minutos restantes exactos
         remaining = next_dep - now
         mins_rest = int(remaining.total_seconds() // 60)
         secs_rest = int(remaining.total_seconds() % 60)
@@ -112,7 +113,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
         # Mostrar mensaje de andén si faltan 4 minutos o menos
         if mins_rest <= 4:
             msg = f"{special_msg}{test_indicator}🚇 Il treno è in binario. Partirà tra **{time_str_rest}**."
-            # Mostrar siguiente tren si faltan 1 minuto o menos
+            # Mostrar siguiente tren si falta 1 minuto o menos
             if mins_rest <= 1:
                 next2, min2, sec2, has2 = get_next_departure_after(station, now, next_dep.time())
                 if has2:
@@ -127,7 +128,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
                 msg = f"{special_msg}{test_indicator}🚇 Prossimo treno per {dest} parte tra **{time_str}**."
             else:
                 msg = f"{special_msg}{test_indicator}🚇 Prossimo treno per {dest} parte tra **{time_str}**, alle {next_dep.strftime('%H:%M')}."
-            # Mostrar siguiente tren si falta 1 minuto o menos (aunque no esté en andén)
+            # Mostrar siguiente tren si falta 1 minuto o menos
             if minutes <= 1:
                 next2, min2, sec2, has2 = get_next_departure_after(station, now, next_dep.time())
                 if has2:
@@ -182,12 +183,10 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
         if mins == 0 and secs < 30:
             msg += f"🔺 **Per Monte Po**: treno in arrivo.\n"
         else:
-            # Si faltan menos de 5 minutos, no mostrar la hora
             if mins < SHORT_TIME_THRESHOLD:
                 msg += f"🔺 **Per Monte Po**: Passa tra **{time_str}**.\n"
             else:
                 msg += f"🔺 **Per Monte Po**: Passa tra **{time_str}**, alle {paso_st.strftime('%H:%M')}.\n"
-        # Mostrar siguiente tren si falta 1 minuto o menos
         if mins <= 1 and next_info:
             paso2, mins2, secs2 = next_info
             time_str2 = format_time(mins2, secs2)
