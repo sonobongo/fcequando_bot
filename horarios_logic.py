@@ -169,7 +169,7 @@ NOMBRE_MOSTRAR = {
 }
 
 # ============================================================================
-# IMÁGENES DE LAS ESTACIONES
+# IMÁGENES DE LAS ESTACIONES (solo color, sin blanco y negro)
 # ============================================================================
 STATION_IMAGE = {
     "montepo": "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/st_montepo.jpg",
@@ -186,30 +186,8 @@ STATION_IMAGE = {
     "stesicoro": "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/st_stesicoro.jpg",
 }
 
-STATION_IMAGE_BW = {
-    "montepo": "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/st_montepo_bw.jpg",
-    "fontana": "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/st_fontana_bw.jpg",
-    "nesima": "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/st_nesima_bw.jpg",
-    "sannullo": "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/st_sannullo_bw.jpg",
-    "cibali": "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/st_cibali_bw.jpg",
-    "milo": "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/st_milo_bw.jpg",
-    "borgo": "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/st_borgo_bw.jpg",
-    "giuffrida": "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/st_giuffrida_bw.jpg",
-    "italia": "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/st_italia_bw.jpg",
-    "galatea": "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/st_galatea_bw.jpg",
-    "giovanni": "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/st_giovanni_bw.jpg",
-    "stesicoro": "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/st_stesicoro_bw.jpg",
-}
-
 def get_station_image(estacion_key: str, now: datetime) -> str:
-    if is_station_closed(estacion_key, now):
-        base_url = STATION_IMAGE_BW.get(estacion_key, STATION_IMAGE.get(estacion_key))
-    else:
-        base_url = STATION_IMAGE.get(estacion_key)
-    if not base_url:
-        return None
-    cache_buster = int(timer.time())
-    return f"{base_url}?v={cache_buster}"
+    return STATION_IMAGE.get(estacion_key)
 
 # Convertir strings "HH:MM" a objetos time
 def str_to_time(t_str: str) -> time:
@@ -464,7 +442,6 @@ def is_metro_closed(now: datetime, station: str) -> Tuple[bool, Optional[datetim
         open_h, open_m = get_opening_time(tomorrow, station)
         next_open = datetime.combine(tomorrow.date(), time(open_h, open_m))
         next_open = CATANIA_TZ.localize(next_open)
-        # Mensaje especial para cierre total
         return (True, next_open, "")
     
     current_time = now.time()
@@ -485,9 +462,9 @@ def is_metro_closed(now: datetime, station: str) -> Tuple[bool, Optional[datetim
             # Determinar mensaje especial para viernes/sábado o Nochevieja
             special_msg = ""
             if is_new_years_eve(now):
-                special_msg = "Non ci sono informazioni disponibili. Ricorda che oggi l'ultima metropolitana è partita alle 03:00."
+                special_msg = "🚇 Non ci sono informazioni disponibili. Ricorda che oggi l'ultima metropolitana è partita alle 03:00."
             elif now.weekday() in [4, 5]:  # viernes o sábado
-                special_msg = "Non ci sono informazioni disponibili. Ricorda che oggi l'ultima metropolitana è partita alle 01:00."
+                special_msg = "🚇 Non ci sono informazioni disponibili. Ricorda che oggi l'ultima metropolitana è partita alle 01:00."
             return (True, next_open, special_msg)
     else:
         if current_time >= closing_time or current_time < opening_time:
@@ -498,9 +475,9 @@ def is_metro_closed(now: datetime, station: str) -> Tuple[bool, Optional[datetim
             next_open = CATANIA_TZ.localize(next_open)
             special_msg = ""
             if is_new_years_eve(now):
-                special_msg = "Non ci sono informazioni disponibili. Ricorda che oggi l'ultima metropolitana è partita alle 03:00."
+                special_msg = "🚇 Non ci sono informazioni disponibili. Ricorda che oggi l'ultima metropolitana è partita alle 03:00."
             elif now.weekday() in [4, 5]:
-                special_msg = "Non ci sono informazioni disponibili. Ricorda che oggi l'ultima metropolitana è partita alle 01:00."
+                special_msg = "🚇 Non ci sono informazioni disponibili. Ricorda che oggi l'ultima metropolitana è partita alle 01:00."
             return (True, next_open, special_msg)
         return (False, None, "")
 
@@ -612,7 +589,7 @@ def get_next_train_at_station(now: datetime, estacion_key: str) -> Tuple[Optiona
     
     # Dirección Monte Po -> Stesicoro (IDA)
     info_mp = None
-    closed_mp, _ = is_metro_closed(now, "Montepo")
+    closed_mp, _, _ = is_metro_closed(now, "Montepo")
     if not closed_mp:
         schedule_list = get_schedule_list("Montepo", now)
         pasos = []
@@ -642,7 +619,7 @@ def get_next_train_at_station(now: datetime, estacion_key: str) -> Tuple[Optiona
     
     # Dirección Stesicoro -> Monte Po (VUELTA)
     info_st = None
-    closed_st, _ = is_metro_closed(now, "Stesicoro")
+    closed_st, _, _ = is_metro_closed(now, "Stesicoro")
     if not closed_st:
         schedule_list = get_schedule_list("Stesicoro", now)
         pasos = []
