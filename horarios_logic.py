@@ -26,7 +26,7 @@ SHORT_TIME_THRESHOLD = CONFIG["short_time_threshold"]
 NEXT_TRAIN_THRESHOLD = CONFIG["next_train_threshold"]
 
 # ============================================================================
-# TIEMPOS BASE ENTRE ESTACIONES (en segundos) - tiempos en hora punta (con retraso)
+# TIEMPOS BASE ENTRE ESTACIONES (en segundos) - tiempos en hora punta
 # ============================================================================
 FORWARD_PEAK = [
     ("montepo", "fontana", 87),
@@ -63,7 +63,7 @@ EXTRA_TRAMOS_REVERSE = [("giovanni","galatea"), ("galatea","italia"), ("italia",
 # DETECCIÓN DE HORA PUNTA
 # ============================================================================
 def is_peak_hour(now: datetime) -> bool:
-    if now.weekday() >= 5:  # sabato o domenica
+    if now.weekday() >= 5:
         return False
     if is_festivo_nazionale(now):
         return False
@@ -85,7 +85,6 @@ def get_travel_time_from_montepo(station: str, now: datetime) -> int:
         total_seconds += sec
         if end == station:
             break
-    # Riduzioni per stazioni chiuse
     stations_order = ["montepo", "fontana", "nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "giovanni", "stesicoro"]
     for closed in CLOSED_STATIONS:
         if closed["station"] == station:
@@ -449,9 +448,7 @@ def is_metro_closed(now: datetime, station: str) -> Tuple[bool, Optional[datetim
     # Verificar si es Nochevieja (31/12) o madrugada del 1/1 hasta las 3:00
     if is_new_years_eve(now):
         # Durante el intervalo de cierre especial: desde las 23:59 hasta las 3:00
-        # Para simplificar, comprobamos si la hora es >= 23:59 o < 3:00
         if now.hour >= 23 or now.hour < 3:
-            # Buscar la próxima apertura (6:00 del mismo día o día siguiente)
             open_h, open_m = get_opening_time(now, station)
             next_open = datetime.combine(now.date(), time(open_h, open_m))
             if next_open <= now:
@@ -462,9 +459,8 @@ def is_metro_closed(now: datetime, station: str) -> Tuple[bool, Optional[datetim
     
     # Verificar si es viernes o sábado noche (desde las 23:59 hasta la 1:00)
     weekday = now.weekday()
-    if weekday in [4, 5]:  # viernes o sábado
+    if weekday in [4, 5]:
         if now.hour >= 23 or (now.hour == 0 and now.minute < 1) or (now.hour == 0 and now.minute == 0):
-            # Estamos en el intervalo de cierre
             open_h, open_m = get_opening_time(now, station)
             next_open = datetime.combine(now.date(), time(open_h, open_m))
             if next_open <= now:
