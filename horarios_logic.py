@@ -169,7 +169,7 @@ NOMBRE_MOSTRAR = {
 }
 
 # ============================================================================
-# IMÁGENES DE LAS ESTACIONES (solo color)
+# IMÁGENES DE LAS ESTACIONES (solo color, con cache buster)
 # ============================================================================
 STATION_IMAGE = {
     "montepo": "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/st_montepo.jpg",
@@ -187,7 +187,11 @@ STATION_IMAGE = {
 }
 
 def get_station_image(estacion_key: str, now: datetime) -> str:
-    return STATION_IMAGE.get(estacion_key)
+    base_url = STATION_IMAGE.get(estacion_key)
+    if not base_url:
+        return None
+    cache_buster = int(timer.time())
+    return f"{base_url}?v={cache_buster}"
 
 # Convertir strings "HH:MM" a objetos time
 def str_to_time(t_str: str) -> time:
@@ -437,7 +441,6 @@ def is_metro_closed(now: datetime, station: str) -> Tuple[bool, Optional[datetim
     """
     Retorna (cerrado, próxima_apertura, mensaje_especial)
     """
-    # Verificar si es un día de cierre total
     if is_closed_all_day(now):
         tomorrow = now + timedelta(days=1)
         open_h, open_m = get_opening_time(tomorrow, station)
@@ -445,9 +448,8 @@ def is_metro_closed(now: datetime, station: str) -> Tuple[bool, Optional[datetim
         next_open = CATANIA_TZ.localize(next_open)
         return (True, next_open, "")
     
-    # Verificar si es Nochevieja (31/12) o madrugada del 1/1 hasta las 3:00
+    # Nochevieja y madrugada del 1/1 hasta las 3:00
     if is_new_years_eve(now):
-        # Durante el intervalo de cierre especial: desde las 23:59 hasta las 3:00
         if now.hour >= 23 or now.hour < 3:
             open_h, open_m = get_opening_time(now, station)
             next_open = datetime.combine(now.date(), time(open_h, open_m))
@@ -457,10 +459,10 @@ def is_metro_closed(now: datetime, station: str) -> Tuple[bool, Optional[datetim
             special_msg = "🚇 Non ci sono informazioni disponibili. Ricorda che oggi l'ultima metropolitana è partita alle 03:00."
             return (True, next_open, special_msg)
     
-    # Verificar si es viernes o sábado noche (desde las 23:59 hasta la 1:00)
+    # Viernes y sábado noche desde 23:59 hasta 1:00
     weekday = now.weekday()
     if weekday in [4, 5]:
-        if now.hour >= 23 or (now.hour == 0 and now.minute < 1) or (now.hour == 0 and now.minute == 0):
+        if now.hour >= 23 or (now.hour == 0 and now.minute < 1):
             open_h, open_m = get_opening_time(now, station)
             next_open = datetime.combine(now.date(), time(open_h, open_m))
             if next_open <= now:
@@ -469,7 +471,6 @@ def is_metro_closed(now: datetime, station: str) -> Tuple[bool, Optional[datetim
             special_msg = "🚇 Non ci sono informazioni disponibili. Ricorda che oggi l'ultima metropolitana è partita alle 01:00."
             return (True, next_open, special_msg)
     
-    # Resto del código normal
     current_time = now.time()
     open_h, open_m = get_opening_time(now, station)
     close_h, close_m = get_closing_time(now, station)
