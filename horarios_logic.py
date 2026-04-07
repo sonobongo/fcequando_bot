@@ -1,5 +1,6 @@
 import os
 import json
+import time
 from datetime import datetime, time, timedelta, date
 from typing import Tuple, Optional, List, Dict, Any
 import pytz
@@ -25,9 +26,8 @@ SHORT_TIME_THRESHOLD = CONFIG["short_time_threshold"]
 NEXT_TRAIN_THRESHOLD = CONFIG["next_train_threshold"]
 
 # ============================================================================
-# TIEMPOS BASE ENTRE ESTACIONES (sin cierres, en segundos)
+# TIEMPOS BASE ENTRE ESTACIONES (en segundos)
 # ============================================================================
-# Tramos en orden desde Monte Po hacia Stesicoro
 TRAMOS = [
     ("montepo", "fontana", 87),    # 1:27
     ("fontana", "nesima", 87),     # 1:27
@@ -36,24 +36,25 @@ TRAMOS = [
     ("cibali", "milo", 101),       # 1:41
     ("milo", "borgo", 100),        # 1:40
     ("borgo", "giuffrida", 118),   # 1:58 (normal)
-    ("giuffrida", "italia", 60),   # 1:00 (estimado)
+    ("giuffrida", "italia", 60),   # 1:00
     ("italia", "galatea", 120),    # 2:00
     ("galatea", "giovanni", 60),   # 1:00
     ("giovanni", "stesicoro", 180) # 3:00
 ]
 
-# Lista de estaciones que pueden estar cerradas (con fechas)
+# ============================================================================
+# CIERRE TEMPORAL DE ESTACIONES
+# ============================================================================
 CLOSED_STATIONS = [
     {
         "station": "giuffrida",
-        "start": date(2026, 1, 1),   # desde principio de año (o desde que empezaron las obras)
-        "end": date(2026, 4, 19),    # hasta el 19 de abril inclusive
-        "reduction_seconds": 40      # se restan 40 segundos por no parar
+        "start": date(2026, 1, 1),
+        "end": date(2026, 4, 19),
+        "reduction_seconds": 40
     }
 ]
 
 def is_station_closed(station: str, now: datetime) -> bool:
-    """Retorna True si la estación está cerrada por obras en la fecha dada."""
     for closed in CLOSED_STATIONS:
         if closed["station"] == station:
             if closed["start"] <= now.date() <= closed["end"]:
@@ -61,7 +62,6 @@ def is_station_closed(station: str, now: datetime) -> bool:
     return False
 
 def get_closing_message(station: str, now: datetime) -> str:
-    """Devuelve un mensaje informativo si la estación está cerrada."""
     if is_station_closed(station, now):
         for closed in CLOSED_STATIONS:
             if closed["station"] == station:
@@ -70,33 +70,23 @@ def get_closing_message(station: str, now: datetime) -> str:
     return ""
 
 def get_travel_time_from_montepo(station: str, now: datetime) -> int:
-    """Calcula los minutos desde Monte Po hasta la estación (redondeado a minutos)."""
     total_seconds = 0
-    # Recorrer tramos hasta llegar a la estación
     for (start, end, base_sec) in TRAMOS:
         total_seconds += base_sec
         if end == station:
             break
-    # Aplicar reducciones por estaciones cerradas que están antes en la ruta
+    stations_order = ["montepo", "fontana", "nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "giovanni", "stesicoro"]
     for closed in CLOSED_STATIONS:
         if closed["station"] == station:
-            continue  # no restamos por la propia estación (si está cerrada, ya no para)
-        # Verificar si esta estación cerrada está antes en la ruta
-        # Para simplificar, asumimos que solo Giuffrida está cerrada y afecta a tramos posteriores.
-        # Pero para generalizar, comprobamos si la estación cerrada está en la lista de tramos antes de 'station'
-        # Obtenemos todas las estaciones en orden
-        stations_order = ["montepo", "fontana", "nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "giovanni", "stesicoro"]
-        if station in stations_order and closed["station"] in stations_order:
+            continue
+        if closed["station"] in stations_order and station in stations_order:
             if stations_order.index(closed["station"]) < stations_order.index(station):
                 if is_station_closed(closed["station"], now):
                     total_seconds -= closed["reduction_seconds"]
-    # Redondear a minutos (ceil) para no perder tiempo
-    minutes = (total_seconds + 59) // 60  # redondeo hacia arriba
+    minutes = (total_seconds + 59) // 60
     return minutes
 
 def get_travel_time_from_stesicoro(station: str, now: datetime) -> int:
-    """Calcula los minutos desde Stesicoro hasta la estación (redondeado a minutos)."""
-    # Tiempo total Monte Po -> Stesicoro = 20 minutos = 1200 segundos
     total_montepo_to_stesicoro = 20 * 60
     montepo_to_station = get_travel_time_from_montepo(station, now) * 60
     stesicoro_to_station = total_montepo_to_stesicoro - montepo_to_station
@@ -104,7 +94,6 @@ def get_travel_time_from_stesicoro(station: str, now: datetime) -> int:
     return max(0, minutes)
 
 def build_tiempos_estacion(now: datetime) -> Dict[str, Tuple[int, int]]:
-    """Construye el diccionario TIEMPOS_ESTACION dinámicamente según la fecha."""
     result = {}
     stations_order = ["montepo", "fontana", "nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "giovanni", "stesicoro"]
     for station in stations_order:
@@ -113,14 +102,6 @@ def build_tiempos_estacion(now: datetime) -> Dict[str, Tuple[int, int]]:
         result[station] = (t_mp, t_st)
     return result
 
-# Diccionario que se actualizará según la fecha (se llama desde get_next_train_at_station)
-_current_tiempos = None
-def get_tiempos_estacion(now: datetime) -> Dict[str, Tuple[int, int]]:
-    global _current_tiempos
-    # Para simplificar, no hacemos caché compleja; lo calculamos cada vez
-    return build_tiempos_estacion(now)
-
-# Nombres para mostrar (sin cambios)
 NOMBRE_MOSTRAR = {
     "montepo": "Monte Po",
     "fontana": "Fontana",
@@ -137,7 +118,7 @@ NOMBRE_MOSTRAR = {
 }
 
 # ============================================================================
-# IMÁGENES DE LAS ESTACIONES (sin cambios)
+# IMÁGENES DE LAS ESTACIONES
 # ============================================================================
 STATION_IMAGE = {
     "montepo": "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/st_montepo.jpg",
@@ -154,7 +135,33 @@ STATION_IMAGE = {
     "stesicoro": "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/st_stesicoro.jpg",
 }
 
-# Convertir strings "HH:MM" a objetos time (sin cambios)
+STATION_IMAGE_BW = {
+    "montepo": "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/st_montepo_bw.jpg",
+    "fontana": "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/st_fontana_bw.jpg",
+    "nesima": "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/st_nesima_bw.jpg",
+    "sannullo": "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/st_sannullo_bw.jpg",
+    "cibali": "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/st_cibali_bw.jpg",
+    "milo": "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/st_milo_bw.jpg",
+    "borgo": "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/st_borgo_bw.jpg",
+    "giuffrida": "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/st_giuffrida_bw.jpg",
+    "italia": "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/st_italia_bw.jpg",
+    "galatea": "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/st_galatea_bw.jpg",
+    "giovanni": "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/st_giovanni_bw.jpg",
+    "stesicoro": "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/st_stesicoro_bw.jpg",
+}
+
+def get_station_image(estacion_key: str, now: datetime) -> str:
+    """Devuelve la URL de la imagen (color si la estación está abierta, B/N si está cerrada), con parámetro anti-caché."""
+    if is_station_closed(estacion_key, now):
+        base_url = STATION_IMAGE_BW.get(estacion_key, STATION_IMAGE.get(estacion_key))
+    else:
+        base_url = STATION_IMAGE.get(estacion_key)
+    if not base_url:
+        return None
+    cache_buster = int(time.time())
+    return f"{base_url}?v={cache_buster}"
+
+# Convertir strings "HH:MM" a objetos time
 def str_to_time(t_str: str) -> time:
     h, m = map(int, t_str.split(':'))
     return time(h, m)
@@ -171,7 +178,7 @@ SCHEDULES = convert_schedule(SCHEDULE_DATA)
 CATANIA_TZ = pytz.timezone('Europe/Rome')
 
 # ============================================================================
-# FUNCIONES PARA SANT'AGATA (sin cambios)
+# FUNCIONES PARA SANT'AGATA
 # ============================================================================
 def is_sant_agata(now: datetime) -> bool:
     return (now.month == SANT_AGATA["month"] and 
@@ -234,7 +241,7 @@ def get_next_departure_sant_agata(station: str, now: datetime) -> Tuple[Optional
     return (next_dt, sec // 60, sec % 60, True)
 
 # ============================================================================
-# DÍAS FESTIVOS NACIONALES Y NOCHEVIEJA (sin cambios)
+# DÍAS FESTIVOS NACIONALES Y NOCHEVIEJA
 # ============================================================================
 FESTIVI_NAZIONALI = [
     (1, 1), (1, 6), (4, 25), (5, 1), (6, 2), (8, 15), (11, 1), (12, 8), (12, 26)
@@ -296,7 +303,7 @@ def get_next_departure_new_years_eve(station: str, now: datetime) -> Tuple[Optio
     return (next_dt, sec // 60, sec % 60, True)
 
 # ============================================================================
-# CIERRES TOTALES (NAVIDAD, PASCUA) - sin cambios
+# CIERRES TOTALES (NAVIDAD, PASCUA)
 # ============================================================================
 def is_christmas(now: datetime) -> bool:
     return (now.month == CLOSED_ALL_DAY["christmas"]["month"] and 
@@ -529,11 +536,10 @@ def get_last_train_message(now: datetime) -> str:
     return f"📌 Ricorda che oggi l'ultima metropolitana da Stesicoro parte alle {last_time}."
 
 # ============================================================================
-# FUNCIONES PARA ESTACIONES INTERMEDIAS (actualizadas para usar tiempos dinámicos)
+# FUNCIONES PARA ESTACIONES INTERMEDIAS
 # ============================================================================
 def get_next_train_at_station(now: datetime, estacion_key: str) -> Tuple[Optional[Tuple], Optional[Tuple]]:
-    # Obtener tiempos dinámicos según la fecha
-    tiempos = get_tiempos_estacion(now)
+    tiempos = build_tiempos_estacion(now)
     if estacion_key not in tiempos:
         return (None, None)
     t_mp, t_st = tiempos[estacion_key]
