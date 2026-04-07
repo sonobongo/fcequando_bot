@@ -8,11 +8,6 @@ import pytz
 CATANIA_TZ = pytz.timezone('Europe/Rome')
 
 # ============================================================================
-# VARIABLES GLOBALES PARA TAREAS ACTIVAS
-# ============================================================================
-active_timers = {}       # chat_id -> task (actualización cada 30 segundos)
-
-# ============================================================================
 # TECLADOS
 # ============================================================================
 keyboard_main = ReplyKeyboardMarkup(
@@ -48,45 +43,6 @@ BOTON_TO_KEY = {
 }
 
 # ============================================================================
-# ACTUALIZACIÓN PERIÓDICA CADA 30 SEGUNDOS (SOLO PARA CABECERAS CON <=4 MINUTOS)
-# ============================================================================
-async def update_binario(chat_id: int, update: Update, context: ContextTypes.DEFAULT_TYPE, station_display: str, dest: str, departure_time: datetime, return_to_main: bool, photo_file_id: str = None):
-    """Envía un mensaje con imagen (si existe) y lo actualiza cada 30 segundos con el tiempo restante."""
-    now = datetime.now(CATANIA_TZ)
-    remaining = departure_time - now
-    mins_rest = int(remaining.total_seconds() // 60)
-    secs_rest = int(remaining.total_seconds() % 60)
-    time_str_rest = format_time(mins_rest, secs_rest)
-    msg_text = f"🚇 Il treno è in binario. Partirà tra **{time_str_rest}**."
-    
-    if photo_file_id:
-        message = await update.message.reply_photo(photo=photo_file_id, caption=msg_text, parse_mode='Markdown', reply_markup=keyboard_main if return_to_main else keyboard_altri)
-    else:
-        message = await update.message.reply_text(msg_text, parse_mode='Markdown', reply_markup=keyboard_main if return_to_main else keyboard_altri)
-    
-    try:
-        while True:
-            await asyncio.sleep(30)
-            now = datetime.now(CATANIA_TZ)
-            remaining = departure_time - now
-            if remaining.total_seconds() <= 0:
-                await message.edit_caption(caption=f"🚇 Il treno per {dest} è partito!")
-                break
-            mins_rest = int(remaining.total_seconds() // 60)
-            secs_rest = int(remaining.total_seconds() % 60)
-            time_str_rest = format_time(mins_rest, secs_rest)
-            new_caption = f"🚇 Il treno è in binario. Partirà tra **{time_str_rest}**."
-            if photo_file_id:
-                await message.edit_caption(caption=new_caption, parse_mode='Markdown')
-            else:
-                await message.edit_text(new_caption, parse_mode='Markdown')
-    except Exception:
-        pass
-    finally:
-        if chat_id in active_timers:
-            del active_timers[chat_id]
-
-# ============================================================================
 # RESPUESTA NORMAL PARA CUALQUIER ESTACIÓN (CON MODO TEST PERSISTENTE)
 # ============================================================================
 async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str, return_to_main: bool = True):
@@ -106,8 +62,9 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
     
     if is_closed_all_day(now):
         msg = f"{special_msg}{test_indicator}🚇 Oggi la metropolitana è chiusa tutto il giorno.\n🕒 Riaprirà domani mattina."
-        if estacion_key in STATION_IMAGE:
-            await update.message.reply_photo(photo=STATION_IMAGE[estacion_key], caption=msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
+        img = get_station_image(estacion_key, now)
+        if img:
+            await update.message.reply_photo(photo=img, caption=msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
         else:
             await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
         return
@@ -126,8 +83,9 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
                 msg = f"{special_msg}{test_indicator}🚇 La metropolitana è chiusa in questo momento. Il primo treno da {station_display} partirà alle {first_train.strftime('%H:%M')}."
             else:
                 msg = f"{special_msg}{test_indicator}🚇 La metropolitana è chiusa in questo momento.\n🕒 Riaprirà alle {next_open.strftime('%H:%M')}."
-            if estacion_key in STATION_IMAGE:
-                await update.message.reply_photo(photo=STATION_IMAGE[estacion_key], caption=msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
+            img = get_station_image(estacion_key, now)
+            if img:
+                await update.message.reply_photo(photo=img, caption=msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
             else:
                 await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
             return
@@ -135,8 +93,9 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
         next_dep, minutes, seconds, has_trains = get_next_departure(station, now)
         if not has_trains:
             msg = f"{special_msg}{test_indicator}🚇 Non ci sono più treni oggi. Il servizio riprenderà domani mattina."
-            if estacion_key in STATION_IMAGE:
-                await update.message.reply_photo(photo=STATION_IMAGE[estacion_key], caption=msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
+            img = get_station_image(estacion_key, now)
+            if img:
+                await update.message.reply_photo(photo=img, caption=msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
             else:
                 await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
             return
@@ -144,33 +103,17 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
         station_display = "Monte Po" if station == "Montepo" else "Stesicoro"
         dest = "Stesicoro" if station == "Montepo" else "Monte Po"
         
-        # Calcular hora de llegada a la estación
-        if station == "Montepo":
-            arrival_time = next_dep
-        else:
-            arrival_time = next_dep - timedelta(minutes=20)
-        
+        # Calcular minutos restantes exactos (sin redondear)
         remaining = next_dep - now
         mins_rest = int(remaining.total_seconds() // 60)
         secs_rest = int(remaining.total_seconds() % 60)
         time_str_rest = format_time(mins_rest, secs_rest)
         
-        # --- CUENTA ATRÁS CON ACTUALIZACIÓN CADA 30 SEGUNDOS (solo en modo REAL y si faltan <=4 minutos) ---
-        if simulated_time is None and mins_rest <= 4 and now >= arrival_time:
-            chat_id = update.effective_chat.id
-            if chat_id in active_timers:
-                active_timers[chat_id].cancel()
-                del active_timers[chat_id]
-            photo_file_id = STATION_IMAGE.get(estacion_key, None)
-            task = asyncio.create_task(update_binario(chat_id, update, context, station_display, dest, next_dep, return_to_main, photo_file_id))
-            active_timers[chat_id] = task
-            return
-        
-        # --- MENSAJE ESTÁTICO (modo test o modo real con más de 4 minutos o antes de la llegada) ---
-        if now >= arrival_time and mins_rest <= 4:
-            # El tren está en andén y faltan 4 minutos o menos
+        # Mostrar mensaje de andén si faltan 4 minutos o menos
+        if mins_rest <= 4:
             msg = f"{special_msg}{test_indicator}🚇 Il treno è in binario. Partirà tra **{time_str_rest}**."
-            if mins_rest <= NEXT_TRAIN_THRESHOLD:
+            # Mostrar siguiente tren si faltan 1 minuto o menos
+            if mins_rest <= 1:
                 next2, min2, sec2, has2 = get_next_departure_after(station, now, next_dep.time())
                 if has2:
                     time_str2 = format_time(min2, sec2)
@@ -178,12 +121,13 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
                 else:
                     msg += f"\n\n🚆 Questo è l'ultimo treno della giornata."
         else:
-            # Mensaje normal (tren aún no ha llegado, o faltan más de 4 minutos)
+            # Mensaje normal (no andén)
             time_str = format_time(minutes, seconds)
             if minutes < SHORT_TIME_THRESHOLD:
                 msg = f"{special_msg}{test_indicator}🚇 Prossimo treno per {dest} parte tra **{time_str}**."
             else:
                 msg = f"{special_msg}{test_indicator}🚇 Prossimo treno per {dest} parte tra **{time_str}**, alle {next_dep.strftime('%H:%M')}."
+            # Mostrar siguiente tren si falta 1 minuto o menos (aunque no esté en andén)
             if minutes <= 1:
                 next2, min2, sec2, has2 = get_next_departure_after(station, now, next_dep.time())
                 if has2:
@@ -195,8 +139,9 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
         last_msg = get_last_train_message(now)
         if last_msg and not is_sant_agata(now):
             msg += f"\n\n{last_msg}"
-        if estacion_key in STATION_IMAGE:
-            await update.message.reply_photo(photo=STATION_IMAGE[estacion_key], caption=msg, reply_markup=keyboard_main if return_to_main else keyboard_altri, parse_mode='Markdown')
+        img = get_station_image(estacion_key, now)
+        if img:
+            await update.message.reply_photo(photo=img, caption=msg, reply_markup=keyboard_main if return_to_main else keyboard_altri, parse_mode='Markdown')
         else:
             await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri, parse_mode='Markdown')
         return
@@ -212,8 +157,9 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
             msg = f"{special_msg}{test_indicator}🚇 La metropolitana è chiusa in questo momento. Il primo treno da Monte Po partirà alle {first_train.strftime('%H:%M')}."
         else:
             msg = f"{special_msg}{test_indicator}🚇 La metropolitana è chiusa in questo momento.\n🕒 Riaprirà alle {next_open.strftime('%H:%M')}."
-        if estacion_key in STATION_IMAGE:
-            await update.message.reply_photo(photo=STATION_IMAGE[estacion_key], caption=msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
+        img = get_station_image(estacion_key, now)
+        if img:
+            await update.message.reply_photo(photo=img, caption=msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
         else:
             await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
         return
@@ -224,23 +170,24 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
     info_mp, info_st = get_next_train_at_station(now, estacion_key)
     nombre = NOMBRE_MOSTRAR.get(estacion_key, estacion_key.capitalize())
     
-    # Si hay mensaje de cierre, se coloca antes del encabezado
     if closing_msg:
         msg = f"{special_msg}{test_indicator}{closing_msg}\n🚆 **Prossimi treni a {nombre}**\n\n"
     else:
         msg = f"{special_msg}{test_indicator}🚆 **Prossimi treni a {nombre}**\n\n"
     
-    # Dirección hacia Monte Po (tren que viene de Stesicoro)
+    # Dirección hacia Monte Po (tren que viene de Stesicoro) - info_st
     if info_st:
         paso_st, mins, secs, next_info = info_st
         time_str = format_time(mins, secs)
         if mins == 0 and secs < 30:
             msg += f"🔺 **Per Monte Po**: treno in arrivo.\n"
         else:
+            # Si faltan menos de 5 minutos, no mostrar la hora
             if mins < SHORT_TIME_THRESHOLD:
                 msg += f"🔺 **Per Monte Po**: Passa tra **{time_str}**.\n"
             else:
                 msg += f"🔺 **Per Monte Po**: Passa tra **{time_str}**, alle {paso_st.strftime('%H:%M')}.\n"
+        # Mostrar siguiente tren si falta 1 minuto o menos
         if mins <= 1 and next_info:
             paso2, mins2, secs2 = next_info
             time_str2 = format_time(mins2, secs2)
@@ -251,7 +198,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
     else:
         msg += f"🔺 **Per Monte Po**: nessun treno in arrivo al momento.\n"
     
-    # Dirección hacia Stesicoro (tren que viene de Monte Po)
+    # Dirección hacia Stesicoro (tren que viene de Monte Po) - info_mp
     if info_mp:
         paso_mp, mins, secs, next_info = info_mp
         time_str = format_time(mins, secs)
@@ -276,8 +223,9 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
     if last_msg and not is_sant_agata(now):
         msg += f"\n{last_msg}"
     
-    if estacion_key in STATION_IMAGE:
-        await update.message.reply_photo(photo=STATION_IMAGE[estacion_key], caption=msg, reply_markup=keyboard_main if return_to_main else keyboard_altri, parse_mode='Markdown')
+    img = get_station_image(estacion_key, now)
+    if img:
+        await update.message.reply_photo(photo=img, caption=msg, reply_markup=keyboard_main if return_to_main else keyboard_altri, parse_mode='Markdown')
     else:
         await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri, parse_mode='Markdown')
 
@@ -330,12 +278,6 @@ async def help_command(update, context):
 
 async def handle_button(update, context):
     text = update.message.text
-    chat_id = update.effective_chat.id
-    
-    if chat_id in active_timers:
-        active_timers[chat_id].cancel()
-        del active_timers[chat_id]
-    
     if text == "Altri":
         await cmd_altri(update, context)
     elif text == "← Menu":
