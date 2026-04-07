@@ -1,6 +1,6 @@
 import os
 import json
-import time as tm
+import time as timer
 from datetime import datetime, time, timedelta, date
 from typing import Tuple, Optional, List, Dict, Any
 import pytz
@@ -157,7 +157,7 @@ def get_station_image(estacion_key: str, now: datetime) -> str:
         base_url = STATION_IMAGE.get(estacion_key)
     if not base_url:
         return None
-    cache_buster = int(tm.time())
+    cache_buster = int(timer.time())
     return f"{base_url}?v={cache_buster}"
 
 # Convertir strings "HH:MM" a objetos time
