@@ -59,7 +59,6 @@ async def update_binario(chat_id: int, update: Update, context: ContextTypes.DEF
     time_str_rest = format_time(mins_rest, secs_rest)
     msg_text = f"🚇 Il treno è in binario. Partirà tra **{time_str_rest}**."
     
-    # Enviar mensaje inicial (con imagen si existe)
     if photo_file_id:
         message = await update.message.reply_photo(photo=photo_file_id, caption=msg_text, parse_mode='Markdown', reply_markup=keyboard_main if return_to_main else keyboard_altri)
     else:
@@ -67,7 +66,7 @@ async def update_binario(chat_id: int, update: Update, context: ContextTypes.DEF
     
     try:
         while True:
-            await asyncio.sleep(30)  # espera 30 segundos
+            await asyncio.sleep(30)
             now = datetime.now(CATANIA_TZ)
             remaining = departure_time - now
             if remaining.total_seconds() <= 0:
@@ -159,22 +158,18 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
         # --- CUENTA ATRÁS CON ACTUALIZACIÓN CADA 30 SEGUNDOS (solo en modo REAL y si faltan <=4 minutos) ---
         if simulated_time is None and mins_rest <= 4 and now >= arrival_time:
             chat_id = update.effective_chat.id
-            # Cancelar temporizador anterior si existe
             if chat_id in active_timers:
                 active_timers[chat_id].cancel()
                 del active_timers[chat_id]
-            # Obtener file_id de la imagen (si existe) para reutilizarla en las actualizaciones
             photo_file_id = STATION_IMAGE.get(estacion_key, None)
-            # Crear nueva tarea
             task = asyncio.create_task(update_binario(chat_id, update, context, station_display, dest, next_dep, return_to_main, photo_file_id))
             active_timers[chat_id] = task
-            # No enviamos mensaje adicional (la tarea envía el suyo propio)
             return
-        # --- FIN CUENTA ATRÁS ---
         
-        # Si no se activó la cuenta atrás, mostrar mensaje normal (estático)
-        if now >= arrival_time and now < next_dep:
-            # Mensaje de andén (solo si faltan más de 4 minutos, o es modo test)
+        # --- MENSAJE ESTÁTICO (modo test o modo real con más de 4 minutos o antes de la llegada) ---
+        # Determinar si debemos mostrar el mensaje de "in binario" solo si mins_rest <= 4
+        if now >= arrival_time and mins_rest <= 4:
+            # El tren está en andén y faltan 4 minutos o menos
             msg = f"{special_msg}{test_indicator}🚇 Il treno è in binario. Partirà tra **{time_str_rest}**."
             if mins_rest <= NEXT_TRAIN_THRESHOLD:
                 next2, min2, sec2, has2 = get_next_departure_after(station, now, next_dep.time())
@@ -184,7 +179,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
                 else:
                     msg += f"\n\n🚆 Questo è l'ultimo treno della giornata."
         else:
-            # Mensaje normal (tren aún no ha llegado)
+            # Mensaje normal (tren aún no ha llegado, o faltan más de 4 minutos)
             time_str = format_time(minutes, seconds)
             if minutes < SHORT_TIME_THRESHOLD:
                 msg = f"{special_msg}{test_indicator}🚇 Prossimo treno per {dest} parte tra **{time_str}**."
@@ -207,7 +202,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
             await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri, parse_mode='Markdown')
         return
     
-    # Estaciones intermedias
+    # Estaciones intermedias (sin cambios)
     closed, next_open = is_metro_closed(now, "Montepo")
     if closed:
         mins_to_open = int((next_open - now).total_seconds() // 60)
@@ -330,7 +325,6 @@ async def handle_button(update, context):
     text = update.message.text
     chat_id = update.effective_chat.id
     
-    # Cancelar cualquier temporizador automático activo en este chat
     if chat_id in active_timers:
         active_timers[chat_id].cancel()
         del active_timers[chat_id]
