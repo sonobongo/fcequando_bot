@@ -28,50 +28,63 @@ NEXT_TRAIN_THRESHOLD = CONFIG["next_train_threshold"]
 # ============================================================================
 # TIEMPOS BASE ENTRE ESTACIONES (en segundos)
 # ============================================================================
-TRAMOS = [
+# Dirección Monte Po -> Stesicoro (IDA)
+FORWARD_TRAMOS = [
     ("montepo", "fontana", 87),    # 1:27
     ("fontana", "nesima", 87),     # 1:27
     ("nesima", "sannullo", 98),    # 1:38
     ("sannullo", "cibali", 93),    # 1:33
     ("cibali", "milo", 101),       # 1:41
-    ("milo", "borgo", 100),        # 1:40
-    ("borgo", "giuffrida", 118),   # 1:58 (normal)
-    ("giuffrida", "italia", 60),   # 1:00
-    ("italia", "galatea", 120),    # 2:00
-    ("galatea", "giovanni", 60),   # 1:00
-    ("giovanni", "stesicoro", 180) # 3:00
+    ("milo", "borgo", 120),        # 2:00
+    ("borgo", "giuffrida", 119),   # 1:59 (con parada)
+    ("giuffrida", "italia", 106),  # 1:46
+    ("italia", "galatea", 125),    # 2:05
+    ("galatea", "giovanni", 179),  # 2:59
+    ("giovanni", "stesicoro", 139) # 2:19
 ]
 
-# Conjunto de tramos que se ven afectados por el incremento matutino (de Milo a Giovanni)
-TRAMOS_EXTRA = {
+# Dirección Stesicoro -> Monte Po (VUELTA)
+REVERSE_TRAMOS = [
+    ("stesicoro", "giovanni", 166),   # 2:46
+    ("giovanni", "galatea", 134),     # 2:14
+    ("galatea", "italia", 85),        # 1:25
+    ("italia", "giuffrida", 112),     # 1:52 (con parada, base)
+    ("giuffrida", "borgo", 85),       # 1:25
+    ("borgo", "milo", 106),           # 1:46
+    ("milo", "cibali", 101),          # 1:41 (simétrico ida)
+    ("cibali", "sannullo", 93),       # 1:33
+    ("sannullo", "nesima", 98),       # 1:38
+    ("nesima", "fontana", 87),        # 1:27
+    ("fontana", "montepo", 87)        # 1:27
+]
+
+# Conjunto de tramos de IDA que se ven afectados por el incremento matutino (de Milo a Giovanni)
+EXTRA_TRAMOS = {
     ("milo", "borgo"),
     ("borgo", "giuffrida"),
     ("giuffrida", "italia"),
     ("italia", "galatea"),
     ("galatea", "giovanni")
 }
-EXTRA_SEGUNDOS = 15  # segundos adicionales por estación
+EXTRA_SEGUNDOS = 15  # segundos adicionales por estación en hora punta
 
 def is_extra_time_applicable(now: datetime) -> bool:
     """
-    Determina si se deben añadir los segundos extra (15 por estación) en el tramo Milo-Giovanni.
+    Determina si se deben añadir los segundos extra (15 por estación) en los tramos de IDA
+    desde Milo hasta Giovanni.
     Condiciones:
     - De lunes a viernes (no sábado ni domingo)
     - No es festivo nacional (ni Sant'Agata, etc.)
     - Mes entre septiembre y junio (9,10,11,12,1,2,3,4,5,6)
     - Hora entre 7:00 y 9:00 (inclusive)
     """
-    # Día de la semana: lunes=0, viernes=4, sábado=5, domingo=6
     if now.weekday() >= 5:  # sábado o domingo
         return False
-    # Festivo nacional (incluye lunes de Pascua, etc.)
     if is_festivo_nazionale(now):
         return False
-    # Mes: septiembre (9) a junio (6) -> meses 9,10,11,12,1,2,3,4,5,6
     month = now.month
     if not (month >= 9 or month <= 6):
         return False
-    # Hora: entre 7:00 y 9:00 (incluyendo 7:00 y 9:00)
     hour = now.hour
     if not (7 <= hour <= 9):
         return False
@@ -105,17 +118,16 @@ def get_closing_message(station: str, now: datetime) -> str:
     return ""
 
 def get_travel_time_from_montepo(station: str, now: datetime) -> int:
+    """Calcula los minutos desde Monte Po hasta la estación (dirección IDA)."""
     total_seconds = 0
     extra_applies = is_extra_time_applicable(now)
-    for (start, end, base_sec) in TRAMOS:
-        # Añadir tiempo base
+    for (start, end, base_sec) in FORWARD_TRAMOS:
         total_seconds += base_sec
-        # Si el tramo está en los afectados y aplica extra, añadir EXTRA_SEGUNDOS
-        if extra_applies and (start, end) in TRAMOS_EXTRA:
+        if extra_applies and (start, end) in EXTRA_TRAMOS:
             total_seconds += EXTRA_SEGUNDOS
         if end == station:
             break
-    # Aplicar reducciones por estaciones cerradas (Giuffrida)
+    # Aplicar reducciones por estaciones cerradas que están antes en la ruta
     stations_order = ["montepo", "fontana", "nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "giovanni", "stesicoro"]
     for closed in CLOSED_STATIONS:
         if closed["station"] == station:
@@ -128,10 +140,23 @@ def get_travel_time_from_montepo(station: str, now: datetime) -> int:
     return minutes
 
 def get_travel_time_from_stesicoro(station: str, now: datetime) -> int:
-    total_montepo_to_stesicoro = get_travel_time_from_montepo("stesicoro", now) * 60
-    montepo_to_station = get_travel_time_from_montepo(station, now) * 60
-    stesicoro_to_station = total_montepo_to_stesicoro - montepo_to_station
-    minutes = (stesicoro_to_station + 59) // 60
+    """Calcula los minutos desde Stesicoro hasta la estación (dirección VUELTA)."""
+    total_seconds = 0
+    for (start, end, base_sec) in REVERSE_TRAMOS:
+        total_seconds += base_sec
+        if end == station:
+            break
+    # Aplicar reducciones por estaciones cerradas que están antes en la ruta
+    # Para la vuelta, el orden inverso: stesicoro, giovanni, galatea, italia, giuffrida, borgo, milo, cibali, sannullo, nesima, fontana, montepo
+    stations_order_reverse = ["stesicoro", "giovanni", "galatea", "italia", "giuffrida", "borgo", "milo", "cibali", "sannullo", "nesima", "fontana", "montepo"]
+    for closed in CLOSED_STATIONS:
+        if closed["station"] == station:
+            continue
+        if closed["station"] in stations_order_reverse and station in stations_order_reverse:
+            if stations_order_reverse.index(closed["station"]) < stations_order_reverse.index(station):
+                if is_station_closed(closed["station"], now):
+                    total_seconds -= closed["reduction_seconds"]
+    minutes = (total_seconds + 59) // 60
     return max(0, minutes)
 
 def build_tiempos_estacion(now: datetime) -> Dict[str, Tuple[int, int]]:
@@ -545,14 +570,12 @@ def get_next_departure_after(station: str, now: datetime, after_time: time) -> T
     return (None, 0, 0, False)
 
 def format_time(minutes: int, seconds: int) -> str:
-    # Regla: redondear al alza a 30 segundos o minutos
     if minutes >= SHORT_TIME_THRESHOLD:
         return f"{minutes} minuti"
     if minutes == 0:
         if seconds == 0:
             return "subito"
         else:
-            # Redondeamos a 30 segundos (nunca decimos "meno di un minuto")
             return "30 secondi"
     elif minutes == 1:
         if seconds < 30:
@@ -586,7 +609,7 @@ def get_next_train_at_station(now: datetime, estacion_key: str) -> Tuple[Optiona
         return (None, None)
     t_mp, t_st = tiempos[estacion_key]
     
-    # Dirección Monte Po -> Stesicoro
+    # Dirección Monte Po -> Stesicoro (IDA)
     info_mp = None
     closed_mp, _ = is_metro_closed(now, "Montepo")
     if not closed_mp:
@@ -616,7 +639,7 @@ def get_next_train_at_station(now: datetime, estacion_key: str) -> Tuple[Optiona
                 next_info = (next_paso2, mins2, secs2)
             info_mp = (next_paso, mins_rest, secs_rest, next_info)
     
-    # Dirección Stesicoro -> Monte Po
+    # Dirección Stesicoro -> Monte Po (VUELTA)
     info_st = None
     closed_st, _ = is_metro_closed(now, "Stesicoro")
     if not closed_st:
