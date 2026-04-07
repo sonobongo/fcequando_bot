@@ -28,11 +28,6 @@ NEXT_TRAIN_THRESHOLD = CONFIG["next_train_threshold"]
 # ============================================================================
 # TIEMPOS BASE ENTRE ESTACIONES (en segundos) - SIN incremento de hora punta
 # ============================================================================
-# Los tiempos que me diste (FORWARD_PEAK y REVERSE_PEAK) ya incluyen +15 segundos por tramo.
-# Aquí definimos los tiempos BASE restando esos 15 segundos a los tramos afectados.
-# Tramos afectados: desde Milo hasta Giovanni (ida) y desde Giovanni hasta Milo (vuelta).
-
-# Dirección Monte Po -> Stesicoro (IDA) - tiempos en hora punta (los que me diste)
 FORWARD_PEAK = [
     ("montepo", "fontana", 87),
     ("fontana", "nesima", 87),
@@ -47,7 +42,6 @@ FORWARD_PEAK = [
     ("giovanni", "stesicoro", 139)
 ]
 
-# Dirección Stesicoro -> Monte Po (VUELTA) - tiempos en hora punta (los que me diste)
 REVERSE_PEAK = [
     ("stesicoro", "giovanni", 166),
     ("giovanni", "galatea", 134),
@@ -62,7 +56,6 @@ REVERSE_PEAK = [
     ("fontana", "montepo", 87)
 ]
 
-# Tramos afectados por el incremento de 15 segundos (en ida y vuelta)
 EXTRA_TRAMOS_FORWARD = [("milo","borgo"), ("borgo","giuffrida"), ("giuffrida","italia"), ("italia","galatea"), ("galatea","giovanni")]
 EXTRA_TRAMOS_REVERSE = [("giovanni","galatea"), ("galatea","italia"), ("italia","giuffrida"), ("giuffrida","borgo"), ("borgo","milo")]
 
@@ -70,15 +63,7 @@ EXTRA_TRAMOS_REVERSE = [("giovanni","galatea"), ("galatea","italia"), ("italia",
 # DETECCIÓN DE HORA PUNTA
 # ============================================================================
 def is_peak_hour(now: datetime) -> bool:
-    """
-    Retorna True si se deben añadir los 15 segundos por tramo.
-    Condiciones:
-    - De lunes a viernes (weekday 0-4)
-    - No es festivo nacional
-    - Mes entre septiembre y junio (9,10,11,12,1,2,3,4,5,6)
-    - Hora entre 7:00 y 9:00 (inclusive)
-    """
-    if now.weekday() >= 5:  # sábado o domingo
+    if now.weekday() >= 5:
         return False
     if is_festivo_nazionale(now):
         return False
@@ -91,18 +76,15 @@ def is_peak_hour(now: datetime) -> bool:
     return True
 
 def get_travel_time_from_montepo(station: str, now: datetime) -> int:
-    """Calcula los minutos desde Monte Po hasta la estación (dirección IDA)."""
     total_seconds = 0
     peak = is_peak_hour(now)
     for (start, end, base_sec) in FORWARD_PEAK:
         sec = base_sec
-        # Si NO es hora punta y el tramo está en los afectados, restamos 15 segundos
         if not peak and (start, end) in EXTRA_TRAMOS_FORWARD:
             sec -= 15
         total_seconds += sec
         if end == station:
             break
-    # Aplicar reducciones por estaciones cerradas
     stations_order = ["montepo", "fontana", "nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "giovanni", "stesicoro"]
     for closed in CLOSED_STATIONS:
         if closed["station"] == station:
@@ -115,7 +97,6 @@ def get_travel_time_from_montepo(station: str, now: datetime) -> int:
     return minutes
 
 def get_travel_time_from_stesicoro(station: str, now: datetime) -> int:
-    """Calcula los minutos desde Stesicoro hasta la estación (dirección VUELTA)."""
     total_seconds = 0
     peak = is_peak_hour(now)
     for (start, end, base_sec) in REVERSE_PEAK:
@@ -125,7 +106,6 @@ def get_travel_time_from_stesicoro(station: str, now: datetime) -> int:
         total_seconds += sec
         if end == station:
             break
-    # Aplicar reducciones por estaciones cerradas
     stations_order_reverse = ["stesicoro", "giovanni", "galatea", "italia", "giuffrida", "borgo", "milo", "cibali", "sannullo", "nesima", "fontana", "montepo"]
     for closed in CLOSED_STATIONS:
         if closed["station"] == station:
@@ -475,13 +455,17 @@ def get_closing_time(now: datetime, station: str) -> Tuple[int, int]:
         else:
             return (22, 30)
 
-def is_metro_closed(now: datetime, station: str) -> Tuple[bool, Optional[datetime]]:
+def is_metro_closed(now: datetime, station: str) -> Tuple[bool, Optional[datetime], str]:
+    """
+    Retorna (cerrado, próxima_apertura, mensaje_especial)
+    """
     if is_closed_all_day(now):
         tomorrow = now + timedelta(days=1)
         open_h, open_m = get_opening_time(tomorrow, station)
         next_open = datetime.combine(tomorrow.date(), time(open_h, open_m))
         next_open = CATANIA_TZ.localize(next_open)
-        return (True, next_open)
+        # Mensaje especial para cierre total
+        return (True, next_open, "")
     
     current_time = now.time()
     open_h, open_m = get_opening_time(now, station)
@@ -489,15 +473,22 @@ def is_metro_closed(now: datetime, station: str) -> Tuple[bool, Optional[datetim
     opening_time = time(open_h, open_m)
     closing_time = time(close_h, close_m)
     
+    # Verificar si el servicio está cerrado (fuera de horario)
     if close_h < open_h or (close_h == open_h and close_m < open_m):
         if current_time >= opening_time or current_time < closing_time:
-            return (False, None)
+            return (False, None, "")
         else:
             next_open = datetime.combine(now.date(), opening_time)
             if next_open <= now:
                 next_open = datetime.combine(now.date() + timedelta(days=1), opening_time)
             next_open = CATANIA_TZ.localize(next_open)
-            return (True, next_open)
+            # Determinar mensaje especial para viernes/sábado o Nochevieja
+            special_msg = ""
+            if is_new_years_eve(now):
+                special_msg = "Non ci sono informazioni disponibili. Ricorda che oggi l'ultima metropolitana è partita alle 03:00."
+            elif now.weekday() in [4, 5]:  # viernes o sábado
+                special_msg = "Non ci sono informazioni disponibili. Ricorda che oggi l'ultima metropolitana è partita alle 01:00."
+            return (True, next_open, special_msg)
     else:
         if current_time >= closing_time or current_time < opening_time:
             if current_time < opening_time:
@@ -505,8 +496,13 @@ def is_metro_closed(now: datetime, station: str) -> Tuple[bool, Optional[datetim
             else:
                 next_open = datetime.combine(now.date() + timedelta(days=1), opening_time)
             next_open = CATANIA_TZ.localize(next_open)
-            return (True, next_open)
-        return (False, None)
+            special_msg = ""
+            if is_new_years_eve(now):
+                special_msg = "Non ci sono informazioni disponibili. Ricorda che oggi l'ultima metropolitana è partita alle 03:00."
+            elif now.weekday() in [4, 5]:
+                special_msg = "Non ci sono informazioni disponibili. Ricorda che oggi l'ultima metropolitana è partita alle 01:00."
+            return (True, next_open, special_msg)
+        return (False, None, "")
 
 def get_schedule_list(station: str, now: datetime) -> List[time]:
     if is_festivo_nazionale(now):
