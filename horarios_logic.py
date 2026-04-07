@@ -1,6 +1,6 @@
 import os
 import json
-import time
+import time as tm
 from datetime import datetime, time, timedelta, date
 from typing import Tuple, Optional, List, Dict, Any
 import pytz
@@ -151,14 +151,13 @@ STATION_IMAGE_BW = {
 }
 
 def get_station_image(estacion_key: str, now: datetime) -> str:
-    """Devuelve la URL de la imagen (color si la estación está abierta, B/N si está cerrada), con parámetro anti-caché."""
     if is_station_closed(estacion_key, now):
         base_url = STATION_IMAGE_BW.get(estacion_key, STATION_IMAGE.get(estacion_key))
     else:
         base_url = STATION_IMAGE.get(estacion_key)
     if not base_url:
         return None
-    cache_buster = int(time.time())
+    cache_buster = int(tm.time())
     return f"{base_url}?v={cache_buster}"
 
 # Convertir strings "HH:MM" a objetos time
