@@ -167,7 +167,6 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
             return
         
         # --- MENSAJE ESTÁTICO (modo test o modo real con más de 4 minutos o antes de la llegada) ---
-        # Determinar si debemos mostrar el mensaje de "in binario" solo si mins_rest <= 4
         if now >= arrival_time and mins_rest <= 4:
             # El tren está en andén y faltan 4 minutos o menos
             msg = f"{special_msg}{test_indicator}🚇 Il treno è in binario. Partirà tra **{time_str_rest}**."
@@ -202,7 +201,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
             await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri, parse_mode='Markdown')
         return
     
-    # Estaciones intermedias (sin cambios)
+    # Estaciones intermedias
     closed, next_open = is_metro_closed(now, "Montepo")
     if closed:
         mins_to_open = int((next_open - now).total_seconds() // 60)
@@ -219,9 +218,17 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
             await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
         return
     
+    # Añadir mensaje de cierre de estación (si aplica)
+    closing_msg = get_closing_message(estacion_key, now)
+    
     info_mp, info_st = get_next_train_at_station(now, estacion_key)
     nombre = NOMBRE_MOSTRAR.get(estacion_key, estacion_key.capitalize())
-    msg = f"{special_msg}{test_indicator}🚆 **Prossimi treni a {nombre}**\n\n"
+    
+    # Si hay mensaje de cierre, se coloca antes del encabezado
+    if closing_msg:
+        msg = f"{special_msg}{test_indicator}{closing_msg}\n🚆 **Prossimi treni a {nombre}**\n\n"
+    else:
+        msg = f"{special_msg}{test_indicator}🚆 **Prossimi treni a {nombre}**\n\n"
     
     # Dirección hacia Monte Po (tren que viene de Stesicoro)
     if info_st:
