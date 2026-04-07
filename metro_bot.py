@@ -6,6 +6,9 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters
 from horarios_logic import *
 from handlers import *
 
+# ============================================================================
+# SERVIDOR WEB (Flask) PARA RESPONDER A PINGS DE UPTIMEROBOT
+# ============================================================================
 flask_app = Flask(__name__)
 
 @flask_app.route('/')
@@ -17,6 +20,9 @@ def run_flask():
     port = int(os.environ.get('PORT', 8080))
     flask_app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
 
+# ============================================================================
+# LOGGING Y MAIN
+# ============================================================================
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -26,10 +32,12 @@ def main():
         logger.error("Token mancante")
         return
 
+    # Iniciar el servidor Flask en un hilo separado
     flask_thread = threading.Thread(target=run_flask, daemon=True)
     flask_thread.start()
     logger.info("Flask server avviato sulla porta 8080")
 
+    # Construir la aplicación de Telegram
     app = Application.builder().token(TOKEN).build()
     for cmd, handler in [
         ("start", start), ("help", help_command), ("montepo", cmd_montepo), ("stesicoro", cmd_stesicoro),
@@ -42,7 +50,7 @@ def main():
     app.add_handler(MessageHandler(filters.Text(["Monte Po", "Stesicoro", "Altri", "← Menu", "Fontana", "Nesima", "San Nullo", "Cibali", "Milo", "Borgo", "Giuffrida", "Italia", "Galatea", "Giovanni XXIII"]), handle_button))
     
     import time
-    time.sleep(2)
+    time.sleep(2)  # Pequeña pausa para evitar conflictos con webhooks residuales
     
     logger.info("Bot avviato. Premi Ctrl+C per fermare.")
     print("Bot funzionante... In attesa di messaggi.")
