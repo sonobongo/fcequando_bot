@@ -42,6 +42,41 @@ TRAMOS = [
     ("giovanni", "stesicoro", 180) # 3:00
 ]
 
+# Conjunto de tramos que se ven afectados por el incremento matutino (de Milo a Giovanni)
+TRAMOS_EXTRA = {
+    ("milo", "borgo"),
+    ("borgo", "giuffrida"),
+    ("giuffrida", "italia"),
+    ("italia", "galatea"),
+    ("galatea", "giovanni")
+}
+EXTRA_SEGUNDOS = 15  # segundos adicionales por estación
+
+def is_extra_time_applicable(now: datetime) -> bool:
+    """
+    Determina si se deben añadir los segundos extra (15 por estación) en el tramo Milo-Giovanni.
+    Condiciones:
+    - De lunes a viernes (no sábado ni domingo)
+    - No es festivo nacional (ni Sant'Agata, etc.)
+    - Mes entre septiembre y junio (9,10,11,12,1,2,3,4,5,6)
+    - Hora entre 7:00 y 9:00 (inclusive)
+    """
+    # Día de la semana: lunes=0, viernes=4, sábado=5, domingo=6
+    if now.weekday() >= 5:  # sábado o domingo
+        return False
+    # Festivo nacional (incluye lunes de Pascua, etc.)
+    if is_festivo_nazionale(now):
+        return False
+    # Mes: septiembre (9) a junio (6) -> meses 9,10,11,12,1,2,3,4,5,6
+    month = now.month
+    if not (month >= 9 or month <= 6):
+        return False
+    # Hora: entre 7:00 y 9:00 (incluyendo 7:00 y 9:00)
+    hour = now.hour
+    if not (7 <= hour <= 9):
+        return False
+    return True
+
 # ============================================================================
 # CIERRE TEMPORAL DE ESTACIONES
 # ============================================================================
@@ -71,10 +106,16 @@ def get_closing_message(station: str, now: datetime) -> str:
 
 def get_travel_time_from_montepo(station: str, now: datetime) -> int:
     total_seconds = 0
+    extra_applies = is_extra_time_applicable(now)
     for (start, end, base_sec) in TRAMOS:
+        # Añadir tiempo base
         total_seconds += base_sec
+        # Si el tramo está en los afectados y aplica extra, añadir EXTRA_SEGUNDOS
+        if extra_applies and (start, end) in TRAMOS_EXTRA:
+            total_seconds += EXTRA_SEGUNDOS
         if end == station:
             break
+    # Aplicar reducciones por estaciones cerradas (Giuffrida)
     stations_order = ["montepo", "fontana", "nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "giovanni", "stesicoro"]
     for closed in CLOSED_STATIONS:
         if closed["station"] == station:
@@ -87,7 +128,7 @@ def get_travel_time_from_montepo(station: str, now: datetime) -> int:
     return minutes
 
 def get_travel_time_from_stesicoro(station: str, now: datetime) -> int:
-    total_montepo_to_stesicoro = 20 * 60
+    total_montepo_to_stesicoro = get_travel_time_from_montepo("stesicoro", now) * 60
     montepo_to_station = get_travel_time_from_montepo(station, now) * 60
     stesicoro_to_station = total_montepo_to_stesicoro - montepo_to_station
     minutes = (stesicoro_to_station + 59) // 60
@@ -504,12 +545,14 @@ def get_next_departure_after(station: str, now: datetime, after_time: time) -> T
     return (None, 0, 0, False)
 
 def format_time(minutes: int, seconds: int) -> str:
+    # Regla: redondear al alza a 30 segundos o minutos
     if minutes >= SHORT_TIME_THRESHOLD:
         return f"{minutes} minuti"
     if minutes == 0:
-        if seconds < 30:
-            return "meno di un minuto"
+        if seconds == 0:
+            return "subito"
         else:
+            # Redondeamos a 30 segundos (nunca decimos "meno di un minuto")
             return "30 secondi"
     elif minutes == 1:
         if seconds < 30:
