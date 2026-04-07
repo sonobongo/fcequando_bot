@@ -26,55 +26,55 @@ SHORT_TIME_THRESHOLD = CONFIG["short_time_threshold"]
 NEXT_TRAIN_THRESHOLD = CONFIG["next_train_threshold"]
 
 # ============================================================================
-# TIEMPOS BASE ENTRE ESTACIONES (en segundos)
+# TIEMPOS BASE ENTRE ESTACIONES (en segundos) - SIN incremento de hora punta
 # ============================================================================
-# Dirección Monte Po -> Stesicoro (IDA)
-FORWARD_TRAMOS = [
-    ("montepo", "fontana", 87),    # 1:27
-    ("fontana", "nesima", 87),     # 1:27
-    ("nesima", "sannullo", 98),    # 1:38
-    ("sannullo", "cibali", 93),    # 1:33
-    ("cibali", "milo", 101),       # 1:41
-    ("milo", "borgo", 120),        # 2:00
-    ("borgo", "giuffrida", 119),   # 1:59 (con parada)
-    ("giuffrida", "italia", 106),  # 1:46
-    ("italia", "galatea", 125),    # 2:05
-    ("galatea", "giovanni", 179),  # 2:59
-    ("giovanni", "stesicoro", 139) # 2:19
+# Los tiempos que me diste (FORWARD_PEAK y REVERSE_PEAK) ya incluyen +15 segundos por tramo.
+# Aquí definimos los tiempos BASE restando esos 15 segundos a los tramos afectados.
+# Tramos afectados: desde Milo hasta Giovanni (ida) y desde Giovanni hasta Milo (vuelta).
+
+# Dirección Monte Po -> Stesicoro (IDA) - tiempos en hora punta (los que me diste)
+FORWARD_PEAK = [
+    ("montepo", "fontana", 87),
+    ("fontana", "nesima", 87),
+    ("nesima", "sannullo", 98),
+    ("sannullo", "cibali", 93),
+    ("cibali", "milo", 101),
+    ("milo", "borgo", 120),
+    ("borgo", "giuffrida", 119),
+    ("giuffrida", "italia", 106),
+    ("italia", "galatea", 125),
+    ("galatea", "giovanni", 179),
+    ("giovanni", "stesicoro", 139)
 ]
 
-# Dirección Stesicoro -> Monte Po (VUELTA)
-REVERSE_TRAMOS = [
-    ("stesicoro", "giovanni", 166),   # 2:46
-    ("giovanni", "galatea", 134),     # 2:14
-    ("galatea", "italia", 85),        # 1:25
-    ("italia", "giuffrida", 112),     # 1:52 (con parada, base)
-    ("giuffrida", "borgo", 85),       # 1:25
-    ("borgo", "milo", 106),           # 1:46
-    ("milo", "cibali", 101),          # 1:41 (simétrico ida)
-    ("cibali", "sannullo", 93),       # 1:33
-    ("sannullo", "nesima", 98),       # 1:38
-    ("nesima", "fontana", 87),        # 1:27
-    ("fontana", "montepo", 87)        # 1:27
+# Dirección Stesicoro -> Monte Po (VUELTA) - tiempos en hora punta (los que me diste)
+REVERSE_PEAK = [
+    ("stesicoro", "giovanni", 166),
+    ("giovanni", "galatea", 134),
+    ("galatea", "italia", 85),
+    ("italia", "giuffrida", 112),
+    ("giuffrida", "borgo", 85),
+    ("borgo", "milo", 106),
+    ("milo", "cibali", 101),
+    ("cibali", "sannullo", 93),
+    ("sannullo", "nesima", 98),
+    ("nesima", "fontana", 87),
+    ("fontana", "montepo", 87)
 ]
 
-# Conjunto de tramos de IDA que se ven afectados por el incremento matutino (de Milo a Giovanni)
-EXTRA_TRAMOS = {
-    ("milo", "borgo"),
-    ("borgo", "giuffrida"),
-    ("giuffrida", "italia"),
-    ("italia", "galatea"),
-    ("galatea", "giovanni")
-}
-EXTRA_SEGUNDOS = 15  # segundos adicionales por estación en hora punta
+# Tramos afectados por el incremento de 15 segundos (en ida y vuelta)
+EXTRA_TRAMOS_FORWARD = [("milo","borgo"), ("borgo","giuffrida"), ("giuffrida","italia"), ("italia","galatea"), ("galatea","giovanni")]
+EXTRA_TRAMOS_REVERSE = [("giovanni","galatea"), ("galatea","italia"), ("italia","giuffrida"), ("giuffrida","borgo"), ("borgo","milo")]
 
-def is_extra_time_applicable(now: datetime) -> bool:
+# ============================================================================
+# DETECCIÓN DE HORA PUNTA
+# ============================================================================
+def is_peak_hour(now: datetime) -> bool:
     """
-    Determina si se deben añadir los segundos extra (15 por estación) en los tramos de IDA
-    desde Milo hasta Giovanni.
+    Retorna True si se deben añadir los 15 segundos por tramo.
     Condiciones:
-    - De lunes a viernes (no sábado ni domingo)
-    - No es festivo nacional (ni Sant'Agata, etc.)
+    - De lunes a viernes (weekday 0-4)
+    - No es festivo nacional
     - Mes entre septiembre y junio (9,10,11,12,1,2,3,4,5,6)
     - Hora entre 7:00 y 9:00 (inclusive)
     """
@@ -89,6 +89,53 @@ def is_extra_time_applicable(now: datetime) -> bool:
     if not (7 <= hour <= 9):
         return False
     return True
+
+def get_travel_time_from_montepo(station: str, now: datetime) -> int:
+    """Calcula los minutos desde Monte Po hasta la estación (dirección IDA)."""
+    total_seconds = 0
+    peak = is_peak_hour(now)
+    for (start, end, base_sec) in FORWARD_PEAK:
+        sec = base_sec
+        # Si NO es hora punta y el tramo está en los afectados, restamos 15 segundos
+        if not peak and (start, end) in EXTRA_TRAMOS_FORWARD:
+            sec -= 15
+        total_seconds += sec
+        if end == station:
+            break
+    # Aplicar reducciones por estaciones cerradas
+    stations_order = ["montepo", "fontana", "nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "giovanni", "stesicoro"]
+    for closed in CLOSED_STATIONS:
+        if closed["station"] == station:
+            continue
+        if closed["station"] in stations_order and station in stations_order:
+            if stations_order.index(closed["station"]) < stations_order.index(station):
+                if is_station_closed(closed["station"], now):
+                    total_seconds -= closed["reduction_seconds"]
+    minutes = (total_seconds + 59) // 60
+    return minutes
+
+def get_travel_time_from_stesicoro(station: str, now: datetime) -> int:
+    """Calcula los minutos desde Stesicoro hasta la estación (dirección VUELTA)."""
+    total_seconds = 0
+    peak = is_peak_hour(now)
+    for (start, end, base_sec) in REVERSE_PEAK:
+        sec = base_sec
+        if not peak and (start, end) in EXTRA_TRAMOS_REVERSE:
+            sec -= 15
+        total_seconds += sec
+        if end == station:
+            break
+    # Aplicar reducciones por estaciones cerradas
+    stations_order_reverse = ["stesicoro", "giovanni", "galatea", "italia", "giuffrida", "borgo", "milo", "cibali", "sannullo", "nesima", "fontana", "montepo"]
+    for closed in CLOSED_STATIONS:
+        if closed["station"] == station:
+            continue
+        if closed["station"] in stations_order_reverse and station in stations_order_reverse:
+            if stations_order_reverse.index(closed["station"]) < stations_order_reverse.index(station):
+                if is_station_closed(closed["station"], now):
+                    total_seconds -= closed["reduction_seconds"]
+    minutes = (total_seconds + 59) // 60
+    return max(0, minutes)
 
 # ============================================================================
 # CIERRE TEMPORAL DE ESTACIONES
@@ -116,48 +163,6 @@ def get_closing_message(station: str, now: datetime) -> str:
                 end_date = closed["end"].strftime('%d/%m/%Y')
                 return f"⚠️ La stazione {NOMBRE_MOSTRAR.get(station, station).capitalize()} è chiusa per lavori fino al {end_date}. I treni non fermano.\n"
     return ""
-
-def get_travel_time_from_montepo(station: str, now: datetime) -> int:
-    """Calcula los minutos desde Monte Po hasta la estación (dirección IDA)."""
-    total_seconds = 0
-    extra_applies = is_extra_time_applicable(now)
-    for (start, end, base_sec) in FORWARD_TRAMOS:
-        total_seconds += base_sec
-        if extra_applies and (start, end) in EXTRA_TRAMOS:
-            total_seconds += EXTRA_SEGUNDOS
-        if end == station:
-            break
-    # Aplicar reducciones por estaciones cerradas que están antes en la ruta
-    stations_order = ["montepo", "fontana", "nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "giovanni", "stesicoro"]
-    for closed in CLOSED_STATIONS:
-        if closed["station"] == station:
-            continue
-        if closed["station"] in stations_order and station in stations_order:
-            if stations_order.index(closed["station"]) < stations_order.index(station):
-                if is_station_closed(closed["station"], now):
-                    total_seconds -= closed["reduction_seconds"]
-    minutes = (total_seconds + 59) // 60
-    return minutes
-
-def get_travel_time_from_stesicoro(station: str, now: datetime) -> int:
-    """Calcula los minutos desde Stesicoro hasta la estación (dirección VUELTA)."""
-    total_seconds = 0
-    for (start, end, base_sec) in REVERSE_TRAMOS:
-        total_seconds += base_sec
-        if end == station:
-            break
-    # Aplicar reducciones por estaciones cerradas que están antes en la ruta
-    # Para la vuelta, el orden inverso: stesicoro, giovanni, galatea, italia, giuffrida, borgo, milo, cibali, sannullo, nesima, fontana, montepo
-    stations_order_reverse = ["stesicoro", "giovanni", "galatea", "italia", "giuffrida", "borgo", "milo", "cibali", "sannullo", "nesima", "fontana", "montepo"]
-    for closed in CLOSED_STATIONS:
-        if closed["station"] == station:
-            continue
-        if closed["station"] in stations_order_reverse and station in stations_order_reverse:
-            if stations_order_reverse.index(closed["station"]) < stations_order_reverse.index(station):
-                if is_station_closed(closed["station"], now):
-                    total_seconds -= closed["reduction_seconds"]
-    minutes = (total_seconds + 59) // 60
-    return max(0, minutes)
 
 def build_tiempos_estacion(now: datetime) -> Dict[str, Tuple[int, int]]:
     result = {}
