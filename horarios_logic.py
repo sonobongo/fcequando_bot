@@ -26,7 +26,7 @@ SHORT_TIME_THRESHOLD = CONFIG["short_time_threshold"]
 NEXT_TRAIN_THRESHOLD = CONFIG["next_train_threshold"]
 
 # ============================================================================
-# TIEMPOS BASE ENTRE ESTACIONES (en segundos)
+# TIEMPOS BASE ENTRE ESTACIONES (en segundos) - hora punta
 # ============================================================================
 FORWARD_PEAK = [
     ("montepo", "fontana", 87),
@@ -56,6 +56,7 @@ REVERSE_PEAK = [
     ("fontana", "montepo", 87)
 ]
 
+# Tramos afectados por reducción en hora valle
 EXTRA_TRAMOS_FORWARD = [("milo","borgo"), ("borgo","giuffrida"), ("giuffrida","italia"), ("italia","galatea"), ("galatea","giovanni")]
 EXTRA_TRAMOS_REVERSE = [
     ("giovanni", "galatea"), ("galatea", "italia"), ("italia", "giuffrida"),
@@ -77,7 +78,7 @@ def is_peak_hour(now: datetime) -> bool:
     return 7 <= now.hour <= 9
 
 # ============================================================================
-# TIEMPOS ACUMULADOS EN SEGUNDOS (EXACTOS, SIN REDONDEAR)
+# TIEMPOS ACUMULADOS EN SEGUNDOS (exactos, sin redondear)
 # ============================================================================
 def get_total_seconds_from_montepo(station: str, now: datetime) -> int:
     total = 0
@@ -85,11 +86,10 @@ def get_total_seconds_from_montepo(station: str, now: datetime) -> int:
     for (start, end, base_sec) in FORWARD_PEAK:
         sec = base_sec
         if not peak and (start, end) in EXTRA_TRAMOS_FORWARD:
-            sec -= 15
+            sec -= 10          # <--- CAMBIADO DE 15 A 10
         total += sec
         if end == station:
             break
-    # Ajuste por estaciones cerradas
     stations_order = ["montepo", "fontana", "nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "giovanni", "stesicoro"]
     for closed in CLOSED_STATIONS:
         if is_station_closed(closed["station"], now):
@@ -103,7 +103,7 @@ def get_total_seconds_from_stesicoro(station: str, now: datetime) -> int:
     for (start, end, base_sec) in REVERSE_PEAK:
         sec = base_sec
         if not peak and (start, end) in EXTRA_TRAMOS_REVERSE:
-            sec -= 15
+            sec -= 10          # <--- CAMBIADO DE 15 A 10
         total += sec
         if end == station:
             break
@@ -115,7 +115,7 @@ def get_total_seconds_from_stesicoro(station: str, now: datetime) -> int:
     return max(0, total)
 
 # ============================================================================
-# CIERRE TEMPORAL ESTACIONES
+# CIERRE TEMPORAL DE ESTACIONES
 # ============================================================================
 CLOSED_STATIONS = [
     {
@@ -178,7 +178,7 @@ def get_station_image(estacion_key: str, now: datetime) -> str:
     return f"{base}?v={int(timer.time())}"
 
 # ============================================================================
-# FUNCIONES DE HORARIOS (sin cambios importantes, solo asegurar que usan segundos donde sea necesario)
+# FUNCIONES DE HORARIOS
 # ============================================================================
 def str_to_time(t_str: str) -> time:
     h, m = map(int, t_str.split(':'))
@@ -493,7 +493,7 @@ def get_last_train_message(now: datetime) -> str:
     return f"📌 Ricorda che oggi l'ultima metropolitana da Stesicoro parte alle {last}."
 
 # ============================================================================
-# NUEVA VERSIÓN: PRÓXIMOS TRENES EN ESTACIONES INTERMEDIAS USANDO SEGUNDOS EXACTOS
+# PRÓXIMOS TRENES EN ESTACIONES INTERMEDIAS (usando segundos exactos)
 # ============================================================================
 def get_next_train_at_station(now: datetime, estacion_key: str):
     tiempos_seg = build_tiempos_estacion_segundos(now)  # (seg_mp, seg_st)
