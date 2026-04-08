@@ -43,7 +43,7 @@ BOTON_TO_KEY = {
 }
 
 # ============================================================================
-# FUNCIONES AUXILIARES PARA LOCALIZAR EL TREN (versión mejorada en segundos)
+# FUNCIONES AUXILIARES PARA LOCALIZAR EL TREN (versión corregida)
 # ============================================================================
 def get_total_seconds_from_montepo(station: str, now: datetime) -> int:
     """Devuelve los segundos acumulados desde Monte Po hasta la estación (sin redondear)."""
@@ -86,35 +86,48 @@ def get_current_station_from_montepo(now: datetime, seconds_passed: int) -> str:
     Determina en qué estación se encuentra actualmente un tren que salió de Monte Po
     hace 'seconds_passed' segundos.
     """
-    tiempos_seg = {}
+    # Obtener tiempos acumulados desde Monte Po para cada estación
+    tiempos = {}
     total = 0
     peak = is_peak_hour(now)
-    for (start, end, base_sec) in FORWARD_PEAK:
+    stations = ["montepo", "fontana", "nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "giovanni", "stesicoro"]
+    for i in range(len(stations)-1):
+        start = stations[i]
+        end = stations[i+1]
+        # Buscar el tramo en FORWARD_PEAK
+        base_sec = None
+        for (s, e, sec) in FORWARD_PEAK:
+            if s == start and e == end:
+                base_sec = sec
+                break
+        if base_sec is None:
+            continue
         sec = base_sec
         if not peak and (start, end) in EXTRA_TRAMOS_FORWARD:
             sec -= 15
         total += sec
-        tiempos_seg[end] = total
-    stations_order = ["montepo", "fontana", "nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "giovanni", "stesicoro"]
+        tiempos[end] = total
+    # Aplicar reducciones por estaciones cerradas
     for closed in CLOSED_STATIONS:
         if is_station_closed(closed["station"], now):
             reduction = closed["reduction_seconds"]
-            idx_closed = stations_order.index(closed["station"])
-            for station in stations_order[idx_closed+1:]:
-                if station in tiempos_seg:
-                    tiempos_seg[station] -= reduction
-    for station in tiempos_seg:
-        if tiempos_seg[station] < 0:
-            tiempos_seg[station] = 0
+            idx = stations.index(closed["station"])
+            for st in stations[idx+1:]:
+                if st in tiempos:
+                    tiempos[st] -= reduction
+    for st in tiempos:
+        if tiempos[st] < 0:
+            tiempos[st] = 0
     
-    for i in range(len(stations_order)-1):
-        current_station = stations_order[i]
-        next_station = stations_order[i+1]
-        t_current = tiempos_seg.get(current_station, 0)
-        t_next = tiempos_seg.get(next_station, 0)
+    # Buscar la estación actual
+    for i in range(len(stations)-1):
+        current = stations[i]
+        next_st = stations[i+1]
+        t_current = tiempos.get(current, 0)
+        t_next = tiempos.get(next_st, 0)
         if t_current <= seconds_passed < t_next:
-            return NOMBRE_MOSTRAR[current_station]
-    if seconds_passed < tiempos_seg.get("fontana", 0):
+            return NOMBRE_MOSTRAR[current]
+    if seconds_passed < tiempos.get("fontana", 0):
         return NOMBRE_MOSTRAR["montepo"]
     return NOMBRE_MOSTRAR["stesicoro"]
 
@@ -123,35 +136,44 @@ def get_current_station_from_stesicoro(now: datetime, seconds_passed: int) -> st
     Determina en qué estación se encuentra actualmente un tren que salió de Stesicoro
     hace 'seconds_passed' segundos.
     """
-    tiempos_seg = {}
+    tiempos = {}
     total = 0
     peak = is_peak_hour(now)
-    for (start, end, base_sec) in REVERSE_PEAK:
+    stations = ["stesicoro", "giovanni", "galatea", "italia", "giuffrida", "borgo", "milo", "cibali", "sannullo", "nesima", "fontana", "montepo"]
+    for i in range(len(stations)-1):
+        start = stations[i]
+        end = stations[i+1]
+        base_sec = None
+        for (s, e, sec) in REVERSE_PEAK:
+            if s == start and e == end:
+                base_sec = sec
+                break
+        if base_sec is None:
+            continue
         sec = base_sec
         if not peak and (start, end) in EXTRA_TRAMOS_REVERSE:
             sec -= 15
         total += sec
-        tiempos_seg[end] = total
-    stations_order_reverse = ["stesicoro", "giovanni", "galatea", "italia", "giuffrida", "borgo", "milo", "cibali", "sannullo", "nesima", "fontana", "montepo"]
+        tiempos[end] = total
     for closed in CLOSED_STATIONS:
         if is_station_closed(closed["station"], now):
             reduction = closed["reduction_seconds"]
-            idx_closed = stations_order_reverse.index(closed["station"])
-            for station in stations_order_reverse[idx_closed+1:]:
-                if station in tiempos_seg:
-                    tiempos_seg[station] -= reduction
-    for station in tiempos_seg:
-        if tiempos_seg[station] < 0:
-            tiempos_seg[station] = 0
+            idx = stations.index(closed["station"])
+            for st in stations[idx+1:]:
+                if st in tiempos:
+                    tiempos[st] -= reduction
+    for st in tiempos:
+        if tiempos[st] < 0:
+            tiempos[st] = 0
     
-    for i in range(len(stations_order_reverse)-1):
-        current_station = stations_order_reverse[i]
-        next_station = stations_order_reverse[i+1]
-        t_current = tiempos_seg.get(current_station, 0)
-        t_next = tiempos_seg.get(next_station, 0)
+    for i in range(len(stations)-1):
+        current = stations[i]
+        next_st = stations[i+1]
+        t_current = tiempos.get(current, 0)
+        t_next = tiempos.get(next_st, 0)
         if t_current <= seconds_passed < t_next:
-            return NOMBRE_MOSTRAR[current_station]
-    if seconds_passed < tiempos_seg.get("giovanni", 0):
+            return NOMBRE_MOSTRAR[current]
+    if seconds_passed < tiempos.get("giovanni", 0):
         return NOMBRE_MOSTRAR["stesicoro"]
     return NOMBRE_MOSTRAR["montepo"]
 
@@ -309,6 +331,9 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
             if seconds_passed < 0:
                 seconds_passed = 0
             current_station = get_current_station_from_stesicoro(now, seconds_passed)
+            # Evitar que muestre Stesicoro si aún no ha salido de allí
+            if current_station == "Stesicoro" and seconds_passed < 30:
+                current_station = "Stesicoro (appena partito)"
             line += f"   (il treno si trova attualmente a {current_station})\n"
         msg += line
         
@@ -341,6 +366,8 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
             if seconds_passed < 0:
                 seconds_passed = 0
             current_station = get_current_station_from_montepo(now, seconds_passed)
+            if current_station == "Monte Po" and seconds_passed < 30:
+                current_station = "Monte Po (appena partito)"
             line += f"   (il treno si trova attualmente a {current_station})\n"
         msg += line
         
