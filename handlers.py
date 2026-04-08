@@ -293,8 +293,7 @@ async def help_command(update, context):
         "/altri - Mostra altre stazioni\n"
         "/fontana, /nesima, /sannullo, /cibali, /borgo, /giuffrida, /italia, /galatea, /giovanni\n"
         "/test DDMMYYYY HHMM - Attiva modalità test\n"
-        "/testfin - Disattiva modalità test\n"
-        "/testgif - Invia GIF di prova e lo cancella dopo 1 minuto\n\n"
+        "/testfin - Disattiva modalità test\n\n"
         "Oppure premi i pulsanti.",
         reply_markup=keyboard_main
     )
@@ -309,24 +308,6 @@ async def handle_button(update, context):
         await send_station_response(update, context, BOTON_TO_KEY[text], return_to_main=True)
     else:
         await update.message.reply_text("Scelta non valida. Usa i pulsanti.", reply_markup=keyboard_main)
-
-# ============================================================================
-# COMANDO TEST GIF
-# ============================================================================
-async def cmd_testgif(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    gif_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/montepo-fontana.gif"
-    text_msg = (
-        "🚆 Prossimi treni a Nesima\n\n"
-        "🔺 Per Monte Po: Passa tra 3 minuti.\n"
-        "   (il treno si trova attualmente a Monte Po)"
-    )
-    await update.message.reply_text(text_msg)
-    gif_message = await update.message.reply_animation(animation=gif_url)
-    await asyncio.sleep(60)
-    try:
-        await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=gif_message.message_id)
-    except Exception as e:
-        print(f"Error al borrar el GIF: {e}")
 
 # ============================================================================
 # COMANDOS TEST
