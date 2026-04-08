@@ -28,6 +28,7 @@ NEXT_TRAIN_THRESHOLD = CONFIG["next_train_threshold"]
 # ============================================================================
 # TIEMPOS BASE ENTRE ESTACIONES (en segundos) - tiempos en hora punta
 # ============================================================================
+# Dirección Monte Po -> Stesicoro (IDA) - sin cambios
 FORWARD_PEAK = [
     ("montepo", "fontana", 87),
     ("fontana", "nesima", 87),
@@ -42,20 +43,23 @@ FORWARD_PEAK = [
     ("giovanni", "stesicoro", 139)
 ]
 
+# Dirección Stesicoro -> Monte Po (VUELTA) - valores fusionados (promedio entre antiguos y medición 8/4/2026)
 REVERSE_PEAK = [
-    ("stesicoro", "giovanni", 166),
-    ("giovanni", "galatea", 134),
-    ("galatea", "italia", 85),
-    ("italia", "giuffrida", 112),
-    ("giuffrida", "borgo", 85),
-    ("borgo", "milo", 106),
-    ("milo", "cibali", 101),
-    ("cibali", "sannullo", 93),
-    ("sannullo", "nesima", 98),
-    ("nesima", "fontana", 87),
-    ("fontana", "montepo", 87)
+    ("stesicoro", "giovanni", 154),   # (166+142)/2
+    ("giovanni", "galatea", 140),     # (134+146)/2
+    ("galatea", "italia", 87),        # (85+88)/2
+    # Italia -> Borgo con parada en Giuffrida: total 197 s (sin cambios)
+    ("italia", "giuffrida", 106),     # mantenido
+    ("giuffrida", "borgo", 91),       # mantenido (106+91=197)
+    ("borgo", "milo", 108),           # (106+110)/2
+    ("milo", "cibali", 110),          # (101+118)/2
+    ("cibali", "sannullo", 96),       # (93+98)/2
+    ("sannullo", "nesima", 128),      # (98+157)/2
+    ("nesima", "fontana", 87),        # sin cambios
+    ("fontana", "montepo", 87)        # sin cambios
 ]
 
+# Tramos afectados por el incremento de 15 segundos (en ida y vuelta)
 EXTRA_TRAMOS_FORWARD = [("milo","borgo"), ("borgo","giuffrida"), ("giuffrida","italia"), ("italia","galatea"), ("galatea","giovanni")]
 EXTRA_TRAMOS_REVERSE = [("giovanni","galatea"), ("galatea","italia"), ("italia","giuffrida"), ("giuffrida","borgo"), ("borgo","milo")]
 
