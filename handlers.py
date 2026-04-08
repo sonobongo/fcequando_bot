@@ -299,29 +299,32 @@ async def help_command(update, context):
         reply_markup=keyboard_main
     )
 
+async def handle_button(update, context):
+    text = update.message.text
+    if text == "Altri":
+        await cmd_altri(update, context)
+    elif text == "← Menu":
+        await update.message.reply_text("🔙 Ritorno al menu principale.", reply_markup=keyboard_main)
+    elif text in BOTON_TO_KEY:
+        await send_station_response(update, context, BOTON_TO_KEY[text], return_to_main=True)
+    else:
+        await update.message.reply_text("Scelta non valida. Usa i pulsanti.", reply_markup=keyboard_main)
+
 # ============================================================================
 # COMANDO TEST GIF
 # ============================================================================
 async def cmd_testgif(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Enviar el GIF desde GitHub
     gif_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/montepo-fontana.gif"
-    
-    # Enviar el mensaje de texto
     text_msg = (
         "🚆 Prossimi treni a Nesima\n\n"
         "🔺 Per Monte Po: Passa tra 3 minuti.\n"
         "   (il treno si trova attualmente a Monte Po)"
     )
     await update.message.reply_text(text_msg)
-    
-    # Enviar el GIF
     gif_message = await update.message.reply_animation(animation=gif_url)
-    
-    # Esperar 60 segundos y borrar el GIF
     await asyncio.sleep(60)
     try:
         await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=gif_message.message_id)
-        print(f"GIF borrado después de 60 segundos para el usuario {update.effective_user.id}")
     except Exception as e:
         print(f"Error al borrar el GIF: {e}")
 
