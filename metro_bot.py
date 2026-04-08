@@ -26,15 +26,15 @@ def main():
         logger.error("Token mancante. Imposta TELEGRAM_TOKEN.")
         return
 
+    # Iniciar Flask en un hilo
     flask_thread = threading.Thread(target=run_flask, daemon=True)
     flask_thread.start()
     logger.info("Flask server avviato sulla porta 8080")
 
+    # Construir la aplicación
     app = Application.builder().token(TOKEN).build()
 
-    # NO eliminamos webhook manualmente, run_polling ya lo hace internamente.
-    # Solo configuramos handlers y llamamos a run_polling.
-
+    # Registrar comandos
     commands = [
         ("start", start), ("help", help_command), ("montepo", cmd_montepo), ("stesicoro", cmd_stesicoro),
         ("milo", cmd_milo), ("altri", cmd_altri), ("fontana", cmd_fontana), ("nesima", cmd_nesima),
@@ -51,8 +51,9 @@ def main():
 
     logger.info("Bot avviato.")
     print("Bot funzionante... In attesa di messaggi.")
-    # Esto ya maneja el loop correctamente
-    app.run_polling(allowed_updates=Update.ALL_TYPES)
+    
+    # Deshabilitar manejadores de señales para evitar errores en Render
+    app.run_polling(allowed_updates=Update.ALL_TYPES, signal_handlers=False)
 
 if __name__ == '__main__':
     main()
