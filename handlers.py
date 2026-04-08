@@ -33,7 +33,7 @@ BOTON_TO_KEY = {
 }
 
 # ============================================================================
-# FUNCIONES AUXILIARES DE LOCALIZACIÓN (usando segundos exactos)
+# FUNCIONES AUXILIARES DE LOCALIZACIÓN
 # ============================================================================
 def get_current_station_from_montepo(now: datetime, seconds_passed: int) -> str:
     stations = ["montepo", "fontana", "nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "giovanni", "stesicoro"]
@@ -88,7 +88,6 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
             await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
         return
 
-    # Cabeceras Monte Po / Stesicoro
     if estacion_key in ["montepo", "stesicoro"]:
         station = "Montepo" if estacion_key == "montepo" else "Stesicoro"
         closed, next_open, special_closing_msg = is_metro_closed(now, station)
@@ -191,7 +190,6 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
 
     estaciones_localizacion = ["nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea"]
 
-    # Dirección Monte Po (tren desde Stesicoro)
     if info_st:
         paso_st, mins, secs, next_info = info_st
         time_str = format_time(mins, secs)
@@ -218,7 +216,6 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
     else:
         msg += f"🔺 **Per Monte Po**: nessun treno in arrivo al momento.\n"
 
-    # Dirección Stesicoro (tren desde Monte Po)
     if info_mp:
         paso_mp, mins, secs, next_info = info_mp
         time_str = format_time(mins, secs)
@@ -296,21 +293,37 @@ async def help_command(update, context):
         "/altri - Mostra altre stazioni\n"
         "/fontana, /nesima, /sannullo, /cibali, /borgo, /giuffrida, /italia, /galatea, /giovanni\n"
         "/test DDMMYYYY HHMM - Attiva modalità test\n"
-        "/testfin - Disattiva modalità test\n\n"
+        "/testfin - Disattiva modalità test\n"
+        "/testgif - Invia GIF di prova e lo cancella dopo 1 minuto\n\n"
         "Oppure premi i pulsanti.",
         reply_markup=keyboard_main
     )
 
-async def handle_button(update, context):
-    text = update.message.text
-    if text == "Altri":
-        await cmd_altri(update, context)
-    elif text == "← Menu":
-        await update.message.reply_text("🔙 Ritorno al menu principale.", reply_markup=keyboard_main)
-    elif text in BOTON_TO_KEY:
-        await send_station_response(update, context, BOTON_TO_KEY[text], return_to_main=True)
-    else:
-        await update.message.reply_text("Scelta non valida. Usa i pulsanti.", reply_markup=keyboard_main)
+# ============================================================================
+# COMANDO TEST GIF
+# ============================================================================
+async def cmd_testgif(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Enviar el GIF desde GitHub
+    gif_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/montepo-fontana.gif"
+    
+    # Enviar el mensaje de texto
+    text_msg = (
+        "🚆 Prossimi treni a Nesima\n\n"
+        "🔺 Per Monte Po: Passa tra 3 minuti.\n"
+        "   (il treno si trova attualmente a Monte Po)"
+    )
+    await update.message.reply_text(text_msg)
+    
+    # Enviar el GIF
+    gif_message = await update.message.reply_animation(animation=gif_url)
+    
+    # Esperar 60 segundos y borrar el GIF
+    await asyncio.sleep(60)
+    try:
+        await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=gif_message.message_id)
+        print(f"GIF borrado después de 60 segundos para el usuario {update.effective_user.id}")
+    except Exception as e:
+        print(f"Error al borrar el GIF: {e}")
 
 # ============================================================================
 # COMANDOS TEST
