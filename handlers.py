@@ -43,6 +43,43 @@ BOTON_TO_KEY = {
 }
 
 # ============================================================================
+# FUNCIONES AUXILIARES PARA LOCALIZAR EL TREN
+# ============================================================================
+def get_current_station_from_montepo(now: datetime, minutes_passed: int) -> str:
+    """
+    Determina en qué estación se encuentra actualmente un tren que salió de Monte Po
+    hace 'minutes_passed' minutos.
+    """
+    # Obtener tiempos acumulados dinámicos
+    tiempos = build_tiempos_estacion(now)
+    stations_order = ["montepo", "fontana", "nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "giovanni", "stesicoro"]
+    for i in range(len(stations_order)-1):
+        current_station = stations_order[i]
+        next_station = stations_order[i+1]
+        t_current = tiempos[current_station][0]  # minutos desde Monte Po
+        t_next = tiempos[next_station][0]
+        if t_current <= minutes_passed < t_next:
+            return NOMBRE_MOSTRAR[current_station]
+    # Si pasó de la última estación
+    return NOMBRE_MOSTRAR["stesicoro"]
+
+def get_current_station_from_stesicoro(now: datetime, minutes_passed: int) -> str:
+    """
+    Determina en qué estación se encuentra actualmente un tren que salió de Stesicoro
+    hace 'minutes_passed' minutos.
+    """
+    tiempos = build_tiempos_estacion(now)
+    stations_order_reverse = ["stesicoro", "giovanni", "galatea", "italia", "giuffrida", "borgo", "milo", "cibali", "sannullo", "nesima", "fontana", "montepo"]
+    for i in range(len(stations_order_reverse)-1):
+        current_station = stations_order_reverse[i]
+        next_station = stations_order_reverse[i+1]
+        t_current = tiempos[current_station][1]  # minutos desde Stesicoro
+        t_next = tiempos[next_station][1]
+        if t_current <= minutes_passed < t_next:
+            return NOMBRE_MOSTRAR[current_station]
+    return NOMBRE_MOSTRAR["montepo"]
+
+# ============================================================================
 # RESPUESTA NORMAL PARA CUALQUIER ESTACIÓN (CON MODO TEST PERSISTENTE)
 # ============================================================================
 async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str, return_to_main: bool = True):
@@ -83,7 +120,6 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
                 station_display = "Monte Po" if station == "Montepo" else "Stesicoro"
                 msg = f"{special_msg}{test_indicator}{special_closing_msg}\n🚇 La metropolitana è chiusa in questo momento. Il primo treno da {station_display} partirà alle {first_train.strftime('%H:%M')}."
             else:
-                # Si hay mensaje especial (para viernes/sábado o Nochevieja), mostrarlo solo
                 if special_closing_msg:
                     msg = f"{special_msg}{test_indicator}{special_closing_msg}"
                 else:
@@ -188,17 +224,34 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
     else:
         msg = f"{special_msg}{test_indicator}🚆 **Prossimi treni a {nombre}**\n\n"
     
+    # Definir rango de estaciones para la localización (Nesima a Galatea inclusive)
+    estaciones_localizacion = ["nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea"]
+    
     # Dirección hacia Monte Po (tren que viene de Stesicoro) - info_st
     if info_st:
         paso_st, mins, secs, next_info = info_st
         time_str = format_time(mins, secs)
+        # Construir línea base
         if mins == 0 and secs < 30:
-            msg += f"🔺 **Per Monte Po**: treno in arrivo.\n"
+            line = f"🔺 **Per Monte Po**: treno in arrivo.\n"
         else:
             if mins < SHORT_TIME_THRESHOLD:
-                msg += f"🔺 **Per Monte Po**: Passa tra **{time_str}**.\n"
+                line = f"🔺 **Per Monte Po**: Passa tra **{time_str}**.\n"
             else:
-                msg += f"🔺 **Per Monte Po**: Passa tra **{time_str}**, alle {paso_st.strftime('%H:%M')}.\n"
+                line = f"🔺 **Per Monte Po**: Passa tra **{time_str}**, alle {paso_st.strftime('%H:%M')}.\n"
+        
+        # Añadir localización si aplica
+        if estacion_key in estaciones_localizacion and 2 <= mins <= 10:
+            # Calcular tiempo transcurrido desde Stesicoro
+            # El tiempo total desde Stesicoro hasta la estación actual es t_st (de tiempos)
+            tiempos = build_tiempos_estacion(now)
+            t_total = tiempos[estacion_key][1]  # minutos desde Stesicoro
+            minutos_transcurridos = t_total - mins
+            current_station = get_current_station_from_stesicoro(now, minutos_transcurridos)
+            line += f"   (il treno si trova attualmente a {current_station})\n"
+        msg += line
+        
+        # Mostrar siguiente tren si falta 1 minuto o menos
         if mins <= 1 and next_info:
             paso2, mins2, secs2 = next_info
             time_str2 = format_time(mins2, secs2)
@@ -214,12 +267,22 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
         paso_mp, mins, secs, next_info = info_mp
         time_str = format_time(mins, secs)
         if mins == 0 and secs < 30:
-            msg += f"🔻 **Per Stesicoro**: treno in arrivo.\n"
+            line = f"🔻 **Per Stesicoro**: treno in arrivo.\n"
         else:
             if mins < SHORT_TIME_THRESHOLD:
-                msg += f"🔻 **Per Stesicoro**: Passa tra **{time_str}**.\n"
+                line = f"🔻 **Per Stesicoro**: Passa tra **{time_str}**.\n"
             else:
-                msg += f"🔻 **Per Stesicoro**: Passa tra **{time_str}**, alle {paso_mp.strftime('%H:%M')}.\n"
+                line = f"🔻 **Per Stesicoro**: Passa tra **{time_str}**, alle {paso_mp.strftime('%H:%M')}.\n"
+        
+        # Añadir localización si aplica
+        if estacion_key in estaciones_localizacion and 2 <= mins <= 10:
+            tiempos = build_tiempos_estacion(now)
+            t_total = tiempos[estacion_key][0]  # minutos desde Monte Po
+            minutos_transcurridos = t_total - mins
+            current_station = get_current_station_from_montepo(now, minutos_transcurridos)
+            line += f"   (il treno si trova attualmente a {current_station})\n"
+        msg += line
+        
         if mins <= 1 and next_info:
             paso2, mins2, secs2 = next_info
             time_str2 = format_time(mins2, secs2)
