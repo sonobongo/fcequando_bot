@@ -43,10 +43,9 @@ BOTON_TO_KEY = {
 }
 
 # ============================================================================
-# FUNCIONES AUXILIARES PARA LOCALIZAR EL TREN (versión corregida)
+# FUNCIONES AUXILIARES PARA OBTENER TIEMPOS ACUMULADOS (en segundos)
 # ============================================================================
 def get_total_seconds_from_montepo(station: str, now: datetime) -> int:
-    """Devuelve los segundos acumulados desde Monte Po hasta la estación (sin redondear)."""
     total = 0
     peak = is_peak_hour(now)
     for (start, end, base_sec) in FORWARD_PEAK:
@@ -64,7 +63,6 @@ def get_total_seconds_from_montepo(station: str, now: datetime) -> int:
     return max(0, total)
 
 def get_total_seconds_from_stesicoro(station: str, now: datetime) -> int:
-    """Devuelve los segundos acumulados desde Stesicoro hasta la estación (sin redondear)."""
     total = 0
     peak = is_peak_hour(now)
     for (start, end, base_sec) in REVERSE_PEAK:
@@ -81,101 +79,45 @@ def get_total_seconds_from_stesicoro(station: str, now: datetime) -> int:
                 total -= closed["reduction_seconds"]
     return max(0, total)
 
+# ============================================================================
+# FUNCIONES DE LOCALIZACIÓN CORREGIDAS (con frases para salida reciente)
+# ============================================================================
 def get_current_station_from_montepo(now: datetime, seconds_passed: int) -> str:
-    """
-    Determina en qué estación se encuentra actualmente un tren que salió de Monte Po
-    hace 'seconds_passed' segundos.
-    """
-    # Obtener tiempos acumulados desde Monte Po para cada estación
-    tiempos = {}
-    total = 0
-    peak = is_peak_hour(now)
     stations = ["montepo", "fontana", "nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "giovanni", "stesicoro"]
-    for i in range(len(stations)-1):
-        start = stations[i]
-        end = stations[i+1]
-        # Buscar el tramo en FORWARD_PEAK
-        base_sec = None
-        for (s, e, sec) in FORWARD_PEAK:
-            if s == start and e == end:
-                base_sec = sec
-                break
-        if base_sec is None:
-            continue
-        sec = base_sec
-        if not peak and (start, end) in EXTRA_TRAMOS_FORWARD:
-            sec -= 15
-        total += sec
-        tiempos[end] = total
-    # Aplicar reducciones por estaciones cerradas
-    for closed in CLOSED_STATIONS:
-        if is_station_closed(closed["station"], now):
-            reduction = closed["reduction_seconds"]
-            idx = stations.index(closed["station"])
-            for st in stations[idx+1:]:
-                if st in tiempos:
-                    tiempos[st] -= reduction
-    for st in tiempos:
-        if tiempos[st] < 0:
-            tiempos[st] = 0
-    
-    # Buscar la estación actual
-    for i in range(len(stations)-1):
-        current = stations[i]
-        next_st = stations[i+1]
-        t_current = tiempos.get(current, 0)
-        t_next = tiempos.get(next_st, 0)
-        if t_current <= seconds_passed < t_next:
-            return NOMBRE_MOSTRAR[current]
-    if seconds_passed < tiempos.get("fontana", 0):
-        return NOMBRE_MOSTRAR["montepo"]
-    return NOMBRE_MOSTRAR["stesicoro"]
-
-def get_current_station_from_stesicoro(now: datetime, seconds_passed: int) -> str:
-    """
-    Determina en qué estación se encuentra actualmente un tren que salió de Stesicoro
-    hace 'seconds_passed' segundos.
-    """
     tiempos = {}
-    total = 0
-    peak = is_peak_hour(now)
-    stations = ["stesicoro", "giovanni", "galatea", "italia", "giuffrida", "borgo", "milo", "cibali", "sannullo", "nesima", "fontana", "montepo"]
-    for i in range(len(stations)-1):
-        start = stations[i]
-        end = stations[i+1]
-        base_sec = None
-        for (s, e, sec) in REVERSE_PEAK:
-            if s == start and e == end:
-                base_sec = sec
-                break
-        if base_sec is None:
-            continue
-        sec = base_sec
-        if not peak and (start, end) in EXTRA_TRAMOS_REVERSE:
-            sec -= 15
-        total += sec
-        tiempos[end] = total
-    for closed in CLOSED_STATIONS:
-        if is_station_closed(closed["station"], now):
-            reduction = closed["reduction_seconds"]
-            idx = stations.index(closed["station"])
-            for st in stations[idx+1:]:
-                if st in tiempos:
-                    tiempos[st] -= reduction
-    for st in tiempos:
-        if tiempos[st] < 0:
-            tiempos[st] = 0
-    
+    for st in stations:
+        tiempos[st] = get_total_seconds_from_montepo(st, now)
+    # Si acaba de salir (menos de 30 segundos)
+    if seconds_passed < 30:
+        return "Il treno è appena partito da Monte Po"
     for i in range(len(stations)-1):
         current = stations[i]
         next_st = stations[i+1]
-        t_current = tiempos.get(current, 0)
-        t_next = tiempos.get(next_st, 0)
-        if t_current <= seconds_passed < t_next:
+        t_cur = tiempos[current]
+        t_next = tiempos[next_st]
+        if seconds_passed >= t_cur - 1 and seconds_passed < t_next:
             return NOMBRE_MOSTRAR[current]
-    if seconds_passed < tiempos.get("giovanni", 0):
+    if seconds_passed >= tiempos["stesicoro"] - 1:
         return NOMBRE_MOSTRAR["stesicoro"]
     return NOMBRE_MOSTRAR["montepo"]
+
+def get_current_station_from_stesicoro(now: datetime, seconds_passed: int) -> str:
+    stations = ["stesicoro", "giovanni", "galatea", "italia", "giuffrida", "borgo", "milo", "cibali", "sannullo", "nesima", "fontana", "montepo"]
+    tiempos = {}
+    for st in stations:
+        tiempos[st] = get_total_seconds_from_stesicoro(st, now)
+    if seconds_passed < 30:
+        return "Il treno è appena partito da Stesicoro"
+    for i in range(len(stations)-1):
+        current = stations[i]
+        next_st = stations[i+1]
+        t_cur = tiempos[current]
+        t_next = tiempos[next_st]
+        if seconds_passed >= t_cur - 1 and seconds_passed < t_next:
+            return NOMBRE_MOSTRAR[current]
+    if seconds_passed >= tiempos["montepo"] - 1:
+        return NOMBRE_MOSTRAR["montepo"]
+    return NOMBRE_MOSTRAR["stesicoro"]
 
 # ============================================================================
 # RESPUESTA NORMAL PARA CUALQUIER ESTACIÓN (CON MODO TEST PERSISTENTE)
@@ -331,10 +273,11 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
             if seconds_passed < 0:
                 seconds_passed = 0
             current_station = get_current_station_from_stesicoro(now, seconds_passed)
-            # Evitar que muestre Stesicoro si aún no ha salido de allí
-            if current_station == "Stesicoro" and seconds_passed < 30:
-                current_station = "Stesicoro (appena partito)"
-            line += f"   (il treno si trova attualmente a {current_station})\n"
+            # Si la frase ya incluye "appena partito", no añadimos "attualmente a"
+            if "appena partito" in current_station:
+                line += f"   ({current_station})\n"
+            else:
+                line += f"   (il treno si trova attualmente a {current_station})\n"
         msg += line
         
         if mins <= 1 and next_info:
@@ -366,9 +309,10 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
             if seconds_passed < 0:
                 seconds_passed = 0
             current_station = get_current_station_from_montepo(now, seconds_passed)
-            if current_station == "Monte Po" and seconds_passed < 30:
-                current_station = "Monte Po (appena partito)"
-            line += f"   (il treno si trova attualmente a {current_station})\n"
+            if "appena partito" in current_station:
+                line += f"   ({current_station})\n"
+            else:
+                line += f"   (il treno si trova attualmente a {current_station})\n"
         msg += line
         
         if mins <= 1 and next_info:
@@ -391,7 +335,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
         await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri, parse_mode='Markdown')
 
 # ============================================================================
-# MANEJADORES DE COMANDOS
+# MANEJADORES DE COMANDOS (sin cambios)
 # ============================================================================
 async def cmd_montepo(update, context): await send_station_response(update, context, "montepo", return_to_main=False)
 async def cmd_stesicoro(update, context): await send_station_response(update, context, "stesicoro", return_to_main=False)
@@ -450,7 +394,7 @@ async def handle_button(update, context):
         await update.message.reply_text("Scelta non valida. Usa i pulsanti.", reply_markup=keyboard_main)
 
 # ============================================================================
-# COMANDOS TEST
+# COMANDOS TEST (sin cambios)
 # ============================================================================
 async def send_station_response_simulated(update, context, estacion_key: str, simulated_now: datetime):
     original = context.chat_data.get('test_time') if context.chat_data else None
