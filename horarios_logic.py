@@ -43,25 +43,38 @@ FORWARD_PEAK = [
     ("giovanni", "stesicoro", 139)
 ]
 
-# Dirección Stesicoro -> Monte Po (VUELTA) - valores fusionados (promedio entre antiguos y medición 8/4/2026)
+# Dirección Stesicoro -> Monte Po (VUELTA) - valores fusionados con nuevas mediciones del 8/4/2026 07:35
 REVERSE_PEAK = [
-    ("stesicoro", "giovanni", 154),   # (166+142)/2
-    ("giovanni", "galatea", 140),     # (134+146)/2
-    ("galatea", "italia", 87),        # (85+88)/2
-    # Italia -> Borgo con parada en Giuffrida: total 197 s (sin cambios)
-    ("italia", "giuffrida", 106),     # mantenido
-    ("giuffrida", "borgo", 91),       # mantenido (106+91=197)
-    ("borgo", "milo", 108),           # (106+110)/2
-    ("milo", "cibali", 110),          # (101+118)/2
-    ("cibali", "sannullo", 96),       # (93+98)/2
-    ("sannullo", "nesima", 128),      # (98+157)/2
+    ("stesicoro", "giovanni", 148),   # (154+141)/2 = 147.5 -> 148
+    ("giovanni", "galatea", 149),     # (140+157)/2 = 148.5 -> 149
+    ("galatea", "italia", 91),        # (87+94)/2 = 90.5 -> 91
+    # Italia -> Borgo con parada: nuevo total 209 (promedio de 197 y 221)
+    ("italia", "giuffrida", 113),     # 209 * (106/197) ≈ 112.5 -> 113
+    ("giuffrida", "borgo", 97),       # 209 * (91/197) ≈ 96.5 -> 97
+    ("borgo", "milo", 120),           # (108+131)/2 = 119.5 -> 120
+    ("milo", "cibali", 126),          # (110+141)/2 = 125.5 -> 126
+    ("cibali", "sannullo", 104),      # (96+112)/2 = 104
+    ("sannullo", "nesima", 130),      # (128+131)/2 = 129.5 -> 130
     ("nesima", "fontana", 87),        # sin cambios
     ("fontana", "montepo", 87)        # sin cambios
 ]
 
-# Tramos afectados por el incremento de 15 segundos (en ida y vuelta)
+# Tramos afectados por el incremento de 15 segundos en hora punta
+# Dirección ida (Monte Po -> Stesicoro)
 EXTRA_TRAMOS_FORWARD = [("milo","borgo"), ("borgo","giuffrida"), ("giuffrida","italia"), ("italia","galatea"), ("galatea","giovanni")]
-EXTRA_TRAMOS_REVERSE = [("giovanni","galatea"), ("galatea","italia"), ("italia","giuffrida"), ("giuffrida","borgo"), ("borgo","milo")]
+
+# Dirección vuelta (Stesicoro -> Monte Po) - ampliado hasta Fontana
+EXTRA_TRAMOS_REVERSE = [
+    ("giovanni", "galatea"),
+    ("galatea", "italia"),
+    ("italia", "giuffrida"),
+    ("giuffrida", "borgo"),
+    ("borgo", "milo"),
+    ("milo", "cibali"),
+    ("cibali", "sannullo"),
+    ("sannullo", "nesima"),
+    ("nesima", "fontana")
+]
 
 # ============================================================================
 # DETECCIÓN DE HORA PUNTA
@@ -442,9 +455,6 @@ def get_closing_time(now: datetime, station: str) -> Tuple[int, int]:
             return (22, 30)
 
 def is_metro_closed(now: datetime, station: str) -> Tuple[bool, Optional[datetime], str]:
-    """
-    Retorna (cerrado, próxima_apertura, mensaje_especial)
-    """
     if is_closed_all_day(now):
         tomorrow = now + timedelta(days=1)
         open_h, open_m = get_opening_time(tomorrow, station)
@@ -452,7 +462,6 @@ def is_metro_closed(now: datetime, station: str) -> Tuple[bool, Optional[datetim
         next_open = CATANIA_TZ.localize(next_open)
         return (True, next_open, "")
     
-    # Nochevieja y madrugada del 1/1 hasta las 3:00
     if is_new_years_eve(now):
         if now.hour >= 23 or now.hour < 3:
             open_h, open_m = get_opening_time(now, station)
@@ -463,7 +472,6 @@ def is_metro_closed(now: datetime, station: str) -> Tuple[bool, Optional[datetim
             special_msg = "🚇 Non ci sono informazioni disponibili. Ricorda che oggi l'ultima metropolitana è partita alle 03:00."
             return (True, next_open, special_msg)
     
-    # Viernes y sábado noche desde 23:59 hasta 1:00
     weekday = now.weekday()
     if weekday in [4, 5]:
         if now.hour >= 23 or (now.hour == 0 and now.minute < 1):
@@ -606,7 +614,6 @@ def get_next_train_at_station(now: datetime, estacion_key: str) -> Tuple[Optiona
         return (None, None)
     t_mp, t_st = tiempos[estacion_key]
     
-    # Dirección Monte Po -> Stesicoro (IDA)
     info_mp = None
     closed_mp, _, _ = is_metro_closed(now, "Montepo")
     if not closed_mp:
@@ -636,7 +643,6 @@ def get_next_train_at_station(now: datetime, estacion_key: str) -> Tuple[Optiona
                 next_info = (next_paso2, mins2, secs2)
             info_mp = (next_paso, mins_rest, secs_rest, next_info)
     
-    # Dirección Stesicoro -> Monte Po (VUELTA)
     info_st = None
     closed_st, _, _ = is_metro_closed(now, "Stesicoro")
     if not closed_st:
