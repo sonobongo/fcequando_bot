@@ -28,7 +28,7 @@ NEXT_TRAIN_THRESHOLD = CONFIG["next_train_threshold"]
 # ============================================================================
 # TIEMPOS BASE ENTRE ESTACIONES (en segundos) - tiempos en hora punta
 # ============================================================================
-# Dirección Monte Po -> Stesicoro (IDA) - sin cambios
+# Dirección Monte Po -> Stesicoro (IDA)
 FORWARD_PEAK = [
     ("montepo", "fontana", 87),
     ("fontana", "nesima", 87),
@@ -43,27 +43,23 @@ FORWARD_PEAK = [
     ("giovanni", "stesicoro", 139)
 ]
 
-# Dirección Stesicoro -> Monte Po (VUELTA) - valores fusionados con nuevas mediciones del 8/4/2026 07:35
+# Dirección Stesicoro -> Monte Po (VUELTA)
 REVERSE_PEAK = [
-    ("stesicoro", "giovanni", 148),   # (154+141)/2 = 147.5 -> 148
-    ("giovanni", "galatea", 149),     # (140+157)/2 = 148.5 -> 149
-    ("galatea", "italia", 91),        # (87+94)/2 = 90.5 -> 91
-    # Italia -> Borgo con parada: nuevo total 209 (promedio de 197 y 221)
-    ("italia", "giuffrida", 113),     # 209 * (106/197) ≈ 112.5 -> 113
-    ("giuffrida", "borgo", 97),       # 209 * (91/197) ≈ 96.5 -> 97
-    ("borgo", "milo", 120),           # (108+131)/2 = 119.5 -> 120
-    ("milo", "cibali", 126),          # (110+141)/2 = 125.5 -> 126
-    ("cibali", "sannullo", 104),      # (96+112)/2 = 104
-    ("sannullo", "nesima", 130),      # (128+131)/2 = 129.5 -> 130
-    ("nesima", "fontana", 87),        # sin cambios
-    ("fontana", "montepo", 87)        # sin cambios
+    ("stesicoro", "giovanni", 148),
+    ("giovanni", "galatea", 149),
+    ("galatea", "italia", 91),
+    ("italia", "giuffrida", 113),
+    ("giuffrida", "borgo", 97),
+    ("borgo", "milo", 120),
+    ("milo", "cibali", 126),
+    ("cibali", "sannullo", 104),
+    ("sannullo", "nesima", 130),
+    ("nesima", "fontana", 87),
+    ("fontana", "montepo", 87)
 ]
 
 # Tramos afectados por el incremento de 15 segundos en hora punta
-# Dirección ida (Monte Po -> Stesicoro)
 EXTRA_TRAMOS_FORWARD = [("milo","borgo"), ("borgo","giuffrida"), ("giuffrida","italia"), ("italia","galatea"), ("galatea","giovanni")]
-
-# Dirección vuelta (Stesicoro -> Monte Po) - ampliado hasta Fontana
 EXTRA_TRAMOS_REVERSE = [
     ("giovanni", "galatea"),
     ("galatea", "italia"),
@@ -186,7 +182,7 @@ NOMBRE_MOSTRAR = {
 }
 
 # ============================================================================
-# IMÁGENES DE LAS ESTACIONES (solo color, con cache buster)
+# IMÁGENES DE LAS ESTACIONES
 # ============================================================================
 STATION_IMAGE = {
     "montepo": "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/st_montepo.jpg",
