@@ -1,6 +1,7 @@
 import os
 import logging
 import threading
+import asyncio
 from flask import Flask
 from telegram.ext import Application, CommandHandler, MessageHandler, filters
 from horarios_logic import *
@@ -26,19 +27,21 @@ def main():
         logger.error("Token mancante. Imposta TELEGRAM_TOKEN.")
         return
 
+    # Iniciar Flask en un hilo
     flask_thread = threading.Thread(target=run_flask, daemon=True)
     flask_thread.start()
     logger.info("Flask server avviato sulla porta 8080")
 
+    # Construir la aplicación
     app = Application.builder().token(TOKEN).build()
 
-    # Elimina webhook por si acaso
-    import asyncio
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    loop.run_until_complete(app.bot.delete_webhook())
-    loop.close()
+    # Eliminar webhook (usando asyncio.run para una sola operación)
+    async def delete_webhook():
+        await app.bot.delete_webhook()
+        logger.info("Webhook eliminato")
+    asyncio.run(delete_webhook())
 
+    # Registrar comandos
     commands = [
         ("start", start), ("help", help_command), ("montepo", cmd_montepo), ("stesicoro", cmd_stesicoro),
         ("milo", cmd_milo), ("altri", cmd_altri), ("fontana", cmd_fontana), ("nesima", cmd_nesima),
