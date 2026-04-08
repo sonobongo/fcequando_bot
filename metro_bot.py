@@ -31,8 +31,6 @@ def main():
 
     logger.info("Bot avviato.")
     print("Bot funzionante... In attesa di messaggi.")
-    
-    # Sin Flask, sin hilos, solo polling con signal_handlers=False
     app.run_polling(allowed_updates=Update.ALL_TYPES, signal_handlers=False)
 
 if __name__ == '__main__':
