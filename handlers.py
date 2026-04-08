@@ -45,72 +45,68 @@ BOTON_TO_KEY = {
 # ============================================================================
 # FUNCIONES AUXILIARES PARA LOCALIZAR EL TREN (versión mejorada en segundos)
 # ============================================================================
-def get_current_station_from_montepo(now: datetime, seconds_passed: int) -> str:
-    """
-    Determina en qué estación se encuentra actualmente un tren que salió de Monte Po
-    hace 'seconds_passed' segundos. Usa los tiempos acumulados en segundos (sin redondear).
-    """
-    # Obtener tiempos acumulados en segundos desde Monte Po para cada estación
-    tiempos_seg = {}
-    stations_order = ["montepo", "fontana", "nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "giovanni", "stesicoro"]
-    # Acumulamos sumando los segundos de cada tramo (considerando hora punta y cierres)
-    # Para simplificar, reutilizamos get_travel_time_from_montepo pero en segundos reales (sin redondear)
-    # En lugar de minutos redondeados, calculamos segundos exactos.
-    # Como no tenemos una función directa, creamos una auxiliar que acumula segundos.
-    total_sec = 0
+def get_total_seconds_from_montepo(station: str, now: datetime) -> int:
+    """Devuelve los segundos acumulados desde Monte Po hasta la estación (sin redondear)."""
+    total = 0
     peak = is_peak_hour(now)
     for (start, end, base_sec) in FORWARD_PEAK:
         sec = base_sec
         if not peak and (start, end) in EXTRA_TRAMOS_FORWARD:
             sec -= 15
-        total_sec += sec
-        # Aplicar reducción si la estación de destino está cerrada (solo afecta a tramos posteriores, no a la acumulación)
-        # Pero la acumulación debe reflejar el tiempo real. Para simplificar, usamos los mismos tramos ajustados.
-        # Almacenamos el tiempo acumulado para la estación 'end'
-        tiempos_seg[end] = total_sec
-    # Aplicar reducciones por estaciones cerradas que estén antes de la estación consultada
-    # Esto ya se hace en get_travel_time_from_montepo, pero para segundos exactos, lo replicamos.
-    # Sin embargo, para localizar el tren, necesitamos los tiempos reales (con reducciones si la estación está cerrada).
-    # Como la reducción afecta al tiempo de viaje, debemos aplicarla a los tiempos acumulados.
-    # Usamos la función get_travel_time_from_montepo pero en segundos (multiplicando minutos por 60) no es exacto.
-    # Mejor: llamamos a get_travel_time_from_montepo para obtener minutos redondeados y luego convertimos a segundos? No es exacto.
-    # Para no complicar, vamos a usar los minutos redondeados pero ajustaremos la lógica de comparación.
-    # Dado que el error reportado es por redondeo, cambiaremos a segundos usando los valores base de los tramos.
-    # Esto es más preciso.
-    
-    # Recalculamos tiempos_seg de manera más fiable usando los tramos base y aplicando reducciones de estaciones cerradas.
-    # Pero por ahora, usaremos los minutos redondeados pero con una comparación más flexible.
-    # Dado que el usuario necesita una solución rápida, implementaré una versión que usa los minutos acumulados
-    # pero con un umbral de 30 segundos para decidir si el tren ya pasó la estación.
-    # Esta versión será más robusta.
-    
-    # Alternativa simple: usar los minutos redondeados pero en lugar de comparar con enteros, usamos los segundos reales.
-    # Para obtener los segundos reales, necesitamos los valores base sin redondear.
-    # Como ya tenemos FORWARD_PEAK en segundos, podemos calcular fácilmente.
+        total += sec
+        if end == station:
+            break
+    stations_order = ["montepo", "fontana", "nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "giovanni", "stesicoro"]
+    for closed in CLOSED_STATIONS:
+        if is_station_closed(closed["station"], now):
+            if stations_order.index(closed["station"]) < stations_order.index(station):
+                total -= closed["reduction_seconds"]
+    return max(0, total)
+
+def get_total_seconds_from_stesicoro(station: str, now: datetime) -> int:
+    """Devuelve los segundos acumulados desde Stesicoro hasta la estación (sin redondear)."""
+    total = 0
+    peak = is_peak_hour(now)
+    for (start, end, base_sec) in REVERSE_PEAK:
+        sec = base_sec
+        if not peak and (start, end) in EXTRA_TRAMOS_REVERSE:
+            sec -= 15
+        total += sec
+        if end == station:
+            break
+    stations_order_reverse = ["stesicoro", "giovanni", "galatea", "italia", "giuffrida", "borgo", "milo", "cibali", "sannullo", "nesima", "fontana", "montepo"]
+    for closed in CLOSED_STATIONS:
+        if is_station_closed(closed["station"], now):
+            if stations_order_reverse.index(closed["station"]) < stations_order_reverse.index(station):
+                total -= closed["reduction_seconds"]
+    return max(0, total)
+
+def get_current_station_from_montepo(now: datetime, seconds_passed: int) -> str:
+    """
+    Determina en qué estación se encuentra actualmente un tren que salió de Monte Po
+    hace 'seconds_passed' segundos.
+    """
     tiempos_seg = {}
     total = 0
+    peak = is_peak_hour(now)
     for (start, end, base_sec) in FORWARD_PEAK:
         sec = base_sec
         if not peak and (start, end) in EXTRA_TRAMOS_FORWARD:
             sec -= 15
         total += sec
         tiempos_seg[end] = total
-    # Aplicar reducciones por estaciones cerradas (restar 40 segundos por cada estación cerrada antes)
     stations_order = ["montepo", "fontana", "nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "giovanni", "stesicoro"]
     for closed in CLOSED_STATIONS:
         if is_station_closed(closed["station"], now):
             reduction = closed["reduction_seconds"]
-            # Restar reduction a todos los tiempos de estaciones posteriores a la cerrada
             idx_closed = stations_order.index(closed["station"])
             for station in stations_order[idx_closed+1:]:
                 if station in tiempos_seg:
                     tiempos_seg[station] -= reduction
-    # Asegurar que no haya tiempos negativos
     for station in tiempos_seg:
         if tiempos_seg[station] < 0:
             tiempos_seg[station] = 0
     
-    # Ahora buscamos la estación actual
     for i in range(len(stations_order)-1):
         current_station = stations_order[i]
         next_station = stations_order[i+1]
@@ -118,16 +114,14 @@ def get_current_station_from_montepo(now: datetime, seconds_passed: int) -> str:
         t_next = tiempos_seg.get(next_station, 0)
         if t_current <= seconds_passed < t_next:
             return NOMBRE_MOSTRAR[current_station]
-    # Si seconds_passed es menor que el primer tiempo (Monte Po), devolvemos Monte Po
     if seconds_passed < tiempos_seg.get("fontana", 0):
         return NOMBRE_MOSTRAR["montepo"]
-    # Si es mayor o igual que el último, devolvemos Stesicoro
     return NOMBRE_MOSTRAR["stesicoro"]
 
 def get_current_station_from_stesicoro(now: datetime, seconds_passed: int) -> str:
     """
     Determina en qué estación se encuentra actualmente un tren que salió de Stesicoro
-    hace 'seconds_passed' segundos. Usa los tiempos acumulados en segundos.
+    hace 'seconds_passed' segundos.
     """
     tiempos_seg = {}
     total = 0
@@ -179,7 +173,6 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
     
     special_msg = SANT_AGATA.get("message", "") + "\n\n" if is_sant_agata(now) else ""
     
-    # Verificar si es un día de cierre total (Navidad, Pascua)
     if is_closed_all_day(now):
         msg = f"{special_msg}{test_indicator}🚇 Oggi la metropolitana è chiusa tutto il giorno.\n🕒 Riaprirà domani mattina."
         img = get_station_image(estacion_key, now)
@@ -189,7 +182,6 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
             await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
         return
     
-    # Caso Monte Po y Stesicoro (cabeceras)
     if estacion_key in ["montepo", "stesicoro"]:
         station = "Montepo" if estacion_key == "montepo" else "Stesicoro"
         closed, next_open, special_closing_msg = is_metro_closed(now, station)
@@ -225,22 +217,17 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
         
         station_display = "Monte Po" if station == "Montepo" else "Stesicoro"
         dest = "Stesicoro" if station == "Montepo" else "Monte Po"
-        
-        # Calcular hora de llegada a la estación
         if station == "Montepo":
             arrival_time = next_dep
         else:
             arrival_time = next_dep - timedelta(minutes=20)
-        
         remaining = next_dep - now
         mins_rest = int(remaining.total_seconds() // 60)
         secs_rest = int(remaining.total_seconds() % 60)
         time_str_rest = format_time(mins_rest, secs_rest)
         
-        # Mostrar mensaje de andén si faltan 4 minutos o menos
         if mins_rest <= 4:
             msg = f"{special_msg}{test_indicator}🚇 Il treno è in binario. Partirà tra **{time_str_rest}**."
-            # Mostrar siguiente tren si falta 1 minuto o menos
             if mins_rest <= 1:
                 next2, min2, sec2, has2 = get_next_departure_after(station, now, next_dep.time())
                 if has2:
@@ -249,13 +236,11 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
                 else:
                     msg += f"\n\n🚆 Questo è l'ultimo treno della giornata."
         else:
-            # Mensaje normal (no andén)
             time_str = format_time(minutes, seconds)
             if minutes < SHORT_TIME_THRESHOLD:
                 msg = f"{special_msg}{test_indicator}🚇 Prossimo treno per {dest} parte tra **{time_str}**."
             else:
                 msg = f"{special_msg}{test_indicator}🚇 Prossimo treno per {dest} parte tra **{time_str}**, alle {next_dep.strftime('%H:%M')}."
-            # Mostrar siguiente tren si falta 1 minuto o menos
             if minutes <= 1:
                 next2, min2, sec2, has2 = get_next_departure_after(station, now, next_dep.time())
                 if has2:
@@ -295,21 +280,17 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
             await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
         return
     
-    # Añadir mensaje de cierre de estación (si aplica)
     closing_msg = get_closing_message(estacion_key, now)
-    
     info_mp, info_st = get_next_train_at_station(now, estacion_key)
     nombre = NOMBRE_MOSTRAR.get(estacion_key, estacion_key.capitalize())
-    
     if closing_msg:
         msg = f"{special_msg}{test_indicator}{closing_msg}\n🚆 **Prossimi treni a {nombre}**\n\n"
     else:
         msg = f"{special_msg}{test_indicator}🚆 **Prossimi treni a {nombre}**\n\n"
     
-    # Definir rango de estaciones para la localización (Nesima a Galatea inclusive)
     estaciones_localizacion = ["nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea"]
     
-    # Dirección hacia Monte Po (tren que viene de Stesicoro) - info_st
+    # Dirección hacia Monte Po (tren que viene de Stesicoro)
     if info_st:
         paso_st, mins, secs, next_info = info_st
         time_str = format_time(mins, secs)
@@ -321,19 +302,10 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
             else:
                 line = f"🔺 **Per Monte Po**: Passa tra **{time_str}**, alle {paso_st.strftime('%H:%M')}.\n"
         
-        # Añadir localización si aplica
         if estacion_key in estaciones_localizacion and 2 <= mins <= 10:
-            # Calcular segundos transcurridos desde Stesicoro
-            tiempos = build_tiempos_estacion(now)
-            t_total_seg = get_travel_time_from_stesicoro_seconds(estacion_key, now)  # necesitamos una función que devuelva segundos exactos
-            # Como no la tenemos, usamos los minutos redondeados pero con mejor precisión.
-            # Para simplificar, usaremos los segundos del paso (que son los reales)
-            # El tiempo restante en segundos es mins*60 + secs
             rest_seconds = mins * 60 + secs
-            # El tiempo total desde Stesicoro hasta la estación (en segundos) lo obtenemos de los tramos
-            # Calculamos segundos acumulados de REVERSE_PEAK para la estación
-            total_seconds_to_station = get_total_seconds_from_stesicoro(estacion_key, now)
-            seconds_passed = total_seconds_to_station - rest_seconds
+            total_seconds = get_total_seconds_from_stesicoro(estacion_key, now)
+            seconds_passed = total_seconds - rest_seconds
             if seconds_passed < 0:
                 seconds_passed = 0
             current_station = get_current_station_from_stesicoro(now, seconds_passed)
@@ -350,7 +322,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
     else:
         msg += f"🔺 **Per Monte Po**: nessun treno in arrivo al momento.\n"
     
-    # Dirección hacia Stesicoro (tren que viene de Monte Po) - info_mp
+    # Dirección hacia Stesicoro (tren que viene de Monte Po)
     if info_mp:
         paso_mp, mins, secs, next_info = info_mp
         time_str = format_time(mins, secs)
@@ -362,11 +334,10 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
             else:
                 line = f"🔻 **Per Stesicoro**: Passa tra **{time_str}**, alle {paso_mp.strftime('%H:%M')}.\n"
         
-        # Añadir localización si aplica
         if estacion_key in estaciones_localizacion and 2 <= mins <= 10:
             rest_seconds = mins * 60 + secs
-            total_seconds_to_station = get_total_seconds_from_montepo(estacion_key, now)
-            seconds_passed = total_seconds_to_station - rest_seconds
+            total_seconds = get_total_seconds_from_montepo(estacion_key, now)
+            seconds_passed = total_seconds - rest_seconds
             if seconds_passed < 0:
                 seconds_passed = 0
             current_station = get_current_station_from_montepo(now, seconds_passed)
@@ -386,7 +357,6 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
     last_msg = get_last_train_message(now)
     if last_msg and not is_sant_agata(now):
         msg += f"\n{last_msg}"
-    
     img = get_station_image(estacion_key, now)
     if img:
         await update.message.reply_photo(photo=img, caption=msg, reply_markup=keyboard_main if return_to_main else keyboard_altri, parse_mode='Markdown')
@@ -394,47 +364,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
         await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri, parse_mode='Markdown')
 
 # ============================================================================
-# FUNCIONES AUXILIARES PARA OBTENER TIEMPOS ACUMULADOS EN SEGUNDOS
-# ============================================================================
-def get_total_seconds_from_montepo(station: str, now: datetime) -> int:
-    """Devuelve los segundos acumulados desde Monte Po hasta la estación (sin redondear)."""
-    total = 0
-    peak = is_peak_hour(now)
-    for (start, end, base_sec) in FORWARD_PEAK:
-        sec = base_sec
-        if not peak and (start, end) in EXTRA_TRAMOS_FORWARD:
-            sec -= 15
-        total += sec
-        if end == station:
-            break
-    # Aplicar reducciones por estaciones cerradas antes de esta estación
-    stations_order = ["montepo", "fontana", "nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "giovanni", "stesicoro"]
-    for closed in CLOSED_STATIONS:
-        if is_station_closed(closed["station"], now):
-            if stations_order.index(closed["station"]) < stations_order.index(station):
-                total -= closed["reduction_seconds"]
-    return max(0, total)
-
-def get_total_seconds_from_stesicoro(station: str, now: datetime) -> int:
-    """Devuelve los segundos acumulados desde Stesicoro hasta la estación (sin redondear)."""
-    total = 0
-    peak = is_peak_hour(now)
-    for (start, end, base_sec) in REVERSE_PEAK:
-        sec = base_sec
-        if not peak and (start, end) in EXTRA_TRAMOS_REVERSE:
-            sec -= 15
-        total += sec
-        if end == station:
-            break
-    stations_order_reverse = ["stesicoro", "giovanni", "galatea", "italia", "giuffrida", "borgo", "milo", "cibali", "sannullo", "nesima", "fontana", "montepo"]
-    for closed in CLOSED_STATIONS:
-        if is_station_closed(closed["station"], now):
-            if stations_order_reverse.index(closed["station"]) < stations_order_reverse.index(station):
-                total -= closed["reduction_seconds"]
-    return max(0, total)
-
-# ============================================================================
-# MANEJADORES DE COMANDOS (sin cambios)
+# MANEJADORES DE COMANDOS
 # ============================================================================
 async def cmd_montepo(update, context): await send_station_response(update, context, "montepo", return_to_main=False)
 async def cmd_stesicoro(update, context): await send_station_response(update, context, "stesicoro", return_to_main=False)
