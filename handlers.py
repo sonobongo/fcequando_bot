@@ -12,8 +12,7 @@ CATANIA_TZ = pytz.timezone('Europe/Rome')
 # ============================================================================
 keyboard_main = ReplyKeyboardMarkup(
     [[KeyboardButton("Monte Po"), KeyboardButton("Altri"), KeyboardButton("Stesicoro")]],
-    resize_keyboard=True,
-    one_time_keyboard=False
+    resize_keyboard=True, one_time_keyboard=False
 )
 
 keyboard_altri = ReplyKeyboardMarkup(
@@ -23,79 +22,28 @@ keyboard_altri = ReplyKeyboardMarkup(
         ["Giuffrida", "Italia", "Galatea"],
         ["Giovanni XXIII", "← Menu"]
     ],
-    resize_keyboard=True,
-    one_time_keyboard=False
+    resize_keyboard=True, one_time_keyboard=False
 )
 
 BOTON_TO_KEY = {
-    "Monte Po": "montepo",
-    "Stesicoro": "stesicoro",
-    "Fontana": "fontana",
-    "Nesima": "nesima",
-    "San Nullo": "sannullo",
-    "Cibali": "cibali",
-    "Milo": "milo",
-    "Borgo": "borgo",
-    "Giuffrida": "giuffrida",
-    "Italia": "italia",
-    "Galatea": "galatea",
-    "Giovanni XXIII": "giovanni"
+    "Monte Po": "montepo", "Stesicoro": "stesicoro", "Fontana": "fontana",
+    "Nesima": "nesima", "San Nullo": "sannullo", "Cibali": "cibali",
+    "Milo": "milo", "Borgo": "borgo", "Giuffrida": "giuffrida",
+    "Italia": "italia", "Galatea": "galatea", "Giovanni XXIII": "giovanni"
 }
 
 # ============================================================================
-# FUNCIONES AUXILIARES PARA OBTENER TIEMPOS ACUMULADOS (en segundos)
-# ============================================================================
-def get_total_seconds_from_montepo(station: str, now: datetime) -> int:
-    total = 0
-    peak = is_peak_hour(now)
-    for (start, end, base_sec) in FORWARD_PEAK:
-        sec = base_sec
-        if not peak and (start, end) in EXTRA_TRAMOS_FORWARD:
-            sec -= 15
-        total += sec
-        if end == station:
-            break
-    stations_order = ["montepo", "fontana", "nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "giovanni", "stesicoro"]
-    for closed in CLOSED_STATIONS:
-        if is_station_closed(closed["station"], now):
-            if stations_order.index(closed["station"]) < stations_order.index(station):
-                total -= closed["reduction_seconds"]
-    return max(0, total)
-
-def get_total_seconds_from_stesicoro(station: str, now: datetime) -> int:
-    total = 0
-    peak = is_peak_hour(now)
-    for (start, end, base_sec) in REVERSE_PEAK:
-        sec = base_sec
-        if not peak and (start, end) in EXTRA_TRAMOS_REVERSE:
-            sec -= 15
-        total += sec
-        if end == station:
-            break
-    stations_order_reverse = ["stesicoro", "giovanni", "galatea", "italia", "giuffrida", "borgo", "milo", "cibali", "sannullo", "nesima", "fontana", "montepo"]
-    for closed in CLOSED_STATIONS:
-        if is_station_closed(closed["station"], now):
-            if stations_order_reverse.index(closed["station"]) < stations_order_reverse.index(station):
-                total -= closed["reduction_seconds"]
-    return max(0, total)
-
-# ============================================================================
-# FUNCIONES DE LOCALIZACIÓN CORREGIDAS
+# FUNCIONES AUXILIARES (usando segundos exactos)
 # ============================================================================
 def get_current_station_from_montepo(now: datetime, seconds_passed: int) -> str:
     stations = ["montepo", "fontana", "nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "giovanni", "stesicoro"]
-    tiempos = {}
-    for st in stations:
-        tiempos[st] = get_total_seconds_from_montepo(st, now)
+    tiempos = {st: get_total_seconds_from_montepo(st, now) for st in stations}
     if 0 < seconds_passed < 30:
         return "Il treno è appena partito da Monte Po"
     for i in range(len(stations)-1):
-        current = stations[i]
-        next_st = stations[i+1]
-        t_cur = tiempos[current]
-        t_next = tiempos[next_st]
-        if seconds_passed >= t_cur - 1 and seconds_passed < t_next:
-            return NOMBRE_MOSTRAR[current]
+        cur, nxt = stations[i], stations[i+1]
+        if seconds_passed >= tiempos[cur] - 1 and seconds_passed < tiempos[nxt]:
+            return NOMBRE_MOSTRAR[cur]
     if seconds_passed >= tiempos["stesicoro"] - 1:
         return NOMBRE_MOSTRAR["stesicoro"]
     if seconds_passed == 0:
@@ -104,18 +52,13 @@ def get_current_station_from_montepo(now: datetime, seconds_passed: int) -> str:
 
 def get_current_station_from_stesicoro(now: datetime, seconds_passed: int) -> str:
     stations = ["stesicoro", "giovanni", "galatea", "italia", "giuffrida", "borgo", "milo", "cibali", "sannullo", "nesima", "fontana", "montepo"]
-    tiempos = {}
-    for st in stations:
-        tiempos[st] = get_total_seconds_from_stesicoro(st, now)
+    tiempos = {st: get_total_seconds_from_stesicoro(st, now) for st in stations}
     if 0 < seconds_passed < 30:
         return "Il treno è appena partito da Stesicoro"
     for i in range(len(stations)-1):
-        current = stations[i]
-        next_st = stations[i+1]
-        t_cur = tiempos[current]
-        t_next = tiempos[next_st]
-        if seconds_passed >= t_cur - 1 and seconds_passed < t_next:
-            return NOMBRE_MOSTRAR[current]
+        cur, nxt = stations[i], stations[i+1]
+        if seconds_passed >= tiempos[cur] - 1 and seconds_passed < tiempos[nxt]:
+            return NOMBRE_MOSTRAR[cur]
     if seconds_passed >= tiempos["montepo"] - 1:
         return NOMBRE_MOSTRAR["montepo"]
     if seconds_passed == 0:
@@ -123,23 +66,19 @@ def get_current_station_from_stesicoro(now: datetime, seconds_passed: int) -> st
     return NOMBRE_MOSTRAR["stesicoro"]
 
 # ============================================================================
-# RESPUESTA NORMAL PARA CUALQUIER ESTACIÓN (CON MODO TEST PERSISTENTE)
+# RESPUESTA PRINCIPAL
 # ============================================================================
 async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str, return_to_main: bool = True):
-    simulated_time = context.chat_data.get('test_time') if context.chat_data else None
-    if simulated_time:
-        now = simulated_time
-        test_indicator = "🧪 [TEST MODE] "
-    else:
-        now = datetime.now(CATANIA_TZ)
-        test_indicator = ""
-    
+    simulated = context.chat_data.get('test_time') if context.chat_data else None
+    now = simulated if simulated else datetime.now(CATANIA_TZ)
+    test_indicator = "🧪 [TEST MODE] " if simulated else ""
+
     warning = get_closing_warning(now)
     if warning:
         await update.message.reply_text(warning, reply_markup=keyboard_main if return_to_main else keyboard_altri)
-    
+
     special_msg = SANT_AGATA.get("message", "") + "\n\n" if is_sant_agata(now) else ""
-    
+
     if is_closed_all_day(now):
         msg = f"{special_msg}{test_indicator}🚇 Oggi la metropolitana è chiusa tutto il giorno.\n🕒 Riaprirà domani mattina."
         img = get_station_image(estacion_key, now)
@@ -148,7 +87,8 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
         else:
             await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
         return
-    
+
+    # Cabeceras Monte Po / Stesicoro
     if estacion_key in ["montepo", "stesicoro"]:
         station = "Montepo" if estacion_key == "montepo" else "Stesicoro"
         closed, next_open, special_closing_msg = is_metro_closed(now, station)
@@ -171,7 +111,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
             else:
                 await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
             return
-        
+
         next_dep, minutes, seconds, has_trains = get_next_departure(station, now)
         if not has_trains:
             msg = f"{special_msg}{test_indicator}🚇 Non ci sono più treni oggi. Il servizio riprenderà domani mattina."
@@ -181,25 +121,19 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
             else:
                 await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
             return
-        
-        station_display = "Monte Po" if station == "Montepo" else "Stesicoro"
+
         dest = "Stesicoro" if station == "Montepo" else "Monte Po"
-        if station == "Montepo":
-            arrival_time = next_dep
-        else:
-            arrival_time = next_dep - timedelta(minutes=20)
         remaining = next_dep - now
         mins_rest = int(remaining.total_seconds() // 60)
         secs_rest = int(remaining.total_seconds() % 60)
         time_str_rest = format_time(mins_rest, secs_rest)
-        
+
         if mins_rest <= 4:
             msg = f"{special_msg}{test_indicator}🚇 Il treno è in binario. Partirà tra **{time_str_rest}**."
             if mins_rest <= 1:
                 next2, min2, sec2, has2 = get_next_departure_after(station, now, next_dep.time())
                 if has2:
-                    time_str2 = format_time(min2, sec2)
-                    msg += f"\n\n🚆 Il prossimo treno successivo partirà tra {time_str2}, alle {next2.strftime('%H:%M')}."
+                    msg += f"\n\n🚆 Il prossimo treno successivo partirà tra {format_time(min2, sec2)}, alle {next2.strftime('%H:%M')}."
                 else:
                     msg += f"\n\n🚆 Questo è l'ultimo treno della giornata."
         else:
@@ -211,11 +145,10 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
             if minutes <= 1:
                 next2, min2, sec2, has2 = get_next_departure_after(station, now, next_dep.time())
                 if has2:
-                    time_str2 = format_time(min2, sec2)
-                    msg += f"\n\n🚆 Il prossimo treno successivo partirà tra {time_str2}, alle {next2.strftime('%H:%M')}."
+                    msg += f"\n\n🚆 Il prossimo treno successivo partirà tra {format_time(min2, sec2)}, alle {next2.strftime('%H:%M')}."
                 else:
                     msg += f"\n\n🚆 Questo è l'ultimo treno della giornata."
-        
+
         last_msg = get_last_train_message(now)
         if last_msg and not is_sant_agata(now):
             msg += f"\n\n{last_msg}"
@@ -225,7 +158,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
         else:
             await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri, parse_mode='Markdown')
         return
-    
+
     # Estaciones intermedias
     closed, next_open, special_closing_msg = is_metro_closed(now, "Montepo")
     if closed:
@@ -246,30 +179,28 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
         else:
             await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
         return
-    
+
     closing_msg = get_closing_message(estacion_key, now)
     info_mp, info_st = get_next_train_at_station(now, estacion_key)
     nombre = NOMBRE_MOSTRAR.get(estacion_key, estacion_key.capitalize())
+
     if closing_msg:
         msg = f"{special_msg}{test_indicator}{closing_msg}\n🚆 **Prossimi treni a {nombre}**\n\n"
     else:
         msg = f"{special_msg}{test_indicator}🚆 **Prossimi treni a {nombre}**\n\n"
-    
+
     estaciones_localizacion = ["nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea"]
-    
+
+    # Dirección Monte Po (tren desde Stesicoro)
     if info_st:
         paso_st, mins, secs, next_info = info_st
         time_str = format_time(mins, secs)
         if mins == 0 and secs < 30:
             line = f"🔺 **Per Monte Po**: treno in arrivo.\n"
         else:
-            if mins < SHORT_TIME_THRESHOLD:
-                line = f"🔺 **Per Monte Po**: Passa tra **{time_str}**.\n"
-            else:
-                line = f"🔺 **Per Monte Po**: Passa tra **{time_str}**, alle {paso_st.strftime('%H:%M')}.\n"
-        
+            line = f"🔺 **Per Monte Po**: Passa tra **{time_str}**.\n"
         if estacion_key in estaciones_localizacion and 2 <= mins <= 10:
-            rest_seconds = mins * 60 + secs
+            rest_seconds = mins*60 + secs
             total_seconds = get_total_seconds_from_stesicoro(estacion_key, now)
             if rest_seconds < total_seconds:
                 seconds_passed = total_seconds - rest_seconds
@@ -278,35 +209,25 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
                 current_station = get_current_station_from_stesicoro(now, seconds_passed)
                 if "appena partito" in current_station:
                     line += f"   ({current_station})\n"
-                elif "non ancora partito" in current_station:
-                    pass
-                else:
+                elif "non ancora partito" not in current_station:
                     line += f"   (il treno si trova attualmente a {current_station})\n"
         msg += line
-        
         if mins <= 1 and next_info:
             paso2, mins2, secs2 = next_info
-            time_str2 = format_time(mins2, secs2)
-            if mins2 < SHORT_TIME_THRESHOLD:
-                msg += f"   Il successivo passerà tra {time_str2}.\n"
-            else:
-                msg += f"   Il successivo passerà tra {time_str2}, alle {paso2.strftime('%H:%M')}.\n"
+            msg += f"   Il successivo passerà tra {format_time(mins2, secs2)}.\n"
     else:
         msg += f"🔺 **Per Monte Po**: nessun treno in arrivo al momento.\n"
-    
+
+    # Dirección Stesicoro (tren desde Monte Po)
     if info_mp:
         paso_mp, mins, secs, next_info = info_mp
         time_str = format_time(mins, secs)
         if mins == 0 and secs < 30:
             line = f"🔻 **Per Stesicoro**: treno in arrivo.\n"
         else:
-            if mins < SHORT_TIME_THRESHOLD:
-                line = f"🔻 **Per Stesicoro**: Passa tra **{time_str}**.\n"
-            else:
-                line = f"🔻 **Per Stesicoro**: Passa tra **{time_str}**, alle {paso_mp.strftime('%H:%M')}.\n"
-        
+            line = f"🔻 **Per Stesicoro**: Passa tra **{time_str}**.\n"
         if estacion_key in estaciones_localizacion and 2 <= mins <= 10:
-            rest_seconds = mins * 60 + secs
+            rest_seconds = mins*60 + secs
             total_seconds = get_total_seconds_from_montepo(estacion_key, now)
             if rest_seconds < total_seconds:
                 seconds_passed = total_seconds - rest_seconds
@@ -315,22 +236,15 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
                 current_station = get_current_station_from_montepo(now, seconds_passed)
                 if "appena partito" in current_station:
                     line += f"   ({current_station})\n"
-                elif "non ancora partito" in current_station:
-                    pass
-                else:
+                elif "non ancora partito" not in current_station:
                     line += f"   (il treno si trova attualmente a {current_station})\n"
         msg += line
-        
         if mins <= 1 and next_info:
             paso2, mins2, secs2 = next_info
-            time_str2 = format_time(mins2, secs2)
-            if mins2 < SHORT_TIME_THRESHOLD:
-                msg += f"   Il successivo passerà tra {time_str2}.\n"
-            else:
-                msg += f"   Il successivo passerà tra {time_str2}, alle {paso2.strftime('%H:%M')}.\n"
+            msg += f"   Il successivo passerà tra {format_time(mins2, secs2)}.\n"
     else:
         msg += f"🔻 **Per Stesicoro**: nessun treno in arrivo al momento.\n"
-    
+
     last_msg = get_last_train_message(now)
     if last_msg and not is_sant_agata(now):
         msg += f"\n{last_msg}"
@@ -360,24 +274,16 @@ async def cmd_altri(update, context):
     await update.message.reply_text("⬇️ Altre stazioni:", reply_markup=keyboard_altri)
 
 async def start(update, context):
-    print("DEBUG: start handler called")  # <-- LOG
     user = update.effective_user
-    print(f"DEBUG: user={user}")
     now = datetime.now(CATANIA_TZ)
-    print(f"DEBUG: now={now}")
     last_msg = get_last_train_message(now)
-    print(f"DEBUG: last_msg={last_msg}")
-    try:
-        await update.message.reply_text(
-            f"Ciao {user.first_name}! 👋\n\n"
-            "Posso dirti quando passa il prossimo treno della metropolitana di Catania.\n"
-            "Premi uno dei pulsanti qui sotto o usa i comandi /montepo, /stesicoro, /milo, /altri, /fontana, ecc.\n\n"
-            f"{last_msg}",
-            reply_markup=keyboard_main
-        )
-        print("DEBUG: message sent successfully")
-    except Exception as e:
-        print(f"ERROR in start: {e}")
+    await update.message.reply_text(
+        f"Ciao {user.first_name}! 👋\n\n"
+        "Posso dirti quando passa il prossimo treno della metropolitana di Catania.\n"
+        "Premi uno dei pulsanti qui sotto o usa i comandi /montepo, /stesicoro, /milo, /altri, /fontana, ecc.\n\n"
+        f"{last_msg}",
+        reply_markup=keyboard_main
+    )
 
 async def help_command(update, context):
     await update.message.reply_text(
@@ -402,8 +308,7 @@ async def handle_button(update, context):
     elif text == "← Menu":
         await update.message.reply_text("🔙 Ritorno al menu principale.", reply_markup=keyboard_main)
     elif text in BOTON_TO_KEY:
-        estacion_key = BOTON_TO_KEY[text]
-        await send_station_response(update, context, estacion_key, return_to_main=True)
+        await send_station_response(update, context, BOTON_TO_KEY[text], return_to_main=True)
     else:
         await update.message.reply_text("Scelta non valida. Usa i pulsanti.", reply_markup=keyboard_main)
 
@@ -435,20 +340,16 @@ async def test_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode='Markdown'
         )
         return
-    
     if len(args) == 2:
         date_str, time_str = args[0], args[1]
         if len(date_str) != 8 or not date_str.isdigit():
-            await update.message.reply_text("Formato data non valido. Usa DDMMYYYY (es. 11022026).")
+            await update.message.reply_text("Formato data non valido. Usa DDMMYYYY.")
             return
         if len(time_str) != 4 or not time_str.isdigit():
-            await update.message.reply_text("Formato ora non valido. Usa HHMM (es. 1102).")
+            await update.message.reply_text("Formato ora non valido. Usa HHMM.")
             return
-        day = int(date_str[0:2])
-        month = int(date_str[2:4])
-        year = int(date_str[4:8])
-        hour = int(time_str[0:2])
-        minute = int(time_str[2:4])
+        day, month, year = int(date_str[0:2]), int(date_str[2:4]), int(date_str[4:8])
+        hour, minute = int(time_str[0:2]), int(time_str[2:4])
         if hour > 23 or minute > 59:
             await update.message.reply_text("Ora non valida.")
             return
@@ -457,17 +358,12 @@ async def test_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             await update.message.reply_text(f"Data non valida: {e}")
             return
-        if context.chat_data is None:
-            context.chat_data = {}
         context.chat_data['test_time'] = simulated
         await update.message.reply_text(
-            f"🧪 **Modalità test attivata**\n"
-            f"Ora simulata: {simulated.strftime('%d/%m/%Y %H:%M')}\n"
-            f"Usa i bottoni normalmente. Per uscire: `/testfin`",
+            f"🧪 **Modalità test attivata**\nOra simulata: {simulated.strftime('%d/%m/%Y %H:%M')}\nUsa i bottoni. Per uscire: `/testfin`",
             parse_mode='Markdown'
         )
         return
-    
     if len(args) == 3:
         date_str, time_str, station_code = args[0], args[1], args[2].upper()
         if station_code == "M":
@@ -479,17 +375,11 @@ async def test_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await update.message.reply_text("Codice stazione non valido. Usa M, S o ML.")
             return
-        if len(date_str) != 8 or not date_str.isdigit():
-            await update.message.reply_text("Data non valida.")
+        if len(date_str) != 8 or not date_str.isdigit() or len(time_str) != 4 or not time_str.isdigit():
+            await update.message.reply_text("Formato data/ora non valido.")
             return
-        if len(time_str) != 4 or not time_str.isdigit():
-            await update.message.reply_text("Ora non valida.")
-            return
-        day = int(date_str[0:2])
-        month = int(date_str[2:4])
-        year = int(date_str[4:8])
-        hour = int(time_str[0:2])
-        minute = int(time_str[2:4])
+        day, month, year = int(date_str[0:2]), int(date_str[2:4]), int(date_str[4:8])
+        hour, minute = int(time_str[0:2]), int(time_str[2:4])
         if hour > 23 or minute > 59:
             await update.message.reply_text("Ora non valida.")
             return
@@ -500,7 +390,6 @@ async def test_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         await send_station_response_simulated(update, context, station, simulated)
         return
-    
     await update.message.reply_text("Comando non riconosciuto. Usa /test DDMMYYYY HHMM o /test DDMMYYYY HHMM X")
 
 async def testfin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
