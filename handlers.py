@@ -80,15 +80,15 @@ def get_total_seconds_from_stesicoro(station: str, now: datetime) -> int:
     return max(0, total)
 
 # ============================================================================
-# FUNCIONES DE LOCALIZACIÓN CORREGIDAS (con frases para salida reciente)
+# FUNCIONES DE LOCALIZACIÓN CORREGIDAS
 # ============================================================================
 def get_current_station_from_montepo(now: datetime, seconds_passed: int) -> str:
     stations = ["montepo", "fontana", "nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "giovanni", "stesicoro"]
     tiempos = {}
     for st in stations:
         tiempos[st] = get_total_seconds_from_montepo(st, now)
-    # Si acaba de salir (menos de 30 segundos)
-    if seconds_passed < 30:
+    # Si acaba de salir (menos de 30 segundos) y ha pasado al menos 1 segundo (ya salió)
+    if 0 < seconds_passed < 30:
         return "Il treno è appena partito da Monte Po"
     for i in range(len(stations)-1):
         current = stations[i]
@@ -99,6 +99,9 @@ def get_current_station_from_montepo(now: datetime, seconds_passed: int) -> str:
             return NOMBRE_MOSTRAR[current]
     if seconds_passed >= tiempos["stesicoro"] - 1:
         return NOMBRE_MOSTRAR["stesicoro"]
+    # Si seconds_passed es 0, significa que el tren aún no ha salido
+    if seconds_passed == 0:
+        return "non ancora partito da Monte Po"
     return NOMBRE_MOSTRAR["montepo"]
 
 def get_current_station_from_stesicoro(now: datetime, seconds_passed: int) -> str:
@@ -106,7 +109,7 @@ def get_current_station_from_stesicoro(now: datetime, seconds_passed: int) -> st
     tiempos = {}
     for st in stations:
         tiempos[st] = get_total_seconds_from_stesicoro(st, now)
-    if seconds_passed < 30:
+    if 0 < seconds_passed < 30:
         return "Il treno è appena partito da Stesicoro"
     for i in range(len(stations)-1):
         current = stations[i]
@@ -117,6 +120,8 @@ def get_current_station_from_stesicoro(now: datetime, seconds_passed: int) -> st
             return NOMBRE_MOSTRAR[current]
     if seconds_passed >= tiempos["montepo"] - 1:
         return NOMBRE_MOSTRAR["montepo"]
+    if seconds_passed == 0:
+        return "non ancora partito da Stesicoro"
     return NOMBRE_MOSTRAR["stesicoro"]
 
 # ============================================================================
@@ -146,6 +151,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
             await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
         return
     
+    # Caso Monte Po y Stesicoro (cabeceras)
     if estacion_key in ["montepo", "stesicoro"]:
         station = "Montepo" if estacion_key == "montepo" else "Stesicoro"
         closed, next_open, special_closing_msg = is_metro_closed(now, station)
@@ -266,18 +272,23 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
             else:
                 line = f"🔺 **Per Monte Po**: Passa tra **{time_str}**, alle {paso_st.strftime('%H:%M')}.\n"
         
+        # Solo mostrar localización si el tiempo restante está entre 2 y 10 minutos
         if estacion_key in estaciones_localizacion and 2 <= mins <= 10:
             rest_seconds = mins * 60 + secs
             total_seconds = get_total_seconds_from_stesicoro(estacion_key, now)
-            seconds_passed = total_seconds - rest_seconds
-            if seconds_passed < 0:
-                seconds_passed = 0
-            current_station = get_current_station_from_stesicoro(now, seconds_passed)
-            # Si la frase ya incluye "appena partito", no añadimos "attualmente a"
-            if "appena partito" in current_station:
-                line += f"   ({current_station})\n"
-            else:
-                line += f"   (il treno si trova attualmente a {current_station})\n"
+            # Solo si el tiempo restante es menor que el tiempo total (el tren ya ha salido)
+            if rest_seconds < total_seconds:
+                seconds_passed = total_seconds - rest_seconds
+                if seconds_passed < 0:
+                    seconds_passed = 0
+                current_station = get_current_station_from_stesicoro(now, seconds_passed)
+                if "appena partito" in current_station:
+                    line += f"   ({current_station})\n"
+                elif "non ancora partito" in current_station:
+                    # No mostrar nada si aún no ha salido
+                    pass
+                else:
+                    line += f"   (il treno si trova attualmente a {current_station})\n"
         msg += line
         
         if mins <= 1 and next_info:
@@ -305,14 +316,17 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
         if estacion_key in estaciones_localizacion and 2 <= mins <= 10:
             rest_seconds = mins * 60 + secs
             total_seconds = get_total_seconds_from_montepo(estacion_key, now)
-            seconds_passed = total_seconds - rest_seconds
-            if seconds_passed < 0:
-                seconds_passed = 0
-            current_station = get_current_station_from_montepo(now, seconds_passed)
-            if "appena partito" in current_station:
-                line += f"   ({current_station})\n"
-            else:
-                line += f"   (il treno si trova attualmente a {current_station})\n"
+            if rest_seconds < total_seconds:
+                seconds_passed = total_seconds - rest_seconds
+                if seconds_passed < 0:
+                    seconds_passed = 0
+                current_station = get_current_station_from_montepo(now, seconds_passed)
+                if "appena partito" in current_station:
+                    line += f"   ({current_station})\n"
+                elif "non ancora partito" in current_station:
+                    pass
+                else:
+                    line += f"   (il treno si trova attualmente a {current_station})\n"
         msg += line
         
         if mins <= 1 and next_info:
