@@ -162,7 +162,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
         return
 
     # ========================================================================
-    # ESTACIONES INTERMEDIAS: nueva estructura
+    # ESTACIONES INTERMEDIAS
     # ========================================================================
     # Comprobar cierre total
     closed, next_open, special_closing_msg = is_metro_closed(now, "Montepo")
@@ -194,6 +194,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
 
     # ------------------------------------------------------------
     # 1. MENSAJE PARA DIRECCIÓN MONTE PO (CON foto de la estación)
+    #    SIN foto de ruta
     # ------------------------------------------------------------
     msg_montepo = ""
     if closing_msg:
@@ -233,20 +234,26 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
         msg_montepo += last_msg_text
 
     # Enviar primer mensaje CON foto de la estación (st_*.jpg/png)
-    img_station = get_station_image(estacion_key, now)  # usa la imagen normal de la estación
+    img_station = get_station_image(estacion_key, now)
     if img_station:
         await update.message.reply_photo(photo=img_station, caption=msg_montepo, reply_markup=keyboard_main if return_to_main else keyboard_altri, parse_mode='Markdown')
     else:
         await update.message.reply_text(msg_montepo, reply_markup=keyboard_main if return_to_main else keyboard_altri, parse_mode='Markdown')
 
     # ------------------------------------------------------------
-    # 2. MENSAJE PARA DIRECCIÓN STESICORO (SOLO TEXTO, sin foto)
+    # 2. MENSAJE PARA DIRECCIÓN STESICORO (SOLO TEXTO, sin foto de estación)
+    #    DESPUÉS: enviar foto de ruta de la estación donde está el tren (opción B)
+    #    y borrarla tras 60 segundos
     # ------------------------------------------------------------
     msg_stesicoro = ""
     if closing_msg:
         msg_stesicoro += f"{special_msg}{test_indicator}{closing_msg}\n🚆 **Prossimi treni a {nombre}**\n\n"
     else:
         msg_stesicoro += f"{special_msg}{test_indicator}🚆 **Prossimi treni a {nombre}**\n\n"
+
+    # Variables para almacenar la estación actual del tren (para la foto de ruta)
+    current_station_key = None
+    current_station_name = None
 
     if info_mp:
         paso_mp, mins, secs, next_info = info_mp
@@ -265,6 +272,12 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
                 if seconds_passed < 0:
                     seconds_passed = 0
                 current_station = get_current_station_from_montepo(now, seconds_passed)
+                # Guardar la clave de la estación actual para la foto de ruta
+                # Buscar la clave (en minúsculas) que coincide con el nombre mostrado
+                for key, name in NOMBRE_MOSTRAR.items():
+                    if name == current_station:
+                        current_station_key = key
+                        break
                 if "appena partito" in current_station:
                     line += f"   ({current_station})\n"
                 elif "non ancora partito" not in current_station:
@@ -280,21 +293,20 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
         msg_stesicoro += last_msg_text
 
     # Enviar el texto (sin foto) para la dirección Stesicoro
-    text_message = await update.message.reply_text(msg_stesicoro, reply_markup=keyboard_main if return_to_main else keyboard_altri, parse_mode='Markdown')
+    await update.message.reply_text(msg_stesicoro, reply_markup=keyboard_main if return_to_main else keyboard_altri, parse_mode='Markdown')
 
     # ------------------------------------------------------------
-    # 3. ENVIAR LA FOTO DE RUTA (ruta_montepo_*.png) y BORRARLA TRAS 60 SEGUNDOS
+    # 3. ENVIAR FOTO DE RUTA (solo para dirección Stesicoro, opción B)
+    #    Usar la estación donde está el tren (current_station_key)
     # ------------------------------------------------------------
-    # Construir la URL de la imagen de ruta para esta estación
-    ruta_image_url = f"https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_montepo_{estacion_key}.png"
-    # Enviar la foto (sin texto o con un texto breve, pero se borrará)
-    try:
-        ruta_message = await update.message.reply_photo(photo=ruta_image_url)
-        # Programar borrado después de 60 segundos
-        await asyncio.sleep(60)
-        await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=ruta_message.message_id)
-    except Exception as e:
-        print(f"Error al enviar o borrar la imagen de ruta para {estacion_key}: {e}")
+    if current_station_key:
+        ruta_image_url = f"https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_montepo_{current_station_key}.png"
+        try:
+            ruta_message = await update.message.reply_photo(photo=ruta_image_url)
+            await asyncio.sleep(60)
+            await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=ruta_message.message_id)
+        except Exception as e:
+            print(f"Error al enviar o borrar la imagen de ruta para {current_station_key}: {e}")
 
 # ============================================================================
 # MANEJADORES DE COMANDOS
