@@ -117,10 +117,8 @@ def build_temporary_messages(now: datetime, estacion_key: str):
     # Mensaje 3 (Stesicoro) y clave para foto de ruta
     msg3 = ""
     current_station_key = None
-    should_show_photo = True  # por defecto sí, luego se evalúa
     if info_mp:
         paso_mp, mins, secs, next_info = info_mp
-        total_seconds_remaining = mins*60 + secs
         time_str = format_time(mins, secs)
         if mins == 0 and secs < 30:
             line = f"🔻 **Per Stesicoro**: treno in arrivo.\n"
@@ -143,10 +141,7 @@ def build_temporary_messages(now: datetime, estacion_key: str):
                         break
             elif current_station == "Il treno è appena partito da Monte Po":
                 current_station_key = "montepo"
-        # NO mostrar foto si el tiempo restante es <= 90 segundos (1.5 minutos)
-        if total_seconds_remaining <= 90:
-            should_show_photo = False
-        # Texto localización solo si 2-10 min
+        # Mostrar texto de localización solo si 2-10 min y no mostrar foto si tiempo <= 90s
         estaciones_localizacion_stesicoro = ["nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "giovanni"]
         if estacion_key in estaciones_localizacion_stesicoro and 2 <= mins <= 10:
             if rest_seconds < total_seconds:
@@ -164,28 +159,35 @@ def build_temporary_messages(now: datetime, estacion_key: str):
                 msg3 += f"   Il successivo passerà tra {time_str2}.\n"
     else:
         msg3 = f"🔻 **Per Stesicoro**: nessun treno in arrivo al momento.\n"
-        should_show_photo = False
     if last_msg_text:
         msg3 += last_msg_text
 
-    return msg2, msg3, current_station_key, should_show_photo
+    return msg2, msg3, current_station_key, (mins*60+secs if info_mp else 9999)
 
 # ============================================================================
-# TAREA DE ACTUALIZACIÓN AUTOMÁTICA (3 ciclos de 45 segundos, el último no borra)
+# TAREA DE ACTUALIZACIÓN AUTOMÁTICA (3 ciclos de 45 segundos)
 # ============================================================================
 async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str, chat_id: int, use_simulated: bool = False, simulated_now: datetime = None):
+    # Guardar en contexto los datos de la sesión para que el botón pueda acceder
+    context.chat_data['refresh_station'] = estacion_key
+    if use_simulated and simulated_now:
+        context.chat_data['refresh_simulated'] = simulated_now
+    else:
+        context.chat_data.pop('refresh_simulated', None)
+    context.chat_data['refresh_chat_id'] = chat_id
+    context.chat_data['refresh_update'] = update
+
     for ciclo in range(3):
         if context.chat_data.get('cancel_refresh', False):
             break
 
         now = simulated_now if (use_simulated and simulated_now) else datetime.now(CATANIA_TZ)
-        msg2, msg3, current_station_key, should_show_photo = build_temporary_messages(now, estacion_key)
+        msg2, msg3, current_station_key, tiempo_restante = build_temporary_messages(now, estacion_key)
 
         # Enviar mensaje 2
         msg2_obj = await update.message.reply_text(msg2, parse_mode='Markdown')
-        
-        # Enviar mensaje 3 (con foto solo si should_show_photo True y hay estación)
-        if should_show_photo and current_station_key:
+        # Enviar mensaje 3: con foto solo si tiempo restante > 90 segundos y hay estación actual
+        if current_station_key and tiempo_restante > 90:
             ruta_url = f"https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_montepo_{current_station_key}.png"
             try:
                 msg3_obj = await update.message.reply_photo(photo=ruta_url, caption=msg3, parse_mode='Markdown')
@@ -197,19 +199,18 @@ async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, 
         # Guardar IDs de los mensajes temporales actuales
         context.chat_data['refresh_msg_ids'] = (msg2_obj.message_id, msg3_obj.message_id)
 
-        # Si es el último ciclo (ciclo 2), no borramos al final y enviamos botón
+        # Si es el último ciclo (ciclo 2), no borramos y enviamos botón
         if ciclo == 2:
-            # Enviar botón inline "Refrescar 🔄"
-            keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("Refrescar 🔄", callback_data="refrescar")]])
-            await update.message.reply_text("🔄 ¿Quieres actualizar los tiempos?", reply_markup=keyboard)
-            # Guardar el ID del mensaje del botón para poder borrarlo luego si se refresca? No es necesario.
+            # Enviar botón inline "refrescare"
+            refresh_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("refrescare", callback_data="refrescar")]])
+            await update.message.reply_text("", reply_markup=refresh_keyboard)
             break
 
         # Para ciclos 0 y 1: esperar 45 segundos y borrar
-        for _ in range(23):  # 45/2 ≈ 22.5, redondeamos a 23 ciclos de 2 segundos = 46s (aproximado)
+        for _ in range(45):  # 45 segundos comprobando cancelación cada segundo
             if context.chat_data.get('cancel_refresh', False):
                 break
-            await asyncio.sleep(2)
+            await asyncio.sleep(1)
         if context.chat_data.get('cancel_refresh', False):
             break
 
@@ -223,228 +224,19 @@ async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, 
         except:
             pass
 
-    # Limpiar flags al final (si no fue cancelado)
+    # Limpiar flags al final si no fue cancelado
     if not context.chat_data.get('cancel_refresh', False):
         context.chat_data['refresh_active'] = False
         context.chat_data.pop('cancel_refresh', None)
-        context.chat_data.pop('refresh_msg_ids', None)
+        # No borramos refresh_msg_ids porque los últimos mensajes permanecen
 
 # ============================================================================
-# MANEJADOR DEL BOTÓN INLINE (Refrescar)
-# ============================================================================
-async def refrescar_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()  # Responder la pulsación
-    chat_id = query.message.chat_id
-    
-    # Verificar si hay una sesión activa
-    if not context.chat_data.get('refresh_active', False):
-        await query.edit_message_text("⚠️ Nessuna sessione attiva da aggiornare. Premi prima una stazione.")
-        return
-    
-    estacion_key = context.chat_data.get('refresh_station')
-    if not estacion_key:
-        await query.edit_message_text("⚠️ Nessuna stazione selezionata.")
-        return
-    
-    simulated = context.chat_data.get('refresh_simulated')
-    
-    # Cancelar el ciclo actual
-    context.chat_data['cancel_refresh'] = True
-    await asyncio.sleep(0.5)
-    
-    # Borrar los mensajes 2 y 3 actuales si existen
-    msg_ids = context.chat_data.get('refresh_msg_ids')
-    if msg_ids:
-        try:
-            await context.bot.delete_message(chat_id=chat_id, message_id=msg_ids[0])
-        except:
-            pass
-        try:
-            await context.bot.delete_message(chat_id=chat_id, message_id=msg_ids[1])
-        except:
-            pass
-        context.chat_data.pop('refresh_msg_ids', None)
-    
-    # Borrar el mensaje del botón (opcional, pero limpio)
-    try:
-        await query.delete_message()
-    except:
-        pass
-    
-    # Limpiar flags
-    context.chat_data['refresh_active'] = False
-    context.chat_data.pop('cancel_refresh', None)
-    
-    # Volver a lanzar el proceso para la misma estación
-    if simulated:
-        context.chat_data['test_time'] = simulated
-    else:
-        context.chat_data.pop('test_time', None)
-    # Llamar a send_station_response (necesitamos un update con chat y message)
-    # Creamos un objeto update simulado? En realidad podemos llamar directamente a send_station_response
-    # pero requiere un update con message. Usaremos el mismo query.message como base.
-    # Para simplificar, reutilizamos el método que ya tenemos.
-    # Como estamos en un callback, tenemos que crear un nuevo mensaje en el mismo chat.
-    await send_station_response_from_callback(query.message, context, estacion_key)
-
-async def send_station_response_from_callback(message, context, estacion_key):
-    # Simular la función send_station_response pero usando el mensaje del callback
-    simulated = context.chat_data.get('test_time') if context.chat_data else None
-    now = simulated if simulated else datetime.now(CATANIA_TZ)
-    test_indicator = "🧪 [TEST MODE] " if simulated else ""
-
-    # Guardar estación y hora simulada para posible refresco
-    context.chat_data['refresh_station'] = estacion_key
-    if simulated:
-        context.chat_data['refresh_simulated'] = now
-    else:
-        context.chat_data.pop('refresh_simulated', None)
-
-    warning = get_closing_warning(now)
-    if warning:
-        await message.reply_text(warning, reply_markup=keyboard_main)
-
-    special_msg = SANT_AGATA.get("message", "") + "\n\n" if is_sant_agata(now) else ""
-
-    if is_closed_all_day(now):
-        msg = f"{special_msg}{test_indicator}🚇 Oggi la metropolitana è chiusa tutto il giorno.\n🕒 Riaprirà domani mattina."
-        img = get_station_image(estacion_key, now)
-        if img:
-            await message.reply_photo(photo=img, caption=msg, reply_markup=keyboard_main)
-        else:
-            await message.reply_text(msg, reply_markup=keyboard_main)
-        return
-
-    # Cabeceras Monte Po y Stesicoro (sin refrescos automáticos)
-    if estacion_key in ["montepo", "stesicoro"]:
-        station = "Montepo" if estacion_key == "montepo" else "Stesicoro"
-        closed, next_open, special_closing_msg = is_metro_closed(now, station)
-        if closed:
-            mins_to_open = int((next_open - now).total_seconds() // 60)
-            if mins_to_open <= 60:
-                first_train, _, _, has_first = get_next_departure(station, now)
-                if not has_first:
-                    first_train, _, _, _ = get_next_departure(station, now + timedelta(days=1))
-                station_display = "Monte Po" if station == "Montepo" else "Stesicoro"
-                msg = f"{special_msg}{test_indicator}{special_closing_msg}\n🚇 La metropolitana è chiusa in questo momento. Il primo treno da {station_display} partirà alle {first_train.strftime('%H:%M')}."
-            else:
-                if special_closing_msg:
-                    msg = f"{special_msg}{test_indicator}{special_closing_msg}"
-                else:
-                    msg = f"{special_msg}{test_indicator}🚇 La metropolitana è chiusa in questo momento.\n🕒 Riaprirà alle {next_open.strftime('%H:%M')}."
-            img = get_station_image(estacion_key, now)
-            if img:
-                await message.reply_photo(photo=img, caption=msg, reply_markup=keyboard_main)
-            else:
-                await message.reply_text(msg, reply_markup=keyboard_main)
-            return
-
-        next_dep, minutes, seconds, has_trains = get_next_departure(station, now)
-        if not has_trains:
-            msg = f"{special_msg}{test_indicator}🚇 Non ci sono più treni oggi. Il servizio riprenderà domani mattina."
-            img = get_station_image(estacion_key, now)
-            if img:
-                await message.reply_photo(photo=img, caption=msg, reply_markup=keyboard_main)
-            else:
-                await message.reply_text(msg, reply_markup=keyboard_main)
-            return
-
-        dest = "Stesicoro" if station == "Montepo" else "Monte Po"
-        remaining = next_dep - now
-        mins_rest = int(remaining.total_seconds() // 60)
-        secs_rest = int(remaining.total_seconds() % 60)
-        time_str_rest = format_time(mins_rest, secs_rest)
-
-        if mins_rest <= 4:
-            msg = f"{special_msg}{test_indicator}🚇 Il treno è in binario. Partirà tra **{time_str_rest}**."
-            if mins_rest <= 1:
-                next2, min2, sec2, has2 = get_next_departure_after(station, now, next_dep.time())
-                if has2:
-                    msg += f"\n\n🚆 Il prossimo treno successivo partirà tra {format_time(min2, sec2)}, alle {next2.strftime('%H:%M')}."
-                else:
-                    msg += f"\n\n🚆 Questo è l'ultimo treno della giornata."
-        else:
-            time_str = format_time(minutes, seconds)
-            if minutes < SHORT_TIME_THRESHOLD:
-                msg = f"{special_msg}{test_indicator}🚇 Prossimo treno per {dest} parte tra **{time_str}**."
-            else:
-                msg = f"{special_msg}{test_indicator}🚇 Prossimo treno per {dest} parte tra **{time_str}**, alle {next_dep.strftime('%H:%M')}."
-            if minutes <= 1:
-                next2, min2, sec2, has2 = get_next_departure_after(station, now, next_dep.time())
-                if has2:
-                    msg += f"\n\n🚆 Il prossimo treno successivo partirà tra {format_time(min2, sec2)}, alle {next2.strftime('%H:%M')}."
-                else:
-                    msg += f"\n\n🚆 Questo è l'ultimo treno della giornata."
-
-        last_msg = get_last_train_message(now)
-        if last_msg and not is_sant_agata(now):
-            msg += f"\n\n{last_msg}"
-        img = get_station_image(estacion_key, now)
-        if img:
-            await message.reply_photo(photo=img, caption=msg, reply_markup=keyboard_main, parse_mode='Markdown')
-        else:
-            await message.reply_text(msg, reply_markup=keyboard_main, parse_mode='Markdown')
-        return
-
-    # ========================================================================
-    # ESTACIONES INTERMEDIAS
-    # ========================================================================
-    closed, next_open, special_closing_msg = is_metro_closed(now, "Montepo")
-    if closed:
-        mins_to_open = int((next_open - now).total_seconds() // 60)
-        if mins_to_open <= 60:
-            first_train, _, _, has_first = get_next_departure("Montepo", now)
-            if not has_first:
-                first_train, _, _, _ = get_next_departure("Montepo", now + timedelta(days=1))
-            msg = f"{special_msg}{test_indicator}{special_closing_msg}\n🚇 La metropolitana è chiusa in questo momento. Il primo treno da Monte Po partirà alle {first_train.strftime('%H:%M')}."
-        else:
-            if special_closing_msg:
-                msg = f"{special_msg}{test_indicator}{special_closing_msg}"
-            else:
-                msg = f"{special_msg}{test_indicator}🚇 La metropolitana è chiusa in questo momento.\n🕒 Riaprirà alle {next_open.strftime('%H:%M')}."
-        img = get_station_image(estacion_key, now)
-        if img:
-            await message.reply_photo(photo=img, caption=msg, reply_markup=keyboard_main)
-        else:
-            await message.reply_text(msg, reply_markup=keyboard_main)
-        return
-
-    nombre = NOMBRE_MOSTRAR.get(estacion_key, estacion_key.capitalize())
-    # Mensaje 1: permanente (foto de la estación + título)
-    img_station = get_station_image(estacion_key, now)
-    permanent_caption = f"{test_indicator}🚆 Prossimi treni a {nombre}"
-    if img_station:
-        await message.reply_photo(photo=img_station, caption=permanent_caption, reply_markup=keyboard_main)
-    else:
-        await message.reply_text(permanent_caption, reply_markup=keyboard_main)
-
-    # Lanzar tarea de actualización automática
-    if context.chat_data.get('refresh_active', False):
-        context.chat_data['cancel_refresh'] = True
-        await asyncio.sleep(0.5)
-    context.chat_data['refresh_active'] = True
-    context.chat_data['cancel_refresh'] = False
-
-    if simulated is None:
-        asyncio.create_task(auto_refresh_loop(None, context, estacion_key, message.chat_id, use_simulated=False))
-    else:
-        asyncio.create_task(auto_refresh_loop(None, context, estacion_key, message.chat_id, use_simulated=True, simulated_now=now))
-
-# ============================================================================
-# RESPUESTA PRINCIPAL (para comandos normales y test de 2 args)
+# RESPUESTA PRINCIPAL (con lanzamiento de refrescos automáticos)
 # ============================================================================
 async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str, return_to_main: bool = True):
     simulated = context.chat_data.get('test_time') if context.chat_data else None
     now = simulated if simulated else datetime.now(CATANIA_TZ)
     test_indicator = "🧪 [TEST MODE] " if simulated else ""
-
-    # Guardar estación y hora simulada para posible refresco
-    context.chat_data['refresh_station'] = estacion_key
-    if simulated:
-        context.chat_data['refresh_simulated'] = now
-    else:
-        context.chat_data.pop('refresh_simulated', None)
 
     warning = get_closing_warning(now)
     if warning:
@@ -564,17 +356,84 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
     else:
         await update.message.reply_text(permanent_caption, reply_markup=keyboard_main if return_to_main else keyboard_altri)
 
-    # Lanzar tarea de actualización automática
+    # Cancelar cualquier refresh previo en este chat
     if context.chat_data.get('refresh_active', False):
         context.chat_data['cancel_refresh'] = True
         await asyncio.sleep(0.5)
     context.chat_data['refresh_active'] = True
     context.chat_data['cancel_refresh'] = False
 
+    # Lanzar tarea de actualización automática
     if simulated is None:
         asyncio.create_task(auto_refresh_loop(update, context, estacion_key, update.effective_chat.id, use_simulated=False))
     else:
         asyncio.create_task(auto_refresh_loop(update, context, estacion_key, update.effective_chat.id, use_simulated=True, simulated_now=now))
+
+# ============================================================================
+# CALLBACK DEL BOTÓN (refrescar)
+# ============================================================================
+async def callback_refrescar(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    # Obtener datos de la sesión guardada
+    estacion_key = context.chat_data.get('refresh_station')
+    if not estacion_key:
+        await query.edit_message_text("⚠️ Nessuna sessione attiva da aggiornare. Premi prima una stazione.")
+        return
+    
+    chat_id = context.chat_data.get('refresh_chat_id')
+    if not chat_id:
+        chat_id = update.effective_chat.id
+    
+    # Cancelar el ciclo actual
+    context.chat_data['cancel_refresh'] = True
+    await asyncio.sleep(0.5)
+    
+    # Borrar mensajes 2 y 3 actuales
+    msg_ids = context.chat_data.get('refresh_msg_ids')
+    if msg_ids:
+        try:
+            await context.bot.delete_message(chat_id=chat_id, message_id=msg_ids[0])
+        except:
+            pass
+        try:
+            await context.bot.delete_message(chat_id=chat_id, message_id=msg_ids[1])
+        except:
+            pass
+        context.chat_data.pop('refresh_msg_ids', None)
+    
+    # Limpiar flags
+    context.chat_data['refresh_active'] = False
+    context.chat_data.pop('cancel_refresh', None)
+    
+    # Obtener el update original (para reenviar mensajes)
+    # En lugar de usar el update del callback, creamos un objeto simulado o reutilizamos el chat
+    # Lo más sencillo: volver a llamar a send_station_response con los mismos parámetros
+    simulated = context.chat_data.get('refresh_simulated')
+    if simulated:
+        context.chat_data['test_time'] = simulated
+    else:
+        context.chat_data.pop('test_time', None)
+    
+    # Necesitamos un objeto 'update' que tenga 'message' para reply_text. El callback query no tiene message.
+    # Podemos usar query.message para responder, pero send_station_response espera update.message.
+    # Creamos un objeto con la misma interfaz.
+    class FakeUpdate:
+        def __init__(self, message):
+            self.message = message
+            self.effective_chat = message.chat
+            self.effective_user = message.from_user
+    fake_update = FakeUpdate(query.message)
+    
+    await send_station_response(fake_update, context, estacion_key, return_to_main=False)
+
+# ============================================================================
+# COMANDO REFRESCAR (por si se usa como comando de texto, aunque ahora usamos botón)
+# ============================================================================
+async def cmd_refrescar(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Reutilizar la misma lógica que el callback
+    await callback_refrescar(update, context)
 
 # ============================================================================
 # MANEJADORES DE COMANDOS (con cancelación de refrescos)
@@ -605,6 +464,7 @@ async def handle_button_wrapper(update, context): await cancel_refresh_and_run(u
 async def cmd_testgif_wrapper(update, context): await cancel_refresh_and_run(update, context, cmd_testgif)
 async def test_command_wrapper(update, context): await cancel_refresh_and_run(update, context, test_command)
 async def testfin_command_wrapper(update, context): await cancel_refresh_and_run(update, context, testfin_command)
+async def cmd_refrescar_wrapper(update, context): await cancel_refresh_and_run(update, context, cmd_refrescar)
 
 # Funciones originales (sin wrapper)
 async def cmd_montepo(update, context): await send_station_response(update, context, "montepo", return_to_main=False)
@@ -644,7 +504,8 @@ async def help_command(update, context):
         "/test DDMMYYYY HHMM - Attiva modalità test\n"
         "/test DDMMYYYY HHMM X - Test con 3 cicli (M, S, ML)\n"
         "/testfin - Disattiva modalità test\n"
-        "/testgif - Invia GIF di prova e lo cancella dopo 1 minuto\n\n"
+        "/testgif - Invia GIF di prova e lo cancella dopo 1 minuto\n"
+        "/refrescar - Aggiorna i messaggi temporanei (solo dopo il ciclo)\n\n"
         "Oppure premi i pulsanti.",
         reply_markup=keyboard_main
     )
@@ -757,16 +618,3 @@ async def testfin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("✅ Modalità test disattivata. Ora reale ripristinata.")
     else:
         await update.message.reply_text("⚠️ Nessuna modalità test attiva.")
-
-# ============================================================================
-# REGISTRO DE CALLBACK QUERY HANDLER
-# ============================================================================
-async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    if query.data == "refrescar":
-        await refrescar_callback(update, context)
-
-# ============================================================================
-# EXPORTAR TODO
-# ============================================================================
-# Los wrappers y el callback_handler deben ser importables desde metro_bot.py
