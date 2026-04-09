@@ -48,11 +48,10 @@ def main():
     for cmd, handler in commands:
         app.add_handler(CommandHandler(cmd, handler))
 
-    # Manejadores para botones inline (callback queries)
+    # Manejador para el botón inline de refrescar
     app.add_handler(CallbackQueryHandler(callback_refrescar, pattern="^refresh_"))
-    app.add_handler(CallbackQueryHandler(callback_ascoltare, pattern="^ascoltare_"))
 
-    # Teclados personalizados (ReplyKeyboardMarkup)
+    # Teclados personalizados
     button_texts = ["Monte Po", "Stesicoro", "Altri", "← Menu", "Fontana", "Nesima", "San Nullo",
                     "Cibali", "Milo", "Borgo", "Giuffrida", "Italia", "Galatea", "Giovanni XXIII"]
     app.add_handler(MessageHandler(filters.Text(button_texts), handle_button_wrapper))
