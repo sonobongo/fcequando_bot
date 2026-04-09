@@ -88,7 +88,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
             await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
         return
 
-    # Cabeceras Monte Po y Stesicoro (sin cambios en esta parte)
+    # Cabeceras Monte Po y Stesicoro (sin cambios)
     if estacion_key in ["montepo", "stesicoro"]:
         station = "Montepo" if estacion_key == "montepo" else "Stesicoro"
         closed, next_open, special_closing_msg = is_metro_closed(now, station)
@@ -160,7 +160,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
         return
 
     # ========================================================================
-    # ESTACIONES INTERMEDIAS (respuesta normal)
+    # ESTACIONES INTERMEDIAS (nueva estructura, igual que en test)
     # ========================================================================
     closed, next_open, special_closing_msg = is_metro_closed(now, "Montepo")
     if closed:
@@ -188,13 +188,22 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
     last_msg = get_last_train_message(now)
     last_msg_text = f"\n{last_msg}" if last_msg and not is_sant_agata(now) else ""
 
-    # Mensaje para Monte Po (con foto de la estación)
+    # ------------------------------------------------------------
+    # 1. MENSAJE PERMANENTE: foto de la estación con título simple
+    # ------------------------------------------------------------
+    img_station = get_station_image(estacion_key, now)
+    permanent_caption = f"{test_indicator}🚆 Prossimi treni a {nombre}"
+    if img_station:
+        await update.message.reply_photo(photo=img_station, caption=permanent_caption, reply_markup=keyboard_main if return_to_main else keyboard_altri)
+    else:
+        await update.message.reply_text(permanent_caption, reply_markup=keyboard_main if return_to_main else keyboard_altri)
+
+    # ------------------------------------------------------------
+    # 2. MENSAJE PARA DIRECCIÓN MONTE PO (solo texto)
+    # ------------------------------------------------------------
     msg_montepo = ""
     if closing_msg:
-        msg_montepo += f"{special_msg}{test_indicator}{closing_msg}\n🚆 **Prossimi treni a {nombre}**\n\n"
-    else:
-        msg_montepo += f"{special_msg}{test_indicator}🚆 **Prossimi treni a {nombre}**\n\n"
-
+        msg_montepo += f"{closing_msg}\n"
     if info_st:
         paso_st, mins, secs, next_info = info_st
         time_str = format_time(mins, secs)
@@ -228,23 +237,16 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
                 msg_montepo += f"   Il successivo passerà tra {time_str2}.\n"
     else:
         msg_montepo += f"🔺 **Per Monte Po**: nessun treno in arrivo al momento.\n"
-
     if last_msg_text:
         msg_montepo += last_msg_text
 
-    img_station = get_station_image(estacion_key, now)
-    if img_station:
-        await update.message.reply_photo(photo=img_station, caption=msg_montepo, reply_markup=keyboard_main if return_to_main else keyboard_altri, parse_mode='Markdown')
-    else:
-        await update.message.reply_text(msg_montepo, reply_markup=keyboard_main if return_to_main else keyboard_altri, parse_mode='Markdown')
+    await update.message.reply_text(msg_montepo, reply_markup=keyboard_main if return_to_main else keyboard_altri, parse_mode='Markdown')
 
-    # Mensaje para Stesicoro (solo texto, sin foto)
+    # ------------------------------------------------------------
+    # 3. MENSAJE PARA DIRECCIÓN STESICORO (foto de ruta + texto)
+    # ------------------------------------------------------------
     msg_stesicoro = ""
-    if closing_msg:
-        msg_stesicoro += f"{special_msg}{test_indicator}{closing_msg}\n🚆 **Prossimi treni a {nombre}**\n\n"
-    else:
-        msg_stesicoro += f"{special_msg}{test_indicator}🚆 **Prossimi treni a {nombre}**\n\n"
-
+    current_station_key = None
     if info_mp:
         paso_mp, mins, secs, next_info = info_mp
         time_str = format_time(mins, secs)
@@ -264,11 +266,18 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
                 if seconds_passed < 0:
                     seconds_passed = 0
                 current_station = get_current_station_from_montepo(now, seconds_passed)
+                # Obtener clave de la estación para la foto
+                for key, name in NOMBRE_MOSTRAR.items():
+                    if name == current_station:
+                        current_station_key = key
+                        break
+                if current_station == "Il treno è appena partito da Monte Po":
+                    current_station_key = "montepo"
                 if "appena partito" in current_station:
                     line += f"   ({current_station})\n"
                 elif "non ancora partito" not in current_station:
                     line += f"   (il treno si trova attualmente a {current_station})\n"
-        msg_stesicoro += line
+        msg_stesicoro = line
         if mins <= 1 and next_info:
             paso2, mins2, secs2 = next_info
             time_str2 = format_time(mins2, secs2)
@@ -277,12 +286,20 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
             else:
                 msg_stesicoro += f"   Il successivo passerà tra {time_str2}.\n"
     else:
-        msg_stesicoro += f"🔻 **Per Stesicoro**: nessun treno in arrivo al momento.\n"
-
+        msg_stesicoro = f"🔻 **Per Stesicoro**: nessun treno in arrivo al momento.\n"
     if last_msg_text:
         msg_stesicoro += last_msg_text
 
-    await update.message.reply_text(msg_stesicoro, reply_markup=keyboard_main if return_to_main else keyboard_altri, parse_mode='Markdown')
+    # Enviar foto de ruta si tenemos estación actual, si no, solo texto
+    if current_station_key:
+        ruta_url = f"https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_montepo_{current_station_key}.png"
+        try:
+            await update.message.reply_photo(photo=ruta_url, caption=msg_stesicoro, reply_markup=keyboard_main if return_to_main else keyboard_altri, parse_mode='Markdown')
+        except Exception as e:
+            print(f"Error al enviar foto de ruta para {current_station_key}: {e}")
+            await update.message.reply_text(msg_stesicoro, reply_markup=keyboard_main if return_to_main else keyboard_altri, parse_mode='Markdown')
+    else:
+        await update.message.reply_text(msg_stesicoro, reply_markup=keyboard_main if return_to_main else keyboard_altri, parse_mode='Markdown')
 
 # ============================================================================
 # NUEVA FUNCIÓN PARA EL MODO TEST CON 3 ARGUMENTOS (actualización automática)
@@ -369,7 +386,7 @@ async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, 
                             current_station_key = key
                             break
                     if current_station == "Il treno è appena partito da Monte Po":
-                        current_station_key = "montepo"  # foto especial
+                        current_station_key = "montepo"
                     if "appena partito" in current_station:
                         line += f"   ({current_station})\n"
                     elif "non ancora partito" not in current_station:
@@ -643,3 +660,13 @@ async def testfin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("✅ Modalità test disattivata. Ora reale ripristinata.")
     else:
         await update.message.reply_text("⚠️ Nessuna modalità test attiva.")
+
+# ============================================================================
+# REGISTRO DE COMANDOS (para metro_bot.py)
+# ============================================================================
+# Los comandos que deben exportarse son los wrappers:
+# start_wrapper, help_command_wrapper, cmd_montepo_wrapper, cmd_stesicoro_wrapper,
+# cmd_milo_wrapper, cmd_altri_wrapper, cmd_fontana_wrapper, cmd_nesima_wrapper,
+# cmd_sannullo_wrapper, cmd_cibali_wrapper, cmd_borgo_wrapper, cmd_giuffrida_wrapper,
+# cmd_italia_wrapper, cmd_galatea_wrapper, cmd_giovanni_wrapper, test_command_wrapper,
+# testfin_command_wrapper, cmd_testgif_wrapper, handle_button_wrapper
