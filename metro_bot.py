@@ -2,7 +2,7 @@ import os
 import logging
 import threading
 from flask import Flask
-from telegram.ext import Application, CommandHandler, MessageHandler, filters
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackQueryHandler
 from horarios_logic import *
 from handlers import *
 
@@ -32,19 +32,27 @@ def main():
 
     app = Application.builder().token(TOKEN).build()
 
+    # Registrar comandos
     commands = [
-        ("start", start), ("help", help_command), ("montepo", cmd_montepo), ("stesicoro", cmd_stesicoro),
-        ("milo", cmd_milo), ("altri", cmd_altri), ("fontana", cmd_fontana), ("nesima", cmd_nesima),
-        ("sannullo", cmd_sannullo), ("cibali", cmd_cibali), ("borgo", cmd_borgo), ("giuffrida", cmd_giuffrida),
-        ("italia", cmd_italia), ("galatea", cmd_galatea), ("giovanni", cmd_giovanni), ("test", test_command),
-        ("testfin", testfin_command)
+        ("start", start_wrapper), ("help", help_command_wrapper),
+        ("montepo", cmd_montepo_wrapper), ("stesicoro", cmd_stesicoro_wrapper),
+        ("milo", cmd_milo_wrapper), ("altri", cmd_altri_wrapper),
+        ("fontana", cmd_fontana_wrapper), ("nesima", cmd_nesima_wrapper),
+        ("sannullo", cmd_sannullo_wrapper), ("cibali", cmd_cibali_wrapper),
+        ("borgo", cmd_borgo_wrapper), ("giuffrida", cmd_giuffrida_wrapper),
+        ("italia", cmd_italia_wrapper), ("galatea", cmd_galatea_wrapper),
+        ("giovanni", cmd_giovanni_wrapper), ("test", test_command_wrapper),
+        ("testfin", testfin_command_wrapper), ("testgif", cmd_testgif_wrapper)
     ]
     for cmd, handler in commands:
         app.add_handler(CommandHandler(cmd, handler))
 
+    # Registrar manejador de botones inline (para refrescar)
+    app.add_handler(CallbackQueryHandler(callback_handler))
+
     button_texts = ["Monte Po", "Stesicoro", "Altri", "← Menu", "Fontana", "Nesima", "San Nullo",
                     "Cibali", "Milo", "Borgo", "Giuffrida", "Italia", "Galatea", "Giovanni XXIII"]
-    app.add_handler(MessageHandler(filters.Text(button_texts), handle_button))
+    app.add_handler(MessageHandler(filters.Text(button_texts), handle_button_wrapper))
 
     logger.info("Bot avviato.")
     print("Bot funzionante... In attesa di messaggi.")
