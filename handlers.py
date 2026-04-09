@@ -84,7 +84,8 @@ def build_temporary_messages(now: datetime, estacion_key: str):
         if mins == 0 and secs < 30:
             line = f"🔺 **Per Monte Po**: treno in arrivo.\n"
         else:
-            if mins >= SHORT_TIME_THRESHOLD:
+            # Mostrar hora solo si minutos > SHORT_TIME_THRESHOLD (ej. >5)
+            if mins > SHORT_TIME_THRESHOLD:
                 line = f"🔺 **Per Monte Po**: Passa tra **{time_str}**, alle {paso_st.strftime('%H:%M')}.\n"
             else:
                 line = f"🔺 **Per Monte Po**: Passa tra **{time_str}**.\n"
@@ -105,7 +106,7 @@ def build_temporary_messages(now: datetime, estacion_key: str):
         if mins <= 1 and next_info:
             paso2, mins2, secs2 = next_info
             time_str2 = format_time(mins2, secs2)
-            if mins2 >= SHORT_TIME_THRESHOLD:
+            if mins2 > SHORT_TIME_THRESHOLD:
                 msg2 += f"   Il successivo passerà tra {time_str2}, alle {paso2.strftime('%H:%M')}.\n"
             else:
                 msg2 += f"   Il successivo passerà tra {time_str2}.\n"
@@ -117,17 +118,19 @@ def build_temporary_messages(now: datetime, estacion_key: str):
     # Mensaje 3 (Stesicoro) y clave para foto de ruta
     msg3 = ""
     current_station_key = None
+    tiempo_restante_segundos = None
     if info_mp:
         paso_mp, mins, secs, next_info = info_mp
         time_str = format_time(mins, secs)
+        tiempo_restante_segundos = mins*60 + secs
         if mins == 0 and secs < 30:
             line = f"🔻 **Per Stesicoro**: treno in arrivo.\n"
         else:
-            if mins >= SHORT_TIME_THRESHOLD:
+            if mins > SHORT_TIME_THRESHOLD:
                 line = f"🔻 **Per Stesicoro**: Passa tra **{time_str}**, alle {paso_mp.strftime('%H:%M')}.\n"
             else:
                 line = f"🔻 **Per Stesicoro**: Passa tra **{time_str}**.\n"
-        rest_seconds = mins*60 + secs
+        rest_seconds = tiempo_restante_segundos
         total_seconds = get_total_seconds_from_montepo(estacion_key, now)
         if rest_seconds < total_seconds:
             seconds_passed = total_seconds - rest_seconds
@@ -153,16 +156,17 @@ def build_temporary_messages(now: datetime, estacion_key: str):
         if mins <= 1 and next_info:
             paso2, mins2, secs2 = next_info
             time_str2 = format_time(mins2, secs2)
-            if mins2 >= SHORT_TIME_THRESHOLD:
+            if mins2 > SHORT_TIME_THRESHOLD:
                 msg3 += f"   Il successivo passerà tra {time_str2}, alle {paso2.strftime('%H:%M')}.\n"
             else:
                 msg3 += f"   Il successivo passerà tra {time_str2}.\n"
     else:
         msg3 = f"🔻 **Per Stesicoro**: nessun treno in arrivo al momento.\n"
+        tiempo_restante_segundos = 9999
     if last_msg_text:
         msg3 += last_msg_text
 
-    return msg2, msg3, current_station_key
+    return msg2, msg3, current_station_key, tiempo_restante_segundos
 
 # ============================================================================
 # TAREA DE ACTUALIZACIÓN AUTOMÁTICA (3 ciclos de 45 segundos)
@@ -181,13 +185,13 @@ async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, 
             break
 
         now = simulated_now if (use_simulated and simulated_now) else datetime.now(CATANIA_TZ)
-        msg2, msg3, current_station_key = build_temporary_messages(now, estacion_key)
+        msg2, msg3, current_station_key, tiempo_restante = build_temporary_messages(now, estacion_key)
 
         # Enviar mensaje 2
         msg2_obj = await update.message.reply_text(msg2, parse_mode='Markdown')
         
-        # Enviar mensaje 3: con foto SIEMPRE que se haya obtenido current_station_key (sin condición de tiempo)
-        if current_station_key:
+        # Enviar mensaje 3: con foto solo si tiempo_restante > 90 segundos (1.5 min) y hay estación actual
+        if current_station_key and tiempo_restante is not None and tiempo_restante > 90:
             ruta_url = f"https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_montepo_{current_station_key}.png"
             try:
                 msg3_obj = await update.message.reply_photo(photo=ruta_url, caption=msg3, parse_mode='Markdown')
@@ -201,7 +205,7 @@ async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, 
 
         # Último ciclo: enviar botón y no borrar
         if ciclo == 2:
-            # Botón inline que llama a la misma estación
+            # Botón inline que refresca la misma estación
             refresh_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("refrescare", callback_data=f"refresh_{estacion_key}")]])
             await update.message.reply_text("", reply_markup=refresh_keyboard)
             # No borramos mensajes 2 y 3, y salimos del bucle
