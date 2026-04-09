@@ -88,6 +88,9 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
             await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
         return
 
+    # ========================================================================
+    # CABECERAS Monte Po y Stesicoro (sin cambios)
+    # ========================================================================
     if estacion_key in ["montepo", "stesicoro"]:
         station = "Montepo" if estacion_key == "montepo" else "Stesicoro"
         closed, next_open, special_closing_msg = is_metro_closed(now, station)
@@ -158,7 +161,10 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
             await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri, parse_mode='Markdown')
         return
 
-    # Estaciones intermedias
+    # ========================================================================
+    # ESTACIONES INTERMEDIAS: nueva estructura
+    # ========================================================================
+    # Comprobar cierre total
     closed, next_open, special_closing_msg = is_metro_closed(now, "Montepo")
     if closed:
         mins_to_open = int((next_open - now).total_seconds() // 60)
@@ -179,16 +185,21 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
             await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
         return
 
+    # Obtener información de trenes
     closing_msg = get_closing_message(estacion_key, now)
     info_mp, info_st = get_next_train_at_station(now, estacion_key)
     nombre = NOMBRE_MOSTRAR.get(estacion_key, estacion_key.capitalize())
+    last_msg = get_last_train_message(now)
+    last_msg_text = f"\n{last_msg}" if last_msg and not is_sant_agata(now) else ""
 
+    # ------------------------------------------------------------
+    # 1. MENSAJE PARA DIRECCIÓN MONTE PO (CON foto de la estación)
+    # ------------------------------------------------------------
+    msg_montepo = ""
     if closing_msg:
-        msg = f"{special_msg}{test_indicator}{closing_msg}\n🚆 **Prossimi treni a {nombre}**\n\n"
+        msg_montepo += f"{special_msg}{test_indicator}{closing_msg}\n🚆 **Prossimi treni a {nombre}**\n\n"
     else:
-        msg = f"{special_msg}{test_indicator}🚆 **Prossimi treni a {nombre}**\n\n"
-
-    estaciones_localizacion = ["nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea"]
+        msg_montepo += f"{special_msg}{test_indicator}🚆 **Prossimi treni a {nombre}**\n\n"
 
     if info_st:
         paso_st, mins, secs, next_info = info_st
@@ -197,7 +208,9 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
             line = f"🔺 **Per Monte Po**: treno in arrivo.\n"
         else:
             line = f"🔺 **Per Monte Po**: Passa tra **{time_str}**.\n"
-        if estacion_key in estaciones_localizacion and 2 <= mins <= 10:
+        # Localización para Fontana y estaciones de la lista (solo en esta dirección)
+        estaciones_localizacion_montepo = ["nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "fontana"]
+        if estacion_key in estaciones_localizacion_montepo and 2 <= mins <= 10:
             rest_seconds = mins*60 + secs
             total_seconds = get_total_seconds_from_stesicoro(estacion_key, now)
             if rest_seconds < total_seconds:
@@ -209,12 +222,31 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
                     line += f"   ({current_station})\n"
                 elif "non ancora partito" not in current_station:
                     line += f"   (il treno si trova attualmente a {current_station})\n"
-        msg += line
+        msg_montepo += line
         if mins <= 1 and next_info:
             paso2, mins2, secs2 = next_info
-            msg += f"   Il successivo passerà tra {format_time(mins2, secs2)}.\n"
+            msg_montepo += f"   Il successivo passerà tra {format_time(mins2, secs2)}.\n"
     else:
-        msg += f"🔺 **Per Monte Po**: nessun treno in arrivo al momento.\n"
+        msg_montepo += f"🔺 **Per Monte Po**: nessun treno in arrivo al momento.\n"
+
+    if last_msg_text:
+        msg_montepo += last_msg_text
+
+    # Enviar primer mensaje CON foto de la estación (st_*.jpg/png)
+    img_station = get_station_image(estacion_key, now)  # usa la imagen normal de la estación
+    if img_station:
+        await update.message.reply_photo(photo=img_station, caption=msg_montepo, reply_markup=keyboard_main if return_to_main else keyboard_altri, parse_mode='Markdown')
+    else:
+        await update.message.reply_text(msg_montepo, reply_markup=keyboard_main if return_to_main else keyboard_altri, parse_mode='Markdown')
+
+    # ------------------------------------------------------------
+    # 2. MENSAJE PARA DIRECCIÓN STESICORO (SOLO TEXTO, sin foto)
+    # ------------------------------------------------------------
+    msg_stesicoro = ""
+    if closing_msg:
+        msg_stesicoro += f"{special_msg}{test_indicator}{closing_msg}\n🚆 **Prossimi treni a {nombre}**\n\n"
+    else:
+        msg_stesicoro += f"{special_msg}{test_indicator}🚆 **Prossimi treni a {nombre}**\n\n"
 
     if info_mp:
         paso_mp, mins, secs, next_info = info_mp
@@ -223,7 +255,9 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
             line = f"🔻 **Per Stesicoro**: treno in arrivo.\n"
         else:
             line = f"🔻 **Per Stesicoro**: Passa tra **{time_str}**.\n"
-        if estacion_key in estaciones_localizacion and 2 <= mins <= 10:
+        # Localización para Giovanni y estaciones de la lista
+        estaciones_localizacion_stesicoro = ["nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "giovanni"]
+        if estacion_key in estaciones_localizacion_stesicoro and 2 <= mins <= 10:
             rest_seconds = mins*60 + secs
             total_seconds = get_total_seconds_from_montepo(estacion_key, now)
             if rest_seconds < total_seconds:
@@ -235,21 +269,32 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
                     line += f"   ({current_station})\n"
                 elif "non ancora partito" not in current_station:
                     line += f"   (il treno si trova attualmente a {current_station})\n"
-        msg += line
+        msg_stesicoro += line
         if mins <= 1 and next_info:
             paso2, mins2, secs2 = next_info
-            msg += f"   Il successivo passerà tra {format_time(mins2, secs2)}.\n"
+            msg_stesicoro += f"   Il successivo passerà tra {format_time(mins2, secs2)}.\n"
     else:
-        msg += f"🔻 **Per Stesicoro**: nessun treno in arrivo al momento.\n"
+        msg_stesicoro += f"🔻 **Per Stesicoro**: nessun treno in arrivo al momento.\n"
 
-    last_msg = get_last_train_message(now)
-    if last_msg and not is_sant_agata(now):
-        msg += f"\n{last_msg}"
-    img = get_station_image(estacion_key, now)
-    if img:
-        await update.message.reply_photo(photo=img, caption=msg, reply_markup=keyboard_main if return_to_main else keyboard_altri, parse_mode='Markdown')
-    else:
-        await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri, parse_mode='Markdown')
+    if last_msg_text:
+        msg_stesicoro += last_msg_text
+
+    # Enviar el texto (sin foto) para la dirección Stesicoro
+    text_message = await update.message.reply_text(msg_stesicoro, reply_markup=keyboard_main if return_to_main else keyboard_altri, parse_mode='Markdown')
+
+    # ------------------------------------------------------------
+    # 3. ENVIAR LA FOTO DE RUTA (ruta_montepo_*.png) y BORRARLA TRAS 60 SEGUNDOS
+    # ------------------------------------------------------------
+    # Construir la URL de la imagen de ruta para esta estación
+    ruta_image_url = f"https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_montepo_{estacion_key}.png"
+    # Enviar la foto (sin texto o con un texto breve, pero se borrará)
+    try:
+        ruta_message = await update.message.reply_photo(photo=ruta_image_url)
+        # Programar borrado después de 60 segundos
+        await asyncio.sleep(60)
+        await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=ruta_message.message_id)
+    except Exception as e:
+        print(f"Error al enviar o borrar la imagen de ruta para {estacion_key}: {e}")
 
 # ============================================================================
 # MANEJADORES DE COMANDOS
@@ -293,7 +338,8 @@ async def help_command(update, context):
         "/altri - Mostra altre stazioni\n"
         "/fontana, /nesima, /sannullo, /cibali, /borgo, /giuffrida, /italia, /galatea, /giovanni\n"
         "/test DDMMYYYY HHMM - Attiva modalità test\n"
-        "/testfin - Disattiva modalità test\n\n"
+        "/testfin - Disattiva modalità test\n"
+        "/testgif - Invia GIF di prova e lo cancella dopo 1 minuto\n\n"
         "Oppure premi i pulsanti.",
         reply_markup=keyboard_main
     )
@@ -308,6 +354,24 @@ async def handle_button(update, context):
         await send_station_response(update, context, BOTON_TO_KEY[text], return_to_main=True)
     else:
         await update.message.reply_text("Scelta non valida. Usa i pulsanti.", reply_markup=keyboard_main)
+
+# ============================================================================
+# COMANDO TEST GIF
+# ============================================================================
+async def cmd_testgif(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    gif_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/montepo-fontana.gif"
+    text_msg = (
+        "🚆 Prossimi treni a Nesima\n\n"
+        "🔺 Per Monte Po: Passa tra 3 minuti.\n"
+        "   (il treno si trova attualmente a Monte Po)"
+    )
+    await update.message.reply_text(text_msg)
+    gif_message = await update.message.reply_animation(animation=gif_url)
+    await asyncio.sleep(60)
+    try:
+        await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=gif_message.message_id)
+    except Exception as e:
+        print(f"Error al borrar el GIF: {e}")
 
 # ============================================================================
 # COMANDOS TEST
