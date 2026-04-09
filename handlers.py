@@ -1,7 +1,7 @@
 import asyncio
 from datetime import datetime, timedelta
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ContextTypes, CallbackQueryHandler
+from telegram.ext import ContextTypes
 from horarios_logic import *
 import pytz
 
@@ -33,7 +33,7 @@ BOTON_TO_KEY = {
 }
 
 # ============================================================================
-# FUNCIONES AUXILIARES DE LOCALIZACIÓN
+# FUNCIONES AUXILIARES DE LOCALIZACIÓN (sin cambios)
 # ============================================================================
 def get_current_station_from_montepo(now: datetime, seconds_passed: int) -> str:
     stations = ["montepo", "fontana", "nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "giovanni", "stesicoro"]
@@ -141,7 +141,7 @@ def build_temporary_messages(now: datetime, estacion_key: str):
                         break
             elif current_station == "Il treno è appena partito da Monte Po":
                 current_station_key = "montepo"
-        # Mostrar texto de localización solo si 2-10 min y no mostrar foto si tiempo <= 90s
+        # Mostrar texto localización solo si 2-10 min
         estaciones_localizacion_stesicoro = ["nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "giovanni"]
         if estacion_key in estaciones_localizacion_stesicoro and 2 <= mins <= 10:
             if rest_seconds < total_seconds:
@@ -167,15 +167,14 @@ def build_temporary_messages(now: datetime, estacion_key: str):
 # ============================================================================
 # TAREA DE ACTUALIZACIÓN AUTOMÁTICA (3 ciclos de 45 segundos)
 # ============================================================================
-async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str, chat_id: int, use_simulated: bool = False, simulated_now: datetime = None):
-    # Guardar en contexto los datos de la sesión para que el botón pueda acceder
-    context.chat_data['refresh_station'] = estacion_key
+async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str, chat_id: int, station_display_name: str, use_simulated: bool = False, simulated_now: datetime = None):
+    # Guardar nombre de la estación para el botón (texto del botón del menú)
+    context.chat_data['refresh_station_name'] = station_display_name
+    context.chat_data['refresh_station_key'] = estacion_key
     if use_simulated and simulated_now:
         context.chat_data['refresh_simulated'] = simulated_now
     else:
         context.chat_data.pop('refresh_simulated', None)
-    context.chat_data['refresh_chat_id'] = chat_id
-    context.chat_data['refresh_update'] = update
 
     for ciclo in range(3):
         if context.chat_data.get('cancel_refresh', False):
@@ -196,18 +195,18 @@ async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, 
         else:
             msg3_obj = await update.message.reply_text(msg3, parse_mode='Markdown')
         
-        # Guardar IDs de los mensajes temporales actuales
+        # Guardar IDs de los mensajes temporales actuales (por si se quiere borrar, pero no es necesario para redirigir)
         context.chat_data['refresh_msg_ids'] = (msg2_obj.message_id, msg3_obj.message_id)
 
         # Si es el último ciclo (ciclo 2), no borramos y enviamos botón
         if ciclo == 2:
-            # Enviar botón inline "refrescare"
-            refresh_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("refrescare", callback_data="refrescar")]])
+            # Botón que redirige a la estación (simula pulsar el botón del menú)
+            refresh_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("refrescare", callback_data=f"refresh_{estacion_key}")]])
             await update.message.reply_text("", reply_markup=refresh_keyboard)
             break
 
         # Para ciclos 0 y 1: esperar 45 segundos y borrar
-        for _ in range(45):  # 45 segundos comprobando cancelación cada segundo
+        for _ in range(45):
             if context.chat_data.get('cancel_refresh', False):
                 break
             await asyncio.sleep(1)
@@ -228,7 +227,6 @@ async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, 
     if not context.chat_data.get('cancel_refresh', False):
         context.chat_data['refresh_active'] = False
         context.chat_data.pop('cancel_refresh', None)
-        # No borramos refresh_msg_ids porque los últimos mensajes permanecen
 
 # ============================================================================
 # RESPUESTA PRINCIPAL (con lanzamiento de refrescos automáticos)
@@ -364,61 +362,36 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
     context.chat_data['cancel_refresh'] = False
 
     # Lanzar tarea de actualización automática
+    # Necesitamos el nombre del botón de la estación (ej. "Milo" en lugar de "milo")
+    station_display_name = nombre
     if simulated is None:
-        asyncio.create_task(auto_refresh_loop(update, context, estacion_key, update.effective_chat.id, use_simulated=False))
+        asyncio.create_task(auto_refresh_loop(update, context, estacion_key, update.effective_chat.id, station_display_name, use_simulated=False))
     else:
-        asyncio.create_task(auto_refresh_loop(update, context, estacion_key, update.effective_chat.id, use_simulated=True, simulated_now=now))
+        asyncio.create_task(auto_refresh_loop(update, context, estacion_key, update.effective_chat.id, station_display_name, use_simulated=True, simulated_now=now))
 
 # ============================================================================
-# CALLBACK DEL BOTÓN (refrescar)
+# CALLBACK DEL BOTÓN (redirige a la estación)
 # ============================================================================
 async def callback_refrescar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     
-    # Obtener datos de la sesión guardada
-    estacion_key = context.chat_data.get('refresh_station')
-    if not estacion_key:
-        await query.edit_message_text("⚠️ Nessuna sessione attiva da aggiornare. Premi prima una stazione.")
+    # Extraer la clave de la estación del callback_data (formato "refresh_estacionkey")
+    data = query.data
+    if not data.startswith("refresh_"):
         return
+    estacion_key = data.split("_")[1]
     
-    chat_id = context.chat_data.get('refresh_chat_id')
-    if not chat_id:
-        chat_id = update.effective_chat.id
+    # Obtener el nombre mostrado de la estación para simular la pulsación del botón
+    station_name = NOMBRE_MOSTRAR.get(estacion_key, estacion_key.capitalize())
     
-    # Cancelar el ciclo actual
-    context.chat_data['cancel_refresh'] = True
-    await asyncio.sleep(0.5)
+    # Cancelar cualquier ciclo activo
+    if context.chat_data.get('refresh_active', False):
+        context.chat_data['cancel_refresh'] = True
+        await asyncio.sleep(0.5)
     
-    # Borrar mensajes 2 y 3 actuales
-    msg_ids = context.chat_data.get('refresh_msg_ids')
-    if msg_ids:
-        try:
-            await context.bot.delete_message(chat_id=chat_id, message_id=msg_ids[0])
-        except:
-            pass
-        try:
-            await context.bot.delete_message(chat_id=chat_id, message_id=msg_ids[1])
-        except:
-            pass
-        context.chat_data.pop('refresh_msg_ids', None)
-    
-    # Limpiar flags
-    context.chat_data['refresh_active'] = False
-    context.chat_data.pop('cancel_refresh', None)
-    
-    # Obtener el update original (para reenviar mensajes)
-    # En lugar de usar el update del callback, creamos un objeto simulado o reutilizamos el chat
-    # Lo más sencillo: volver a llamar a send_station_response con los mismos parámetros
-    simulated = context.chat_data.get('refresh_simulated')
-    if simulated:
-        context.chat_data['test_time'] = simulated
-    else:
-        context.chat_data.pop('test_time', None)
-    
-    # Necesitamos un objeto 'update' que tenga 'message' para reply_text. El callback query no tiene message.
-    # Podemos usar query.message para responder, pero send_station_response espera update.message.
-    # Creamos un objeto con la misma interfaz.
+    # Simular la pulsación del botón de la estación llamando a send_station_response directamente
+    # El update del callback no tiene message, pero podemos usar query.message
     class FakeUpdate:
         def __init__(self, message):
             self.message = message
@@ -426,13 +399,18 @@ async def callback_refrescar(update: Update, context: ContextTypes.DEFAULT_TYPE)
             self.effective_user = message.from_user
     fake_update = FakeUpdate(query.message)
     
+    # Llamar a la respuesta de la estación (reinicia todo el proceso)
     await send_station_response(fake_update, context, estacion_key, return_to_main=False)
 
 # ============================================================================
-# COMANDO REFRESCAR (por si se usa como comando de texto, aunque ahora usamos botón)
+# COMANDO REFRESCAR (por si se usa como comando de texto, aunque no es necesario)
 # ============================================================================
 async def cmd_refrescar(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Reutilizar la misma lógica que el callback
+    # Si se usa como comando, intentar obtener la última estación guardada
+    estacion_key = context.chat_data.get('refresh_station_key')
+    if not estacion_key:
+        await update.message.reply_text("⚠️ Nessuna sessione attiva. Premi prima una stazione.")
+        return
     await callback_refrescar(update, context)
 
 # ============================================================================
