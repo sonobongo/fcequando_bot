@@ -359,12 +359,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
     else:
         await update.message.reply_text(permanent_caption, reply_markup=keyboard_main if return_to_main else keyboard_altri)
 
-    # 2. Si es Galatea, añadir botón inline "Ascoltare info" (envía audio)
-    if estacion_key == "galatea":
-        ascolta_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🎧 Ascoltare info ♿", callback_data=f"ascoltare_{estacion_key}")]])
-        await update.message.reply_text("", reply_markup=ascolta_keyboard)
-
-    # 3. Iniciar el ciclo de actualización automática
+    # 2. Iniciar el ciclo de actualización automática
     if context.chat_data.get('refresh_active', False):
         context.chat_data['cancel_refresh'] = True
         await asyncio.sleep(0.5)
@@ -399,27 +394,6 @@ async def callback_refrescar(update: Update, context: ContextTypes.DEFAULT_TYPE)
             self.effective_user = message.from_user
     fake_update = FakeUpdate(query.message)
     await send_station_response(fake_update, context, estacion_key, return_to_main=False)
-
-# ============================================================================
-# CALLBACK PARA "ASCOLTARE INFO" (envía audio y detiene actualización)
-# ============================================================================
-async def callback_ascoltare(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    data = query.data
-    if not data.startswith("ascoltare_"):
-        return
-    # Cancelar el ciclo de actualizaciones automáticas si está activo
-    if context.chat_data.get('refresh_active', False):
-        context.chat_data['cancel_refresh'] = True
-        await asyncio.sleep(0.5)
-    # Enviar el archivo de audio desde GitHub
-    audio_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/infogalatea.mp3"
-    try:
-        await update.message.reply_audio(audio=audio_url, title="Informazioni Galatea", performer="Metro Catania")
-    except Exception as e:
-        print(f"Error al enviar audio: {e}")
-        await update.message.reply_text("⚠️ Impossibile riprodurre l'audio. Riprova più tardi.")
 
 # ============================================================================
 # COMANDO REFRESCAR (por si se usa como comando de texto)
