@@ -8,7 +8,7 @@ import pytz
 CATANIA_TZ = pytz.timezone('Europe/Rome')
 
 # ============================================================================
-# TECLADOS (sin cambios)
+# TECLADOS
 # ============================================================================
 keyboard_main = ReplyKeyboardMarkup(
     [[KeyboardButton("Monte Po"), KeyboardButton("Altri"), KeyboardButton("Stesicoro")]],
@@ -33,7 +33,7 @@ BOTON_TO_KEY = {
 }
 
 # ============================================================================
-# FUNCIONES AUXILIARES DE LOCALIZACIÓN (sin cambios)
+# FUNCIONES AUXILIARES DE LOCALIZACIÓN
 # ============================================================================
 def get_current_station_from_montepo(now: datetime, seconds_passed: int) -> str:
     stations = ["montepo", "fontana", "nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "giovanni", "stesicoro"]
@@ -66,7 +66,7 @@ def get_current_station_from_stesicoro(now: datetime, seconds_passed: int) -> st
     return NOMBRE_MOSTRAR["stesicoro"]
 
 # ============================================================================
-# CONSTRUCCIÓN DE MENSAJES TEMPORALES (sin cambios)
+# CONSTRUCCIÓN DE MENSAJES TEMPORALES
 # ============================================================================
 def build_temporary_messages(now: datetime, estacion_key: str):
     info_mp, info_st = get_next_train_at_station(now, estacion_key)
@@ -179,37 +179,8 @@ async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, 
     else:
         context.chat_data.pop('refresh_simulated', None)
 
-    # Enviar primera tanda de mensajes (ciclo 0)
-    now = simulated_now if (use_simulated and simulated_now) else datetime.now(CATANIA_TZ)
-    msg2, msg3, current_station_key, tiempo_restante = build_temporary_messages(now, estacion_key)
-    msg2_obj = await update.message.reply_text(msg2, parse_mode='Markdown')
-    if current_station_key and tiempo_restante is not None and tiempo_restante > 90:
-        ruta_url = f"https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_montepo_{current_station_key}.png"
-        try:
-            msg3_obj = await update.message.reply_photo(photo=ruta_url, caption=msg3, parse_mode='Markdown')
-        except:
-            msg3_obj = await update.message.reply_text(msg3, parse_mode='Markdown')
-    else:
-        msg3_obj = await update.message.reply_text(msg3, parse_mode='Markdown')
-    context.chat_data['refresh_msg_ids'] = (msg2_obj.message_id, msg3_obj.message_id)
-
-    # Ciclos restantes (1 y 2) con espera de 45s y borrado previo
-    for ciclo in range(1, 3):
-        if context.chat_data.get('cancel_refresh', False):
-            break
-        await asyncio.sleep(45)
-        if context.chat_data.get('cancel_refresh', False):
-            break
-        # Borrar mensajes anteriores
-        try:
-            await context.bot.delete_message(chat_id=chat_id, message_id=msg2_obj.message_id)
-        except:
-            pass
-        try:
-            await context.bot.delete_message(chat_id=chat_id, message_id=msg3_obj.message_id)
-        except:
-            pass
-        # Calcular nuevos mensajes
+    try:
+        # Enviar primera tanda de mensajes (ciclo 0)
         now = simulated_now if (use_simulated and simulated_now) else datetime.now(CATANIA_TZ)
         msg2, msg3, current_station_key, tiempo_restante = build_temporary_messages(now, estacion_key)
         msg2_obj = await update.message.reply_text(msg2, parse_mode='Markdown')
@@ -223,25 +194,61 @@ async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, 
             msg3_obj = await update.message.reply_text(msg3, parse_mode='Markdown')
         context.chat_data['refresh_msg_ids'] = (msg2_obj.message_id, msg3_obj.message_id)
 
-    # Después del tercer ciclo, enviar botón de refrescar (si no se canceló)
-    if not context.chat_data.get('cancel_refresh', False):
+        # Ciclos restantes (1 y 2) con espera de 45s y borrado previo
+        for ciclo in range(1, 3):
+            await asyncio.sleep(45)
+            # Borrar mensajes anteriores
+            try:
+                await context.bot.delete_message(chat_id=chat_id, message_id=msg2_obj.message_id)
+            except:
+                pass
+            try:
+                await context.bot.delete_message(chat_id=chat_id, message_id=msg3_obj.message_id)
+            except:
+                pass
+            # Calcular nuevos mensajes
+            now = simulated_now if (use_simulated and simulated_now) else datetime.now(CATANIA_TZ)
+            msg2, msg3, current_station_key, tiempo_restante = build_temporary_messages(now, estacion_key)
+            msg2_obj = await update.message.reply_text(msg2, parse_mode='Markdown')
+            if current_station_key and tiempo_restante is not None and tiempo_restante > 90:
+                ruta_url = f"https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_montepo_{current_station_key}.png"
+                try:
+                    msg3_obj = await update.message.reply_photo(photo=ruta_url, caption=msg3, parse_mode='Markdown')
+                except:
+                    msg3_obj = await update.message.reply_text(msg3, parse_mode='Markdown')
+            else:
+                msg3_obj = await update.message.reply_text(msg3, parse_mode='Markdown')
+            context.chat_data['refresh_msg_ids'] = (msg2_obj.message_id, msg3_obj.message_id)
+
+        # Después del tercer ciclo, enviar botón de refrescar
         refresh_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔄 Refrescar", callback_data=f"refresh_{estacion_key}")]])
         await update.message.reply_text("", reply_markup=refresh_keyboard)
 
-    # Limpiar flags al finalizar
-    context.chat_data['refresh_active'] = False
-    context.chat_data.pop('cancel_refresh', None)
+    except asyncio.CancelledError:
+        # Si la tarea se cancela, no hacemos nada
+        pass
+    finally:
+        # Limpiar flags al finalizar (tanto si termina normal como si se cancela)
+        context.chat_data['refresh_active'] = False
+        context.chat_data.pop('refresh_task', None)
+        context.chat_data.pop('cancel_refresh', None)
 
 # ============================================================================
-# RESPUESTA PRINCIPAL (con cancelación forzada de ciclos previos)
+# RESPUESTA PRINCIPAL (con cancelación de tarea anterior)
 # ============================================================================
 async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str, return_to_main: bool = True):
-    # --- CANCELAR CUALQUIER CICLO ACTIVO ANTERIOR (para evitar duplicados) ---
-    if context.chat_data.get('refresh_active', False):
-        context.chat_data['cancel_refresh'] = True
-        await asyncio.sleep(0.5)  # dar tiempo a que se cancele
-        # Esperar un poco más para asegurar
-        await asyncio.sleep(0.5)
+    # Cancelar cualquier tarea de refresco activa
+    if 'refresh_task' in context.chat_data:
+        task = context.chat_data['refresh_task']
+        if not task.done():
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+        context.chat_data.pop('refresh_task', None)
+    context.chat_data['refresh_active'] = False
+    context.chat_data['cancel_refresh'] = False
 
     simulated = context.chat_data.get('test_time') if context.chat_data else None
     now = simulated if simulated else datetime.now(CATANIA_TZ)
@@ -366,18 +373,13 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
     else:
         await update.message.reply_text(permanent_caption, reply_markup=keyboard_main if return_to_main else keyboard_altri)
 
-    # 2. Iniciar el ciclo de actualización automática (después de cancelar el anterior)
+    # 2. Iniciar el ciclo de actualización automática
     context.chat_data['refresh_active'] = True
-    context.chat_data['cancel_refresh'] = False
-
-    station_display_name = nombre
-    if simulated is None:
-        asyncio.create_task(auto_refresh_loop(update, context, estacion_key, update.effective_chat.id, station_display_name, use_simulated=False))
-    else:
-        asyncio.create_task(auto_refresh_loop(update, context, estacion_key, update.effective_chat.id, station_display_name, use_simulated=True, simulated_now=now))
+    task = asyncio.create_task(auto_refresh_loop(update, context, estacion_key, update.effective_chat.id, nombre, use_simulated=(simulated is not None), simulated_now=now if simulated else None))
+    context.chat_data['refresh_task'] = task
 
 # ============================================================================
-# CALLBACK DEL BOTÓN DE REFRESCAR (sin cambios)
+# CALLBACK DEL BOTÓN DE REFRESCAR
 # ============================================================================
 async def callback_refrescar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -387,10 +389,18 @@ async def callback_refrescar(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return
     estacion_key = data.split("_")[1]
     
-    if context.chat_data.get('refresh_active', False):
-        context.chat_data['cancel_refresh'] = True
-        await asyncio.sleep(0.5)
-    
+    # Cancelar cualquier tarea activa
+    if 'refresh_task' in context.chat_data:
+        task = context.chat_data['refresh_task']
+        if not task.done():
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+        context.chat_data.pop('refresh_task', None)
+    context.chat_data['refresh_active'] = False
+
     class FakeUpdate:
         def __init__(self, message):
             self.message = message
@@ -410,15 +420,23 @@ async def cmd_refrescar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await callback_refrescar(update, context)
 
 # ============================================================================
-# MANEJADORES DE COMANDOS (con cancelación de refrescos)
+# MANEJADORES DE COMANDOS (con cancelación de tarea antes de ejecutar)
 # ============================================================================
 async def cancel_refresh_and_run(update: Update, context: ContextTypes.DEFAULT_TYPE, coro, *args, **kwargs):
-    if context.chat_data and context.chat_data.get('refresh_active', False):
-        context.chat_data['cancel_refresh'] = True
-        await asyncio.sleep(0.5)
+    # Cancelar cualquier tarea de refresco activa
+    if 'refresh_task' in context.chat_data:
+        task = context.chat_data['refresh_task']
+        if not task.done():
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+        context.chat_data.pop('refresh_task', None)
+    context.chat_data['refresh_active'] = False
     await coro(update, context, *args, **kwargs)
 
-# Wrappers (igual que antes)
+# Wrappers
 async def cmd_montepo_wrapper(update, context): await cancel_refresh_and_run(update, context, cmd_montepo)
 async def cmd_stesicoro_wrapper(update, context): await cancel_refresh_and_run(update, context, cmd_stesicoro)
 async def cmd_milo_wrapper(update, context): await cancel_refresh_and_run(update, context, cmd_milo)
