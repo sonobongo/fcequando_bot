@@ -271,35 +271,18 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
     await update.message.reply_text(msg_stesicoro, reply_markup=keyboard_main if return_to_main else keyboard_altri, parse_mode='Markdown')
 
 # ============================================================================
-# NUEVA FUNCIÓN PARA EL MODO TEST CON 3 ARGUMENTOS (actualización automática)
+# FUNCIÓN PARA EL CICLO DE ACTUALIZACIONES (en segundo plano)
 # ============================================================================
-async def send_test_response_with_refresh(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str, simulated_now: datetime):
-    chat_id = update.effective_chat.id
-    # Guardar el estado de cancelación
-    if context.chat_data is None:
-        context.chat_data = {}
-    context.chat_data['cancel_refresh'] = False
-    context.chat_data['refresh_active'] = True
-
+async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str, simulated_now: datetime, chat_id: int, permanent_msg_id: int = None):
     nombre = NOMBRE_MOSTRAR.get(estacion_key, estacion_key.capitalize())
-
-    # 1. MENSAJE PERMANENTE: foto de la estación con título simple
-    img_station = get_station_image(estacion_key, simulated_now)
-    permanent_caption = f"🚆 Prossimi treni a {nombre}"
-    if img_station:
-        await update.message.reply_photo(photo=img_station, caption=permanent_caption, reply_markup=keyboard_main)
-    else:
-        await update.message.reply_text(permanent_caption, reply_markup=keyboard_main)
-
-    # Función auxiliar para construir los mensajes temporales (sin enviarlos)
+    
     def build_temporary_messages(now):
-        # Obtener información actualizada
         info_mp, info_st = get_next_train_at_station(now, estacion_key)
         closing_msg = get_closing_message(estacion_key, now)
         last_msg = get_last_train_message(now)
         last_msg_text = f"\n{last_msg}" if last_msg and not is_sant_agata(now) else ""
 
-        # Mensaje 2: dirección Monte Po (texto)
+        # Mensaje 2: Monte Po
         msg2 = ""
         if closing_msg:
             msg2 += f"{closing_msg}\n"
@@ -310,7 +293,6 @@ async def send_test_response_with_refresh(update: Update, context: ContextTypes.
                 line = f"🔺 **Per Monte Po**: treno in arrivo.\n"
             else:
                 line = f"🔺 **Per Monte Po**: Passa tra **{time_str}**.\n"
-            # Localización solo para ciertas estaciones
             estaciones_localizacion = ["nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "fontana"]
             if estacion_key in estaciones_localizacion and 2 <= mins <= 10:
                 rest_seconds = mins*60 + secs
@@ -333,7 +315,7 @@ async def send_test_response_with_refresh(update: Update, context: ContextTypes.
         if last_msg_text:
             msg2 += last_msg_text
 
-        # Mensaje 3: foto de ruta con caption para Stesicoro
+        # Mensaje 3: Stesicoro con foto de ruta
         msg3_text = ""
         current_station_key = None
         if info_mp:
@@ -352,7 +334,6 @@ async def send_test_response_with_refresh(update: Update, context: ContextTypes.
                     if seconds_passed < 0:
                         seconds_passed = 0
                     current_station = get_current_station_from_montepo(now, seconds_passed)
-                    # Guardar la clave de la estación actual para la foto
                     for key, name in NOMBRE_MOSTRAR.items():
                         if name == current_station:
                             current_station_key = key
@@ -374,74 +355,109 @@ async def send_test_response_with_refresh(update: Update, context: ContextTypes.
 
     # Ciclo de 3 veces
     for ciclo in range(3):
-        # Si se ha cancelado, salir
+        # Comprobar si se ha cancelado (por algún comando o botón)
         if context.chat_data.get('cancel_refresh', False):
             break
 
-        # Obtener los mensajes actualizados
-        msg2, msg3_text, current_station_key = build_temporary_messages(simulated_now)
+        now = simulated_now  # usamos la misma hora simulada fija
+        msg2, msg3_text, current_station_key = build_temporary_messages(now)
 
-        # Enviar mensaje 2 (texto)
-        msg2_obj = await update.message.reply_text(msg2, parse_mode='Markdown')
-
-        # Enviar mensaje 3 (foto de ruta + caption) si hay estación actual
-        msg3_obj = None
+        # Enviar mensaje 2
+        msg2_obj = await context.bot.send_message(chat_id=chat_id, text=msg2, parse_mode='Markdown')
+        # Enviar mensaje 3 (foto si hay estación)
         if current_station_key:
             ruta_url = f"https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_montepo_{current_station_key}.png"
             try:
-                msg3_obj = await update.message.reply_photo(photo=ruta_url, caption=msg3_text, parse_mode='Markdown')
-            except Exception as e:
-                print(f"Error al enviar foto de ruta para {current_station_key}: {e}")
-                # Si falla la foto, enviamos solo texto
-                msg3_obj = await update.message.reply_text(msg3_text, parse_mode='Markdown')
+                msg3_obj = await context.bot.send_photo(chat_id=chat_id, photo=ruta_url, caption=msg3_text, parse_mode='Markdown')
+            except Exception:
+                msg3_obj = await context.bot.send_message(chat_id=chat_id, text=msg3_text, parse_mode='Markdown')
         else:
-            # Si no hay localización, enviamos solo texto
-            msg3_obj = await update.message.reply_text(msg3_text, parse_mode='Markdown')
+            msg3_obj = await context.bot.send_message(chat_id=chat_id, text=msg3_text, parse_mode='Markdown')
 
-        # Esperar 60 segundos, pero comprobando cancelación cada 2 segundos
+        # Esperar 60 segundos comprobando cancelación cada 2 segundos
         for _ in range(30):
             if context.chat_data.get('cancel_refresh', False):
                 break
             await asyncio.sleep(2)
         if context.chat_data.get('cancel_refresh', False):
-            # Cancelado: no borramos los mensajes actuales
+            # Cancelado: no borramos los mensajes
             break
 
         # Borrar mensajes 2 y 3
         try:
             await context.bot.delete_message(chat_id=chat_id, message_id=msg2_obj.message_id)
-        except Exception as e:
-            print(f"Error al borrar msg2: {e}")
+        except Exception:
+            pass
         try:
-            if msg3_obj:
-                await context.bot.delete_message(chat_id=chat_id, message_id=msg3_obj.message_id)
-        except Exception as e:
-            print(f"Error al borrar msg3: {e}")
+            await context.bot.delete_message(chat_id=chat_id, message_id=msg3_obj.message_id)
+        except Exception:
+            pass
 
-    # Al finalizar, limpiar flags
-    context.chat_data['refresh_active'] = False
+    # Limpiar flags
     context.chat_data.pop('cancel_refresh', None)
+    context.chat_data.pop('refresh_task', None)
 
 # ============================================================================
-# MANEJADORES DE COMANDOS
+# COMANDO TEST CON 3 ARGUMENTOS (inicia la tarea en segundo plano)
 # ============================================================================
-async def cmd_montepo(update, context): await send_station_response(update, context, "montepo", return_to_main=False)
-async def cmd_stesicoro(update, context): await send_station_response(update, context, "stesicoro", return_to_main=False)
-async def cmd_milo(update, context): await send_station_response(update, context, "milo", return_to_main=False)
-async def cmd_fontana(update, context): await send_station_response(update, context, "fontana", return_to_main=False)
-async def cmd_nesima(update, context): await send_station_response(update, context, "nesima", return_to_main=False)
-async def cmd_sannullo(update, context): await send_station_response(update, context, "sannullo", return_to_main=False)
-async def cmd_cibali(update, context): await send_station_response(update, context, "cibali", return_to_main=False)
-async def cmd_borgo(update, context): await send_station_response(update, context, "borgo", return_to_main=False)
-async def cmd_giuffrida(update, context): await send_station_response(update, context, "giuffrida", return_to_main=False)
-async def cmd_italia(update, context): await send_station_response(update, context, "italia", return_to_main=False)
-async def cmd_galatea(update, context): await send_station_response(update, context, "galatea", return_to_main=False)
-async def cmd_giovanni(update, context): await send_station_response(update, context, "giovanni", return_to_main=False)
+async def send_test_response_with_refresh(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str, simulated_now: datetime):
+    chat_id = update.effective_chat.id
+    nombre = NOMBRE_MOSTRAR.get(estacion_key, estacion_key.capitalize())
+
+    # 1. Enviar mensaje permanente (foto de estación con título)
+    img_station = get_station_image(estacion_key, simulated_now)
+    permanent_caption = f"🚆 Prossimi treni a {nombre}"
+    if img_station:
+        await update.message.reply_photo(photo=img_station, caption=permanent_caption, reply_markup=keyboard_main)
+    else:
+        await update.message.reply_text(permanent_caption, reply_markup=keyboard_main)
+
+    # Cancelar tarea anterior si existe
+    if context.chat_data.get('refresh_task') and not context.chat_data['refresh_task'].done():
+        context.chat_data['cancel_refresh'] = True
+        context.chat_data['refresh_task'].cancel()
+        await asyncio.sleep(0.5)
+
+    # Configurar flags
+    context.chat_data['cancel_refresh'] = False
+    # Iniciar tarea en segundo plano
+    task = asyncio.create_task(auto_refresh_loop(update, context, estacion_key, simulated_now, chat_id))
+    context.chat_data['refresh_task'] = task
+
+# ============================================================================
+# MANEJADORES DE COMANDOS Y BOTONES (cancelan el ciclo antes de ejecutarse)
+# ============================================================================
+async def cancel_refresh_and_run(coroutine, update, context):
+    # Si hay una tarea de refresco activa, cancelarla
+    if context.chat_data and context.chat_data.get('refresh_task') and not context.chat_data['refresh_task'].done():
+        context.chat_data['cancel_refresh'] = True
+        context.chat_data['refresh_task'].cancel()
+        await asyncio.sleep(0.5)
+        context.chat_data.pop('refresh_task', None)
+        context.chat_data.pop('cancel_refresh', None)
+    # Ejecutar el comando o botón original
+    await coroutine
+
+async def cmd_montepo(update, context): await cancel_refresh_and_run(send_station_response(update, context, "montepo", return_to_main=False), update, context)
+async def cmd_stesicoro(update, context): await cancel_refresh_and_run(send_station_response(update, context, "stesicoro", return_to_main=False), update, context)
+async def cmd_milo(update, context): await cancel_refresh_and_run(send_station_response(update, context, "milo", return_to_main=False), update, context)
+async def cmd_fontana(update, context): await cancel_refresh_and_run(send_station_response(update, context, "fontana", return_to_main=False), update, context)
+async def cmd_nesima(update, context): await cancel_refresh_and_run(send_station_response(update, context, "nesima", return_to_main=False), update, context)
+async def cmd_sannullo(update, context): await cancel_refresh_and_run(send_station_response(update, context, "sannullo", return_to_main=False), update, context)
+async def cmd_cibali(update, context): await cancel_refresh_and_run(send_station_response(update, context, "cibali", return_to_main=False), update, context)
+async def cmd_borgo(update, context): await cancel_refresh_and_run(send_station_response(update, context, "borgo", return_to_main=False), update, context)
+async def cmd_giuffrida(update, context): await cancel_refresh_and_run(send_station_response(update, context, "giuffrida", return_to_main=False), update, context)
+async def cmd_italia(update, context): await cancel_refresh_and_run(send_station_response(update, context, "italia", return_to_main=False), update, context)
+async def cmd_galatea(update, context): await cancel_refresh_and_run(send_station_response(update, context, "galatea", return_to_main=False), update, context)
+async def cmd_giovanni(update, context): await cancel_refresh_and_run(send_station_response(update, context, "giovanni", return_to_main=False), update, context)
 
 async def cmd_altri(update, context):
-    await update.message.reply_text("⬇️ Altre stazioni:", reply_markup=keyboard_altri)
+    await cancel_refresh_and_run(update.message.reply_text("⬇️ Altre stazioni:", reply_markup=keyboard_altri), update, context)
 
 async def start(update, context):
+    await cancel_refresh_and_run(_start(update, context), update, context)
+
+async def _start(update, context):
     user = update.effective_user
     now = datetime.now(CATANIA_TZ)
     last_msg = get_last_train_message(now)
@@ -454,6 +470,9 @@ async def start(update, context):
     )
 
 async def help_command(update, context):
+    await cancel_refresh_and_run(_help(update, context), update, context)
+
+async def _help(update, context):
     await update.message.reply_text(
         "Comandi disponibili:\n"
         "/start - Messaggio di benvenuto\n"
@@ -472,10 +491,13 @@ async def help_command(update, context):
     )
 
 async def handle_button(update, context):
-    # Si hay un ciclo de actualización activo, cancelarlo
-    if context.chat_data and context.chat_data.get('refresh_active', False):
+    # Cancelar ciclo si está activo
+    if context.chat_data and context.chat_data.get('refresh_task') and not context.chat_data['refresh_task'].done():
         context.chat_data['cancel_refresh'] = True
-        # No borramos los mensajes, solo cancelamos futuras acciones
+        context.chat_data['refresh_task'].cancel()
+        await asyncio.sleep(0.5)
+        context.chat_data.pop('refresh_task', None)
+        context.chat_data.pop('cancel_refresh', None)
     text = update.message.text
     if text == "Altri":
         await cmd_altri(update, context)
@@ -584,7 +606,11 @@ async def test_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             await update.message.reply_text(f"Data non valida: {e}")
             return
-        # Llamar a la función especial con actualizaciones automáticas
+        # Cancelar cualquier ciclo anterior antes de empezar uno nuevo
+        if context.chat_data and context.chat_data.get('refresh_task') and not context.chat_data['refresh_task'].done():
+            context.chat_data['cancel_refresh'] = True
+            context.chat_data['refresh_task'].cancel()
+            await asyncio.sleep(0.5)
         await send_test_response_with_refresh(update, context, station, simulated)
         return
     await update.message.reply_text("Comando non riconosciuto. Usa /test DDMMYYYY HHMM o /test DDMMYYYY HHMM X")
