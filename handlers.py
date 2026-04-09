@@ -66,7 +66,7 @@ def get_current_station_from_stesicoro(now: datetime, seconds_passed: int) -> st
     return NOMBRE_MOSTRAR["stesicoro"]
 
 # ============================================================================
-# CONSTRUCCIÓN DE MENSAJES TEMPORALES (reutilizable)
+# CONSTRUCCIÓN DE MENSAJES TEMPORALES
 # ============================================================================
 def build_temporary_messages(now: datetime, estacion_key: str):
     info_mp, info_st = get_next_train_at_station(now, estacion_key)
@@ -365,36 +365,19 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
     nombre = NOMBRE_MOSTRAR.get(estacion_key, estacion_key.capitalize())
     img_station = get_station_image(estacion_key, now)
 
-    # CASO ESPECIAL GALATEA: foto con caption largo y botón "ascoltare info"
+    # 1. Enviar la foto de la estación con título corto (SIEMPRE)
+    permanent_caption = f"{test_indicator}🚆 Prossimi treni a {nombre}"
+    if img_station:
+        await update.message.reply_photo(photo=img_station, caption=permanent_caption, reply_markup=keyboard_main if return_to_main else keyboard_altri)
+    else:
+        await update.message.reply_text(permanent_caption, reply_markup=keyboard_main if return_to_main else keyboard_altri)
+
+    # 2. Si es Galatea, añadir un botón inline "Ascoltare info" (sin texto adicional)
     if estacion_key == "galatea":
-        galatea_caption = (
-            f"{test_indicator}_🚆 Prossimi treni a Galatea_\n\n"
-            f"_Informazioni sulla stazione Galatea: la stazione è dotata di pavimento podotattile e scale mobili.\n"
-            f"Sul marciapiede 1 partono i treni in direzione Monte Po. Alla testa del treno si trovano le uscite per Viale Jonio, Via Pasubio e Via Palmanova.\n"
-            f"Sul marciapiede 2 partono i treni in direzione Stesicoro. Alla testa del treno si trovano le uscite per Piazza Galatea, Viale Africa e Via Messina._"
-        )
-        if img_station:
-            await update.message.reply_photo(photo=img_station, caption=galatea_caption, reply_markup=keyboard_main if return_to_main else keyboard_altri, parse_mode='Markdown')
-        else:
-            await update.message.reply_text(galatea_caption, reply_markup=keyboard_main if return_to_main else keyboard_altri, parse_mode='Markdown')
-        
-        # Botón inline "ascoltare info"
         ascolta_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🎧 Ascoltare info ♿", callback_data=f"ascoltare_{estacion_key}")]])
         await update.message.reply_text("", reply_markup=ascolta_keyboard)
 
-        # No lanzamos ciclo de refresco automático para Galatea? El usuario no lo ha pedido explícitamente,
-        # pero para mantener la coherencia, lanzamos el ciclo normal (ya que el botón "ascoltare" luego lo cancelará si se pulsa).
-        # Sin embargo, el usuario quiere que al pulsar el botón se detengan las actualizaciones. Si no se pulsa, el ciclo sigue.
-        # Por tanto, lanzamos el ciclo normalmente.
-        # (El código de refresco se lanza más abajo, fuera del if)
-    else:
-        # Resto de estaciones: caption corto
-        permanent_caption = f"{test_indicator}🚆 Prossimi treni a {nombre}"
-        if img_station:
-            await update.message.reply_photo(photo=img_station, caption=permanent_caption, reply_markup=keyboard_main if return_to_main else keyboard_altri)
-        else:
-            await update.message.reply_text(permanent_caption, reply_markup=keyboard_main if return_to_main else keyboard_altri)
-
+    # 3. Iniciar el ciclo de actualización automática (para todas las estaciones intermedias, incluyendo Galatea)
     # Cancelar cualquier ciclo previo
     if context.chat_data.get('refresh_active', False):
         context.chat_data['cancel_refresh'] = True
@@ -402,8 +385,6 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
     context.chat_data['refresh_active'] = True
     context.chat_data['cancel_refresh'] = False
 
-    # Iniciar tarea de actualización automática (solo para estaciones intermedias, no para cabeceras)
-    # Nota: para Galatea también se inicia, pero el botón "ascoltare" podrá cancelarlo.
     station_display_name = nombre
     if simulated is None:
         asyncio.create_task(auto_refresh_loop(update, context, estacion_key, update.effective_chat.id, station_display_name, use_simulated=False))
