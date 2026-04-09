@@ -84,7 +84,6 @@ def build_temporary_messages(now: datetime, estacion_key: str):
         if mins == 0 and secs < 30:
             line = f"🔺 **Per Monte Po**: treno in arrivo.\n"
         else:
-            # Mostrar hora solo si minutos > SHORT_TIME_THRESHOLD (ej. >5)
             if mins > SHORT_TIME_THRESHOLD:
                 line = f"🔺 **Per Monte Po**: Passa tra **{time_str}**, alle {paso_st.strftime('%H:%M')}.\n"
             else:
@@ -118,11 +117,11 @@ def build_temporary_messages(now: datetime, estacion_key: str):
     # Mensaje 3 (Stesicoro) y clave para foto de ruta
     msg3 = ""
     current_station_key = None
-    tiempo_restante_segundos = None
+    tiempo_restante = None
     if info_mp:
         paso_mp, mins, secs, next_info = info_mp
         time_str = format_time(mins, secs)
-        tiempo_restante_segundos = mins*60 + secs
+        tiempo_restante = mins*60 + secs
         if mins == 0 and secs < 30:
             line = f"🔻 **Per Stesicoro**: treno in arrivo.\n"
         else:
@@ -130,7 +129,7 @@ def build_temporary_messages(now: datetime, estacion_key: str):
                 line = f"🔻 **Per Stesicoro**: Passa tra **{time_str}**, alle {paso_mp.strftime('%H:%M')}.\n"
             else:
                 line = f"🔻 **Per Stesicoro**: Passa tra **{time_str}**.\n"
-        rest_seconds = tiempo_restante_segundos
+        rest_seconds = tiempo_restante
         total_seconds = get_total_seconds_from_montepo(estacion_key, now)
         if rest_seconds < total_seconds:
             seconds_passed = total_seconds - rest_seconds
@@ -162,11 +161,11 @@ def build_temporary_messages(now: datetime, estacion_key: str):
                 msg3 += f"   Il successivo passerà tra {time_str2}.\n"
     else:
         msg3 = f"🔻 **Per Stesicoro**: nessun treno in arrivo al momento.\n"
-        tiempo_restante_segundos = 9999
+        tiempo_restante = 9999
     if last_msg_text:
         msg3 += last_msg_text
 
-    return msg2, msg3, current_station_key, tiempo_restante_segundos
+    return msg2, msg3, current_station_key, tiempo_restante
 
 # ============================================================================
 # TAREA DE ACTUALIZACIÓN AUTOMÁTICA (3 ciclos de 45 segundos)
@@ -182,6 +181,7 @@ async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, 
 
     for ciclo in range(3):
         if context.chat_data.get('cancel_refresh', False):
+            print(f"DEBUG: ciclo {ciclo} cancelado")
             break
 
         now = simulated_now if (use_simulated and simulated_now) else datetime.now(CATANIA_TZ)
@@ -203,12 +203,11 @@ async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, 
         
         context.chat_data['refresh_msg_ids'] = (msg2_obj.message_id, msg3_obj.message_id)
 
-        # Último ciclo: enviar botón y no borrar
+        # Último ciclo: enviar botón y NO borrar mensajes
         if ciclo == 2:
-            # Botón inline que refresca la misma estación
-            refresh_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("refrescare", callback_data=f"refresh_{estacion_key}")]])
+            print("DEBUG: Enviando botón refrescar (ciclo 2)")
+            refresh_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔄 Refrescar", callback_data=f"refresh_{estacion_key}")]])
             await update.message.reply_text("", reply_markup=refresh_keyboard)
-            # No borramos mensajes 2 y 3, y salimos del bucle
             break
 
         # Para ciclos 0 y 1: esperar 45 segundos y luego borrar
@@ -233,6 +232,7 @@ async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, 
     if not context.chat_data.get('cancel_refresh', False):
         context.chat_data['refresh_active'] = False
         context.chat_data.pop('cancel_refresh', None)
+    print("DEBUG: auto_refresh_loop finalizado")
 
 # ============================================================================
 # RESPUESTA PRINCIPAL (para comandos normales y test)
@@ -352,13 +352,29 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
         return
 
     nombre = NOMBRE_MOSTRAR.get(estacion_key, estacion_key.capitalize())
-    # Mensaje 1: foto de la estación + título
+    # Mensaje 1: foto de la estación + título (con descripción especial para Galatea)
     img_station = get_station_image(estacion_key, now)
-    permanent_caption = f"{test_indicator}🚆 Prossimi treni a {nombre}"
-    if img_station:
-        await update.message.reply_photo(photo=img_station, caption=permanent_caption, reply_markup=keyboard_main if return_to_main else keyboard_altri)
+    
+    # Si es la estación Galatea, usamos un caption largo en cursiva (accesible para invidentes y visible para todos)
+    if estacion_key == "galatea":
+        galatea_caption = (
+            f"{test_indicator}_🚆 Prossimi treni a Galatea_\n\n"
+            f"_Informazioni sulla stazione Galatea: la stazione è dotata di pavimento podotattile e scale mobili.\n"
+            f"Sul marciapiede 1 partono i treni in direzione Monte Po. Alla testa del treno si trovano le uscite per Viale Jonio, Via Pasubio e Via Palmanova.\n"
+            f"Sul marciapiede 2 partono i treni in direzione Stesicoro. Alla testa del treno si trovano le uscite per Piazza Galatea, Viale Africa e Via Messina._"
+        )
+        if img_station:
+            await update.message.reply_photo(photo=img_station, caption=galatea_caption, reply_markup=keyboard_main if return_to_main else keyboard_altri, parse_mode='Markdown')
+        else:
+            # Si no hay imagen, enviamos el texto plano (sin foto)
+            await update.message.reply_text(galatea_caption, reply_markup=keyboard_main if return_to_main else keyboard_altri, parse_mode='Markdown')
     else:
-        await update.message.reply_text(permanent_caption, reply_markup=keyboard_main if return_to_main else keyboard_altri)
+        # Resto de estaciones: caption corto con título
+        permanent_caption = f"{test_indicator}🚆 Prossimi treni a {nombre}"
+        if img_station:
+            await update.message.reply_photo(photo=img_station, caption=permanent_caption, reply_markup=keyboard_main if return_to_main else keyboard_altri)
+        else:
+            await update.message.reply_text(permanent_caption, reply_markup=keyboard_main if return_to_main else keyboard_altri)
 
     # Cancelar cualquier ciclo previo
     if context.chat_data.get('refresh_active', False):
@@ -367,7 +383,8 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
     context.chat_data['refresh_active'] = True
     context.chat_data['cancel_refresh'] = False
 
-    # Iniciar tarea de actualización
+    # Iniciar tarea de actualización (solo si no es modo test o si es estación intermedia)
+    # Nota: para las cabeceras no lanzamos refrescos, pero aquí solo llegamos si es intermedia
     station_display_name = nombre
     if simulated is None:
         asyncio.create_task(auto_refresh_loop(update, context, estacion_key, update.effective_chat.id, station_display_name, use_simulated=False))
@@ -381,7 +398,6 @@ async def callback_refrescar(update: Update, context: ContextTypes.DEFAULT_TYPE)
     query = update.callback_query
     await query.answer()
     
-    # Extraer la clave de la estación del callback_data
     data = query.data
     if not data.startswith("refresh_"):
         return
@@ -392,8 +408,6 @@ async def callback_refrescar(update: Update, context: ContextTypes.DEFAULT_TYPE)
         context.chat_data['cancel_refresh'] = True
         await asyncio.sleep(0.5)
     
-    # Simular la pulsación del botón de la estación llamando a send_station_response
-    # El callback no tiene message directo, usamos query.message
     class FakeUpdate:
         def __init__(self, message):
             self.message = message
@@ -401,7 +415,6 @@ async def callback_refrescar(update: Update, context: ContextTypes.DEFAULT_TYPE)
             self.effective_user = message.from_user
     fake_update = FakeUpdate(query.message)
     
-    # Llamar a la respuesta de la estación (reinicia todo)
     await send_station_response(fake_update, context, estacion_key, return_to_main=False)
 
 # ============================================================================
@@ -412,7 +425,6 @@ async def cmd_refrescar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not estacion_key:
         await update.message.reply_text("⚠️ Nessuna sessione attiva. Premi prima una stazione.")
         return
-    # Simular callback
     await callback_refrescar(update, context)
 
 # ============================================================================
