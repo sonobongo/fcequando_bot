@@ -168,22 +168,6 @@ def build_temporary_messages(now: datetime, estacion_key: str):
     return msg2, msg3, current_station_key, tiempo_restante
 
 # ============================================================================
-# ENVÍO DE MENSAJES ESTÁTICOS (sin actualización automática)
-# ============================================================================
-async def send_static_messages(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str, now: datetime):
-    """Envía una sola vez los mensajes 2 y 3 (sin bucle de refresco)"""
-    msg2, msg3, current_station_key, tiempo_restante = build_temporary_messages(now, estacion_key)
-    await update.message.reply_text(msg2, parse_mode='Markdown')
-    if current_station_key and tiempo_restante is not None and tiempo_restante > 90:
-        ruta_url = f"https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_montepo_{current_station_key}.png"
-        try:
-            await update.message.reply_photo(photo=ruta_url, caption=msg3, parse_mode='Markdown')
-        except:
-            await update.message.reply_text(msg3, parse_mode='Markdown')
-    else:
-        await update.message.reply_text(msg3, parse_mode='Markdown')
-
-# ============================================================================
 # TAREA DE ACTUALIZACIÓN AUTOMÁTICA (3 ciclos de 45 segundos)
 # ============================================================================
 async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str, chat_id: int, station_display_name: str, use_simulated: bool = False, simulated_now: datetime = None):
@@ -195,42 +179,28 @@ async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, 
     else:
         context.chat_data.pop('refresh_simulated', None)
 
-    for ciclo in range(3):
-        if context.chat_data.get('cancel_refresh', False):
-            break
-
-        now = simulated_now if (use_simulated and simulated_now) else datetime.now(CATANIA_TZ)
-        msg2, msg3, current_station_key, tiempo_restante = build_temporary_messages(now, estacion_key)
-
-        # Enviar mensaje 2
-        msg2_obj = await update.message.reply_text(msg2, parse_mode='Markdown')
-        
-        # Enviar mensaje 3
-        if current_station_key and tiempo_restante is not None and tiempo_restante > 90:
-            ruta_url = f"https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_montepo_{current_station_key}.png"
-            try:
-                msg3_obj = await update.message.reply_photo(photo=ruta_url, caption=msg3, parse_mode='Markdown')
-            except:
-                msg3_obj = await update.message.reply_text(msg3, parse_mode='Markdown')
-        else:
+    # Enviar primera tanda de mensajes (ciclo 0)
+    now = simulated_now if (use_simulated and simulated_now) else datetime.now(CATANIA_TZ)
+    msg2, msg3, current_station_key, tiempo_restante = build_temporary_messages(now, estacion_key)
+    msg2_obj = await update.message.reply_text(msg2, parse_mode='Markdown')
+    if current_station_key and tiempo_restante is not None and tiempo_restante > 90:
+        ruta_url = f"https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_montepo_{current_station_key}.png"
+        try:
+            msg3_obj = await update.message.reply_photo(photo=ruta_url, caption=msg3, parse_mode='Markdown')
+        except:
             msg3_obj = await update.message.reply_text(msg3, parse_mode='Markdown')
-        
-        context.chat_data['refresh_msg_ids'] = (msg2_obj.message_id, msg3_obj.message_id)
+    else:
+        msg3_obj = await update.message.reply_text(msg3, parse_mode='Markdown')
+    context.chat_data['refresh_msg_ids'] = (msg2_obj.message_id, msg3_obj.message_id)
 
-        # Último ciclo: enviar botón de refrescar y NO borrar mensajes
-        if ciclo == 2:
-            refresh_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔄 Refrescar", callback_data=f"refresh_{estacion_key}")]])
-            await update.message.reply_text("", reply_markup=refresh_keyboard)
-            break
-
-        # Ciclos 0 y 1: esperar 45s y borrar
-        for _ in range(45):
-            if context.chat_data.get('cancel_refresh', False):
-                break
-            await asyncio.sleep(1)
+    # Ciclos restantes (1 y 2) con espera de 45s y borrado previo
+    for ciclo in range(1, 3):
         if context.chat_data.get('cancel_refresh', False):
             break
-
+        await asyncio.sleep(45)
+        if context.chat_data.get('cancel_refresh', False):
+            break
+        # Borrar mensajes anteriores
         try:
             await context.bot.delete_message(chat_id=chat_id, message_id=msg2_obj.message_id)
         except:
@@ -239,11 +209,28 @@ async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, 
             await context.bot.delete_message(chat_id=chat_id, message_id=msg3_obj.message_id)
         except:
             pass
+        # Calcular nuevos mensajes
+        now = simulated_now if (use_simulated and simulated_now) else datetime.now(CATANIA_TZ)
+        msg2, msg3, current_station_key, tiempo_restante = build_temporary_messages(now, estacion_key)
+        msg2_obj = await update.message.reply_text(msg2, parse_mode='Markdown')
+        if current_station_key and tiempo_restante is not None and tiempo_restante > 90:
+            ruta_url = f"https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_montepo_{current_station_key}.png"
+            try:
+                msg3_obj = await update.message.reply_photo(photo=ruta_url, caption=msg3, parse_mode='Markdown')
+            except:
+                msg3_obj = await update.message.reply_text(msg3, parse_mode='Markdown')
+        else:
+            msg3_obj = await update.message.reply_text(msg3, parse_mode='Markdown')
+        context.chat_data['refresh_msg_ids'] = (msg2_obj.message_id, msg3_obj.message_id)
+
+    # Después del tercer ciclo, enviar botón de refrescar (si no se canceló)
+    if not context.chat_data.get('cancel_refresh', False):
+        refresh_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔄 Refrescar", callback_data=f"refresh_{estacion_key}")]])
+        await update.message.reply_text("", reply_markup=refresh_keyboard)
 
     # Limpiar flags al finalizar
-    if not context.chat_data.get('cancel_refresh', False):
-        context.chat_data['refresh_active'] = False
-        context.chat_data.pop('cancel_refresh', None)
+    context.chat_data['refresh_active'] = False
+    context.chat_data.pop('cancel_refresh', None)
 
 # ============================================================================
 # RESPUESTA PRINCIPAL (para comandos normales y test)
@@ -365,20 +352,19 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
     nombre = NOMBRE_MOSTRAR.get(estacion_key, estacion_key.capitalize())
     img_station = get_station_image(estacion_key, now)
 
-    # 1. Enviar la foto de la estación con título corto (SIEMPRE)
+    # 1. Enviar la foto de la estación con título corto
     permanent_caption = f"{test_indicator}🚆 Prossimi treni a {nombre}"
     if img_station:
         await update.message.reply_photo(photo=img_station, caption=permanent_caption, reply_markup=keyboard_main if return_to_main else keyboard_altri)
     else:
         await update.message.reply_text(permanent_caption, reply_markup=keyboard_main if return_to_main else keyboard_altri)
 
-    # 2. Si es Galatea, añadir un botón inline "Ascoltare info" (sin texto adicional)
+    # 2. Si es Galatea, añadir botón inline "Ascoltare info" (envía audio)
     if estacion_key == "galatea":
         ascolta_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🎧 Ascoltare info ♿", callback_data=f"ascoltare_{estacion_key}")]])
         await update.message.reply_text("", reply_markup=ascolta_keyboard)
 
-    # 3. Iniciar el ciclo de actualización automática (para todas las estaciones intermedias, incluyendo Galatea)
-    # Cancelar cualquier ciclo previo
+    # 3. Iniciar el ciclo de actualización automática
     if context.chat_data.get('refresh_active', False):
         context.chat_data['cancel_refresh'] = True
         await asyncio.sleep(0.5)
@@ -392,7 +378,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
         asyncio.create_task(auto_refresh_loop(update, context, estacion_key, update.effective_chat.id, station_display_name, use_simulated=True, simulated_now=now))
 
 # ============================================================================
-# CALLBACK DEL BOTÓN DE REFRESCAR (ya existente)
+# CALLBACK DEL BOTÓN DE REFRESCAR
 # ============================================================================
 async def callback_refrescar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -415,7 +401,7 @@ async def callback_refrescar(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await send_station_response(fake_update, context, estacion_key, return_to_main=False)
 
 # ============================================================================
-# NUEVO CALLBACK PARA "ASCOLTARE INFO" (solo Galatea)
+# CALLBACK PARA "ASCOLTARE INFO" (envía audio y detiene actualización)
 # ============================================================================
 async def callback_ascoltare(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -423,42 +409,17 @@ async def callback_ascoltare(update: Update, context: ContextTypes.DEFAULT_TYPE)
     data = query.data
     if not data.startswith("ascoltare_"):
         return
-    estacion_key = data.split("_")[1]  # "galatea"
-    
     # Cancelar el ciclo de actualizaciones automáticas si está activo
     if context.chat_data.get('refresh_active', False):
         context.chat_data['cancel_refresh'] = True
         await asyncio.sleep(0.5)
-        # Esperar a que se cancele completamente
-        await asyncio.sleep(0.5)
-    
-    # Borrar los mensajes 2 y 3 actuales si existen
-    msg_ids = context.chat_data.get('refresh_msg_ids')
-    if msg_ids:
-        try:
-            await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=msg_ids[0])
-        except:
-            pass
-        try:
-            await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=msg_ids[1])
-        except:
-            pass
-        context.chat_data.pop('refresh_msg_ids', None)
-    
-    # Enviar el texto descriptivo largo (el mismo que estaba en el caption)
-    desc_text = (
-        "🚆 Prossimi treni a Galatea\n\n"
-        "Informazioni sulla stazione Galatea: la stazione è dotata di pavimento podotattile e scale mobili.\n"
-        "Sul marciapiede 1 partono i treni in direzione Monte Po. Alla testa del treno si trovano le uscite per Viale Jonio, Via Pasubio e Via Palmanova.\n"
-        "Sul marciapiede 2 partono i treni in direzione Stesicoro. Alla testa del treno si trovano le uscite per Piazza Galatea, Viale Africa e Via Messina."
-    )
-    await update.message.reply_text(desc_text)
-    
-    # Volver a cargar mensajes 2 y 3 (estáticos, sin bucle de actualización)
-    now = datetime.now(CATANIA_TZ)
-    await send_static_messages(update, context, estacion_key, now)
-    
-    # No se reinicia el ciclo automático, así que las actualizaciones quedan detenidas
+    # Enviar el archivo de audio desde GitHub
+    audio_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/infogalatea.mp3"
+    try:
+        await update.message.reply_audio(audio=audio_url, title="Informazioni Galatea", performer="Metro Catania")
+    except Exception as e:
+        print(f"Error al enviar audio: {e}")
+        await update.message.reply_text("⚠️ Impossibile riprodurre l'audio. Riprova più tardi.")
 
 # ============================================================================
 # COMANDO REFRESCAR (por si se usa como comando de texto)
