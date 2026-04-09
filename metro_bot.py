@@ -42,13 +42,14 @@ def main():
         ("borgo", cmd_borgo_wrapper), ("giuffrida", cmd_giuffrida_wrapper),
         ("italia", cmd_italia_wrapper), ("galatea", cmd_galatea_wrapper),
         ("giovanni", cmd_giovanni_wrapper), ("test", test_command_wrapper),
-        ("testfin", testfin_command_wrapper), ("testgif", cmd_testgif_wrapper)
+        ("testfin", testfin_command_wrapper), ("testgif", cmd_testgif_wrapper),
+        ("refrescar", cmd_refrescar_wrapper)
     ]
     for cmd, handler in commands:
         app.add_handler(CommandHandler(cmd, handler))
 
-    # Registrar manejador de botones inline (para refrescar)
-    app.add_handler(CallbackQueryHandler(callback_handler))
+    # Manejador para el botón inline
+    app.add_handler(CallbackQueryHandler(callback_refrescar, pattern="refrescar"))
 
     button_texts = ["Monte Po", "Stesicoro", "Altri", "← Menu", "Fontana", "Nesima", "San Nullo",
                     "Cibali", "Milo", "Borgo", "Giuffrida", "Italia", "Galatea", "Giovanni XXIII"]
