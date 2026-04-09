@@ -257,22 +257,27 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
                 line = f"🔻 **Per Stesicoro**: Passa tra **{time_str}**, alle {paso_mp.strftime('%H:%M')}.\n"
             else:
                 line = f"🔻 **Per Stesicoro**: Passa tra **{time_str}**.\n"
-        estaciones_localizacion_stesicoro = ["nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "giovanni"]
-        if estacion_key in estaciones_localizacion_stesicoro and 2 <= mins <= 10:
-            rest_seconds = mins*60 + secs
-            total_seconds = get_total_seconds_from_montepo(estacion_key, now)
-            if rest_seconds < total_seconds:
-                seconds_passed = total_seconds - rest_seconds
-                if seconds_passed < 0:
-                    seconds_passed = 0
-                current_station = get_current_station_from_montepo(now, seconds_passed)
-                # Obtener clave de la estación para la foto
+        # Calcular la estación actual del tren para la foto (siempre que el tren haya salido)
+        rest_seconds = mins*60 + secs
+        total_seconds = get_total_seconds_from_montepo(estacion_key, now)
+        if rest_seconds < total_seconds:
+            seconds_passed = total_seconds - rest_seconds
+            if seconds_passed < 0:
+                seconds_passed = 0
+            current_station = get_current_station_from_montepo(now, seconds_passed)
+            # Obtener clave de la estación para la foto (siempre que sea una estación válida)
+            if current_station not in ["non ancora partito da Monte Po", "Il treno è appena partito da Monte Po"]:
                 for key, name in NOMBRE_MOSTRAR.items():
                     if name == current_station:
                         current_station_key = key
                         break
-                if current_station == "Il treno è appena partito da Monte Po":
-                    current_station_key = "montepo"
+            if current_station == "Il treno è appena partito da Monte Po":
+                current_station_key = "montepo"
+        # Mostrar texto de localización solo si el tiempo restante está entre 2 y 10 minutos
+        estaciones_localizacion_stesicoro = ["nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "giovanni"]
+        if estacion_key in estaciones_localizacion_stesicoro and 2 <= mins <= 10:
+            # Recalcular current_station (ya lo tenemos) para añadir el texto
+            if rest_seconds < total_seconds:
                 if "appena partito" in current_station:
                     line += f"   ({current_station})\n"
                 elif "non ancora partito" not in current_station:
@@ -371,22 +376,25 @@ async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, 
                     line = f"🔻 **Per Stesicoro**: Passa tra **{time_str}**, alle {paso_mp.strftime('%H:%M')}.\n"
                 else:
                     line = f"🔻 **Per Stesicoro**: Passa tra **{time_str}**.\n"
-            estaciones_localizacion2 = ["nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "giovanni"]
-            if estacion_key in estaciones_localizacion2 and 2 <= mins <= 10:
-                rest_seconds = mins*60 + secs
-                total_seconds = get_total_seconds_from_montepo(estacion_key, simulated_now)
-                if rest_seconds < total_seconds:
-                    seconds_passed = total_seconds - rest_seconds
-                    if seconds_passed < 0:
-                        seconds_passed = 0
-                    current_station = get_current_station_from_montepo(simulated_now, seconds_passed)
-                    # Obtener clave de la estación para la foto
+            # Calcular estación actual para la foto (siempre)
+            rest_seconds = mins*60 + secs
+            total_seconds = get_total_seconds_from_montepo(estacion_key, simulated_now)
+            if rest_seconds < total_seconds:
+                seconds_passed = total_seconds - rest_seconds
+                if seconds_passed < 0:
+                    seconds_passed = 0
+                current_station = get_current_station_from_montepo(simulated_now, seconds_passed)
+                if current_station not in ["non ancora partito da Monte Po", "Il treno è appena partito da Monte Po"]:
                     for key, name in NOMBRE_MOSTRAR.items():
                         if name == current_station:
                             current_station_key = key
                             break
-                    if current_station == "Il treno è appena partito da Monte Po":
-                        current_station_key = "montepo"
+                if current_station == "Il treno è appena partito da Monte Po":
+                    current_station_key = "montepo"
+            # Mostrar texto de localización solo si 2-10 min
+            estaciones_localizacion2 = ["nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "giovanni"]
+            if estacion_key in estaciones_localizacion2 and 2 <= mins <= 10:
+                if rest_seconds < total_seconds:
                     if "appena partito" in current_station:
                         line += f"   ({current_station})\n"
                     elif "non ancora partito" not in current_station:
@@ -660,13 +668,3 @@ async def testfin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("✅ Modalità test disattivata. Ora reale ripristinata.")
     else:
         await update.message.reply_text("⚠️ Nessuna modalità test attiva.")
-
-# ============================================================================
-# REGISTRO DE COMANDOS (para metro_bot.py)
-# ============================================================================
-# Los comandos que deben exportarse son los wrappers:
-# start_wrapper, help_command_wrapper, cmd_montepo_wrapper, cmd_stesicoro_wrapper,
-# cmd_milo_wrapper, cmd_altri_wrapper, cmd_fontana_wrapper, cmd_nesima_wrapper,
-# cmd_sannullo_wrapper, cmd_cibali_wrapper, cmd_borgo_wrapper, cmd_giuffrida_wrapper,
-# cmd_italia_wrapper, cmd_galatea_wrapper, cmd_giovanni_wrapper, test_command_wrapper,
-# testfin_command_wrapper, cmd_testgif_wrapper, handle_button_wrapper
