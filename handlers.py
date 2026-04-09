@@ -88,7 +88,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
             await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
         return
 
-    # Cabeceras Monte Po y Stesicoro (sin cambios)
+    # Cabeceras Monte Po y Stesicoro (sin cambios en esta parte)
     if estacion_key in ["montepo", "stesicoro"]:
         station = "Montepo" if estacion_key == "montepo" else "Stesicoro"
         closed, next_open, special_closing_msg = is_metro_closed(now, station)
@@ -201,7 +201,10 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
         if mins == 0 and secs < 30:
             line = f"🔺 **Per Monte Po**: treno in arrivo.\n"
         else:
-            line = f"🔺 **Per Monte Po**: Passa tra **{time_str}**.\n"
+            if mins >= SHORT_TIME_THRESHOLD:
+                line = f"🔺 **Per Monte Po**: Passa tra **{time_str}**, alle {paso_st.strftime('%H:%M')}.\n"
+            else:
+                line = f"🔺 **Per Monte Po**: Passa tra **{time_str}**.\n"
         estaciones_localizacion_montepo = ["nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "fontana"]
         if estacion_key in estaciones_localizacion_montepo and 2 <= mins <= 10:
             rest_seconds = mins*60 + secs
@@ -218,7 +221,11 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
         msg_montepo += line
         if mins <= 1 and next_info:
             paso2, mins2, secs2 = next_info
-            msg_montepo += f"   Il successivo passerà tra {format_time(mins2, secs2)}.\n"
+            time_str2 = format_time(mins2, secs2)
+            if mins2 >= SHORT_TIME_THRESHOLD:
+                msg_montepo += f"   Il successivo passerà tra {time_str2}, alle {paso2.strftime('%H:%M')}.\n"
+            else:
+                msg_montepo += f"   Il successivo passerà tra {time_str2}.\n"
     else:
         msg_montepo += f"🔺 **Per Monte Po**: nessun treno in arrivo al momento.\n"
 
@@ -244,7 +251,10 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
         if mins == 0 and secs < 30:
             line = f"🔻 **Per Stesicoro**: treno in arrivo.\n"
         else:
-            line = f"🔻 **Per Stesicoro**: Passa tra **{time_str}**.\n"
+            if mins >= SHORT_TIME_THRESHOLD:
+                line = f"🔻 **Per Stesicoro**: Passa tra **{time_str}**, alle {paso_mp.strftime('%H:%M')}.\n"
+            else:
+                line = f"🔻 **Per Stesicoro**: Passa tra **{time_str}**.\n"
         estaciones_localizacion_stesicoro = ["nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "giovanni"]
         if estacion_key in estaciones_localizacion_stesicoro and 2 <= mins <= 10:
             rest_seconds = mins*60 + secs
@@ -261,7 +271,11 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
         msg_stesicoro += line
         if mins <= 1 and next_info:
             paso2, mins2, secs2 = next_info
-            msg_stesicoro += f"   Il successivo passerà tra {format_time(mins2, secs2)}.\n"
+            time_str2 = format_time(mins2, secs2)
+            if mins2 >= SHORT_TIME_THRESHOLD:
+                msg_stesicoro += f"   Il successivo passerà tra {time_str2}, alle {paso2.strftime('%H:%M')}.\n"
+            else:
+                msg_stesicoro += f"   Il successivo passerà tra {time_str2}.\n"
     else:
         msg_stesicoro += f"🔻 **Per Stesicoro**: nessun treno in arrivo al momento.\n"
 
@@ -271,18 +285,23 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
     await update.message.reply_text(msg_stesicoro, reply_markup=keyboard_main if return_to_main else keyboard_altri, parse_mode='Markdown')
 
 # ============================================================================
-# FUNCIÓN PARA EL CICLO DE ACTUALIZACIONES (en segundo plano)
+# NUEVA FUNCIÓN PARA EL MODO TEST CON 3 ARGUMENTOS (actualización automática)
 # ============================================================================
-async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str, simulated_now: datetime, chat_id: int, permanent_msg_id: int = None):
+# Función que ejecuta los ciclos en segundo plano
+async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str, simulated_now: datetime, chat_id: int):
     nombre = NOMBRE_MOSTRAR.get(estacion_key, estacion_key.capitalize())
-    
-    def build_temporary_messages(now):
-        info_mp, info_st = get_next_train_at_station(now, estacion_key)
-        closing_msg = get_closing_message(estacion_key, now)
-        last_msg = get_last_train_message(now)
-        last_msg_text = f"\n{last_msg}" if last_msg and not is_sant_agata(now) else ""
+    for ciclo in range(3):
+        # Verificar si se ha solicitado cancelación
+        if context.chat_data.get('cancel_refresh', False):
+            break
 
-        # Mensaje 2: Monte Po
+        # Obtener mensajes actualizados
+        info_mp, info_st = get_next_train_at_station(simulated_now, estacion_key)
+        closing_msg = get_closing_message(estacion_key, simulated_now)
+        last_msg = get_last_train_message(simulated_now)
+        last_msg_text = f"\n{last_msg}" if last_msg and not is_sant_agata(simulated_now) else ""
+
+        # Construir mensaje 2 (Monte Po)
         msg2 = ""
         if closing_msg:
             msg2 += f"{closing_msg}\n"
@@ -292,16 +311,19 @@ async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, 
             if mins == 0 and secs < 30:
                 line = f"🔺 **Per Monte Po**: treno in arrivo.\n"
             else:
-                line = f"🔺 **Per Monte Po**: Passa tra **{time_str}**.\n"
+                if mins >= SHORT_TIME_THRESHOLD:
+                    line = f"🔺 **Per Monte Po**: Passa tra **{time_str}**, alle {paso_st.strftime('%H:%M')}.\n"
+                else:
+                    line = f"🔺 **Per Monte Po**: Passa tra **{time_str}**.\n"
             estaciones_localizacion = ["nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "fontana"]
             if estacion_key in estaciones_localizacion and 2 <= mins <= 10:
                 rest_seconds = mins*60 + secs
-                total_seconds = get_total_seconds_from_stesicoro(estacion_key, now)
+                total_seconds = get_total_seconds_from_stesicoro(estacion_key, simulated_now)
                 if rest_seconds < total_seconds:
                     seconds_passed = total_seconds - rest_seconds
                     if seconds_passed < 0:
                         seconds_passed = 0
-                    current_station = get_current_station_from_stesicoro(now, seconds_passed)
+                    current_station = get_current_station_from_stesicoro(simulated_now, seconds_passed)
                     if "appena partito" in current_station:
                         line += f"   ({current_station})\n"
                     elif "non ancora partito" not in current_station:
@@ -309,13 +331,17 @@ async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, 
             msg2 += line
             if mins <= 1 and next_info:
                 paso2, mins2, secs2 = next_info
-                msg2 += f"   Il successivo passerà tra {format_time(mins2, secs2)}.\n"
+                time_str2 = format_time(mins2, secs2)
+                if mins2 >= SHORT_TIME_THRESHOLD:
+                    msg2 += f"   Il successivo passerà tra {time_str2}, alle {paso2.strftime('%H:%M')}.\n"
+                else:
+                    msg2 += f"   Il successivo passerà tra {time_str2}.\n"
         else:
             msg2 += f"🔺 **Per Monte Po**: nessun treno in arrivo al momento.\n"
         if last_msg_text:
             msg2 += last_msg_text
 
-        # Mensaje 3: Stesicoro con foto de ruta
+        # Construir mensaje 3 (Stesicoro) y obtener la clave para la foto de ruta
         msg3_text = ""
         current_station_key = None
         if info_mp:
@@ -324,20 +350,26 @@ async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, 
             if mins == 0 and secs < 30:
                 line = f"🔻 **Per Stesicoro**: treno in arrivo.\n"
             else:
-                line = f"🔻 **Per Stesicoro**: Passa tra **{time_str}**.\n"
+                if mins >= SHORT_TIME_THRESHOLD:
+                    line = f"🔻 **Per Stesicoro**: Passa tra **{time_str}**, alle {paso_mp.strftime('%H:%M')}.\n"
+                else:
+                    line = f"🔻 **Per Stesicoro**: Passa tra **{time_str}**.\n"
             estaciones_localizacion2 = ["nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "giovanni"]
             if estacion_key in estaciones_localizacion2 and 2 <= mins <= 10:
                 rest_seconds = mins*60 + secs
-                total_seconds = get_total_seconds_from_montepo(estacion_key, now)
+                total_seconds = get_total_seconds_from_montepo(estacion_key, simulated_now)
                 if rest_seconds < total_seconds:
                     seconds_passed = total_seconds - rest_seconds
                     if seconds_passed < 0:
                         seconds_passed = 0
-                    current_station = get_current_station_from_montepo(now, seconds_passed)
+                    current_station = get_current_station_from_montepo(simulated_now, seconds_passed)
+                    # Obtener clave de la estación para la foto
                     for key, name in NOMBRE_MOSTRAR.items():
                         if name == current_station:
                             current_station_key = key
                             break
+                    if current_station == "Il treno è appena partito da Monte Po":
+                        current_station_key = "montepo"  # foto especial
                     if "appena partito" in current_station:
                         line += f"   ({current_station})\n"
                     elif "non ancora partito" not in current_station:
@@ -345,66 +377,68 @@ async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, 
             msg3_text = line
             if mins <= 1 and next_info:
                 paso2, mins2, secs2 = next_info
-                msg3_text += f"   Il successivo passerà tra {format_time(mins2, secs2)}.\n"
+                time_str2 = format_time(mins2, secs2)
+                if mins2 >= SHORT_TIME_THRESHOLD:
+                    msg3_text += f"   Il successivo passerà tra {time_str2}, alle {paso2.strftime('%H:%M')}.\n"
+                else:
+                    msg3_text += f"   Il successivo passerà tra {time_str2}.\n"
         else:
             msg3_text = f"🔻 **Per Stesicoro**: nessun treno in arrivo al momento.\n"
         if last_msg_text:
             msg3_text += last_msg_text
 
-        return msg2, msg3_text, current_station_key
+        # Enviar mensaje 2 (texto)
+        msg2_obj = await update.message.reply_text(msg2, parse_mode='Markdown')
 
-    # Ciclo de 3 veces
-    for ciclo in range(3):
-        # Comprobar si se ha cancelado (por algún comando o botón)
-        if context.chat_data.get('cancel_refresh', False):
-            break
-
-        now = simulated_now  # usamos la misma hora simulada fija
-        msg2, msg3_text, current_station_key = build_temporary_messages(now)
-
-        # Enviar mensaje 2
-        msg2_obj = await context.bot.send_message(chat_id=chat_id, text=msg2, parse_mode='Markdown')
-        # Enviar mensaje 3 (foto si hay estación)
+        # Enviar mensaje 3: foto de ruta con caption (si hay estación actual, si no, solo texto)
+        msg3_obj = None
         if current_station_key:
             ruta_url = f"https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_montepo_{current_station_key}.png"
             try:
-                msg3_obj = await context.bot.send_photo(chat_id=chat_id, photo=ruta_url, caption=msg3_text, parse_mode='Markdown')
-            except Exception:
-                msg3_obj = await context.bot.send_message(chat_id=chat_id, text=msg3_text, parse_mode='Markdown')
+                msg3_obj = await update.message.reply_photo(photo=ruta_url, caption=msg3_text, parse_mode='Markdown')
+            except Exception as e:
+                print(f"Error al enviar foto de ruta para {current_station_key}: {e}")
+                msg3_obj = await update.message.reply_text(msg3_text, parse_mode='Markdown')
         else:
-            msg3_obj = await context.bot.send_message(chat_id=chat_id, text=msg3_text, parse_mode='Markdown')
+            msg3_obj = await update.message.reply_text(msg3_text, parse_mode='Markdown')
 
-        # Esperar 60 segundos comprobando cancelación cada 2 segundos
+        # Esperar 60 segundos, comprobando cancelación cada 2 segundos
         for _ in range(30):
             if context.chat_data.get('cancel_refresh', False):
                 break
             await asyncio.sleep(2)
         if context.chat_data.get('cancel_refresh', False):
-            # Cancelado: no borramos los mensajes
             break
 
         # Borrar mensajes 2 y 3
         try:
             await context.bot.delete_message(chat_id=chat_id, message_id=msg2_obj.message_id)
-        except Exception:
+        except:
             pass
         try:
-            await context.bot.delete_message(chat_id=chat_id, message_id=msg3_obj.message_id)
-        except Exception:
+            if msg3_obj:
+                await context.bot.delete_message(chat_id=chat_id, message_id=msg3_obj.message_id)
+        except:
             pass
 
-    # Limpiar flags
+    # Limpiar flags al terminar
+    context.chat_data['refresh_active'] = False
     context.chat_data.pop('cancel_refresh', None)
-    context.chat_data.pop('refresh_task', None)
 
-# ============================================================================
-# COMANDO TEST CON 3 ARGUMENTOS (inicia la tarea en segundo plano)
-# ============================================================================
 async def send_test_response_with_refresh(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str, simulated_now: datetime):
     chat_id = update.effective_chat.id
     nombre = NOMBRE_MOSTRAR.get(estacion_key, estacion_key.capitalize())
 
-    # 1. Enviar mensaje permanente (foto de estación con título)
+    # Cancelar cualquier tarea de refresco anterior
+    if context.chat_data.get('refresh_active', False):
+        context.chat_data['cancel_refresh'] = True
+        await asyncio.sleep(1)  # dar tiempo a que se cancele
+
+    # Limpiar flags
+    context.chat_data['refresh_active'] = True
+    context.chat_data['cancel_refresh'] = False
+
+    # 1. Mensaje permanente: foto de la estación con título simple
     img_station = get_station_image(estacion_key, simulated_now)
     permanent_caption = f"🚆 Prossimi treni a {nombre}"
     if img_station:
@@ -412,52 +446,57 @@ async def send_test_response_with_refresh(update: Update, context: ContextTypes.
     else:
         await update.message.reply_text(permanent_caption, reply_markup=keyboard_main)
 
-    # Cancelar tarea anterior si existe
-    if context.chat_data.get('refresh_task') and not context.chat_data['refresh_task'].done():
-        context.chat_data['cancel_refresh'] = True
-        context.chat_data['refresh_task'].cancel()
-        await asyncio.sleep(0.5)
-
-    # Configurar flags
-    context.chat_data['cancel_refresh'] = False
-    # Iniciar tarea en segundo plano
-    task = asyncio.create_task(auto_refresh_loop(update, context, estacion_key, simulated_now, chat_id))
-    context.chat_data['refresh_task'] = task
+    # Iniciar el ciclo en segundo plano
+    asyncio.create_task(auto_refresh_loop(update, context, estacion_key, simulated_now, chat_id))
 
 # ============================================================================
-# MANEJADORES DE COMANDOS Y BOTONES (cancelan el ciclo antes de ejecutarse)
+# MANEJADORES DE COMANDOS (con cancelación previa)
 # ============================================================================
-async def cancel_refresh_and_run(coroutine, update, context):
-    # Si hay una tarea de refresco activa, cancelarla
-    if context.chat_data and context.chat_data.get('refresh_task') and not context.chat_data['refresh_task'].done():
+async def cancel_refresh_and_run(update: Update, context: ContextTypes.DEFAULT_TYPE, coro, *args, **kwargs):
+    # Si hay un ciclo activo, cancelarlo
+    if context.chat_data and context.chat_data.get('refresh_active', False):
         context.chat_data['cancel_refresh'] = True
-        context.chat_data['refresh_task'].cancel()
+        # Esperar un poco para que se detenga
         await asyncio.sleep(0.5)
-        context.chat_data.pop('refresh_task', None)
-        context.chat_data.pop('cancel_refresh', None)
-    # Ejecutar el comando o botón original
-    await coroutine
+    # Ejecutar la acción original
+    await coro(update, context, *args, **kwargs)
 
-async def cmd_montepo(update, context): await cancel_refresh_and_run(send_station_response(update, context, "montepo", return_to_main=False), update, context)
-async def cmd_stesicoro(update, context): await cancel_refresh_and_run(send_station_response(update, context, "stesicoro", return_to_main=False), update, context)
-async def cmd_milo(update, context): await cancel_refresh_and_run(send_station_response(update, context, "milo", return_to_main=False), update, context)
-async def cmd_fontana(update, context): await cancel_refresh_and_run(send_station_response(update, context, "fontana", return_to_main=False), update, context)
-async def cmd_nesima(update, context): await cancel_refresh_and_run(send_station_response(update, context, "nesima", return_to_main=False), update, context)
-async def cmd_sannullo(update, context): await cancel_refresh_and_run(send_station_response(update, context, "sannullo", return_to_main=False), update, context)
-async def cmd_cibali(update, context): await cancel_refresh_and_run(send_station_response(update, context, "cibali", return_to_main=False), update, context)
-async def cmd_borgo(update, context): await cancel_refresh_and_run(send_station_response(update, context, "borgo", return_to_main=False), update, context)
-async def cmd_giuffrida(update, context): await cancel_refresh_and_run(send_station_response(update, context, "giuffrida", return_to_main=False), update, context)
-async def cmd_italia(update, context): await cancel_refresh_and_run(send_station_response(update, context, "italia", return_to_main=False), update, context)
-async def cmd_galatea(update, context): await cancel_refresh_and_run(send_station_response(update, context, "galatea", return_to_main=False), update, context)
-async def cmd_giovanni(update, context): await cancel_refresh_and_run(send_station_response(update, context, "giovanni", return_to_main=False), update, context)
+# Envoltorios para cada comando
+async def cmd_montepo_wrapper(update, context): await cancel_refresh_and_run(update, context, cmd_montepo)
+async def cmd_stesicoro_wrapper(update, context): await cancel_refresh_and_run(update, context, cmd_stesicoro)
+async def cmd_milo_wrapper(update, context): await cancel_refresh_and_run(update, context, cmd_milo)
+async def cmd_fontana_wrapper(update, context): await cancel_refresh_and_run(update, context, cmd_fontana)
+async def cmd_nesima_wrapper(update, context): await cancel_refresh_and_run(update, context, cmd_nesima)
+async def cmd_sannullo_wrapper(update, context): await cancel_refresh_and_run(update, context, cmd_sannullo)
+async def cmd_cibali_wrapper(update, context): await cancel_refresh_and_run(update, context, cmd_cibali)
+async def cmd_borgo_wrapper(update, context): await cancel_refresh_and_run(update, context, cmd_borgo)
+async def cmd_giuffrida_wrapper(update, context): await cancel_refresh_and_run(update, context, cmd_giuffrida)
+async def cmd_italia_wrapper(update, context): await cancel_refresh_and_run(update, context, cmd_italia)
+async def cmd_galatea_wrapper(update, context): await cancel_refresh_and_run(update, context, cmd_galatea)
+async def cmd_giovanni_wrapper(update, context): await cancel_refresh_and_run(update, context, cmd_giovanni)
+async def cmd_altri_wrapper(update, context): await cancel_refresh_and_run(update, context, cmd_altri)
+async def start_wrapper(update, context): await cancel_refresh_and_run(update, context, start)
+async def help_command_wrapper(update, context): await cancel_refresh_and_run(update, context, help_command)
+async def handle_button_wrapper(update, context): await cancel_refresh_and_run(update, context, handle_button)
+async def cmd_testgif_wrapper(update, context): await cancel_refresh_and_run(update, context, cmd_testgif)
+async def test_command_wrapper(update, context): await cancel_refresh_and_run(update, context, test_command)
+async def testfin_command_wrapper(update, context): await cancel_refresh_and_run(update, context, testfin_command)
 
-async def cmd_altri(update, context):
-    await cancel_refresh_and_run(update.message.reply_text("⬇️ Altre stazioni:", reply_markup=keyboard_altri), update, context)
-
+# Las funciones originales (sin el wrapper) se mantienen con el mismo nombre pero se usarán dentro de los wrappers
+async def cmd_montepo(update, context): await send_station_response(update, context, "montepo", return_to_main=False)
+async def cmd_stesicoro(update, context): await send_station_response(update, context, "stesicoro", return_to_main=False)
+async def cmd_milo(update, context): await send_station_response(update, context, "milo", return_to_main=False)
+async def cmd_fontana(update, context): await send_station_response(update, context, "fontana", return_to_main=False)
+async def cmd_nesima(update, context): await send_station_response(update, context, "nesima", return_to_main=False)
+async def cmd_sannullo(update, context): await send_station_response(update, context, "sannullo", return_to_main=False)
+async def cmd_cibali(update, context): await send_station_response(update, context, "cibali", return_to_main=False)
+async def cmd_borgo(update, context): await send_station_response(update, context, "borgo", return_to_main=False)
+async def cmd_giuffrida(update, context): await send_station_response(update, context, "giuffrida", return_to_main=False)
+async def cmd_italia(update, context): await send_station_response(update, context, "italia", return_to_main=False)
+async def cmd_galatea(update, context): await send_station_response(update, context, "galatea", return_to_main=False)
+async def cmd_giovanni(update, context): await send_station_response(update, context, "giovanni", return_to_main=False)
+async def cmd_altri(update, context): await update.message.reply_text("⬇️ Altre stazioni:", reply_markup=keyboard_altri)
 async def start(update, context):
-    await cancel_refresh_and_run(_start(update, context), update, context)
-
-async def _start(update, context):
     user = update.effective_user
     now = datetime.now(CATANIA_TZ)
     last_msg = get_last_train_message(now)
@@ -468,11 +507,7 @@ async def _start(update, context):
         f"{last_msg}",
         reply_markup=keyboard_main
     )
-
 async def help_command(update, context):
-    await cancel_refresh_and_run(_help(update, context), update, context)
-
-async def _help(update, context):
     await update.message.reply_text(
         "Comandi disponibili:\n"
         "/start - Messaggio di benvenuto\n"
@@ -482,22 +517,14 @@ async def _help(update, context):
         "/milo - Prossimi treni a Milo\n"
         "/altri - Mostra altre stazioni\n"
         "/fontana, /nesima, /sannullo, /cibali, /borgo, /giuffrida, /italia, /galatea, /giovanni\n"
-        "/test DDMMYYYY HHMM - Attiva modalità test (fija hora)\n"
-        "/test DDMMYYYY HHMM X - Test con 3 actualizaciones automáticas (M=MontePo, S=Stesicoro, ML=Milo)\n"
+        "/test DDMMYYYY HHMM - Attiva modalità test\n"
+        "/test DDMMYYYY HHMM X - Test con 3 actualizaciones automáticas (M, S, ML)\n"
         "/testfin - Disattiva modalità test\n"
         "/testgif - Invia GIF di prova e lo cancella dopo 1 minuto\n\n"
         "Oppure premi i pulsanti.",
         reply_markup=keyboard_main
     )
-
 async def handle_button(update, context):
-    # Cancelar ciclo si está activo
-    if context.chat_data and context.chat_data.get('refresh_task') and not context.chat_data['refresh_task'].done():
-        context.chat_data['cancel_refresh'] = True
-        context.chat_data['refresh_task'].cancel()
-        await asyncio.sleep(0.5)
-        context.chat_data.pop('refresh_task', None)
-        context.chat_data.pop('cancel_refresh', None)
     text = update.message.text
     if text == "Altri":
         await cmd_altri(update, context)
@@ -606,11 +633,6 @@ async def test_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             await update.message.reply_text(f"Data non valida: {e}")
             return
-        # Cancelar cualquier ciclo anterior antes de empezar uno nuevo
-        if context.chat_data and context.chat_data.get('refresh_task') and not context.chat_data['refresh_task'].done():
-            context.chat_data['cancel_refresh'] = True
-            context.chat_data['refresh_task'].cancel()
-            await asyncio.sleep(0.5)
         await send_test_response_with_refresh(update, context, station, simulated)
         return
     await update.message.reply_text("Comando non riconosciuto. Usa /test DDMMYYYY HHMM o /test DDMMYYYY HHMM X")
