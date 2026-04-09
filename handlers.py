@@ -8,7 +8,7 @@ import pytz
 CATANIA_TZ = pytz.timezone('Europe/Rome')
 
 # ============================================================================
-# TECLADOS
+# TECLADOS (sin cambios)
 # ============================================================================
 keyboard_main = ReplyKeyboardMarkup(
     [[KeyboardButton("Monte Po"), KeyboardButton("Altri"), KeyboardButton("Stesicoro")]],
@@ -33,7 +33,7 @@ BOTON_TO_KEY = {
 }
 
 # ============================================================================
-# FUNCIONES AUXILIARES DE LOCALIZACIÓN
+# FUNCIONES AUXILIARES DE LOCALIZACIÓN (sin cambios)
 # ============================================================================
 def get_current_station_from_montepo(now: datetime, seconds_passed: int) -> str:
     stations = ["montepo", "fontana", "nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "giovanni", "stesicoro"]
@@ -66,7 +66,7 @@ def get_current_station_from_stesicoro(now: datetime, seconds_passed: int) -> st
     return NOMBRE_MOSTRAR["stesicoro"]
 
 # ============================================================================
-# CONSTRUCCIÓN DE MENSAJES TEMPORALES
+# CONSTRUCCIÓN DE MENSAJES TEMPORALES (sin cambios)
 # ============================================================================
 def build_temporary_messages(now: datetime, estacion_key: str):
     info_mp, info_st = get_next_train_at_station(now, estacion_key)
@@ -233,9 +233,16 @@ async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, 
     context.chat_data.pop('cancel_refresh', None)
 
 # ============================================================================
-# RESPUESTA PRINCIPAL (para comandos normales y test)
+# RESPUESTA PRINCIPAL (con cancelación forzada de ciclos previos)
 # ============================================================================
 async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str, return_to_main: bool = True):
+    # --- CANCELAR CUALQUIER CICLO ACTIVO ANTERIOR (para evitar duplicados) ---
+    if context.chat_data.get('refresh_active', False):
+        context.chat_data['cancel_refresh'] = True
+        await asyncio.sleep(0.5)  # dar tiempo a que se cancele
+        # Esperar un poco más para asegurar
+        await asyncio.sleep(0.5)
+
     simulated = context.chat_data.get('test_time') if context.chat_data else None
     now = simulated if simulated else datetime.now(CATANIA_TZ)
     test_indicator = "🧪 [TEST MODE] " if simulated else ""
@@ -359,10 +366,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
     else:
         await update.message.reply_text(permanent_caption, reply_markup=keyboard_main if return_to_main else keyboard_altri)
 
-    # 2. Iniciar el ciclo de actualización automática
-    if context.chat_data.get('refresh_active', False):
-        context.chat_data['cancel_refresh'] = True
-        await asyncio.sleep(0.5)
+    # 2. Iniciar el ciclo de actualización automática (después de cancelar el anterior)
     context.chat_data['refresh_active'] = True
     context.chat_data['cancel_refresh'] = False
 
@@ -373,7 +377,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
         asyncio.create_task(auto_refresh_loop(update, context, estacion_key, update.effective_chat.id, station_display_name, use_simulated=True, simulated_now=now))
 
 # ============================================================================
-# CALLBACK DEL BOTÓN DE REFRESCAR
+# CALLBACK DEL BOTÓN DE REFRESCAR (sin cambios)
 # ============================================================================
 async def callback_refrescar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -396,7 +400,7 @@ async def callback_refrescar(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await send_station_response(fake_update, context, estacion_key, return_to_main=False)
 
 # ============================================================================
-# COMANDO REFRESCAR (por si se usa como comando de texto)
+# COMANDO REFRESCAR
 # ============================================================================
 async def cmd_refrescar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     estacion_key = context.chat_data.get('refresh_station_key')
@@ -414,7 +418,7 @@ async def cancel_refresh_and_run(update: Update, context: ContextTypes.DEFAULT_T
         await asyncio.sleep(0.5)
     await coro(update, context, *args, **kwargs)
 
-# Wrappers
+# Wrappers (igual que antes)
 async def cmd_montepo_wrapper(update, context): await cancel_refresh_and_run(update, context, cmd_montepo)
 async def cmd_stesicoro_wrapper(update, context): await cancel_refresh_and_run(update, context, cmd_stesicoro)
 async def cmd_milo_wrapper(update, context): await cancel_refresh_and_run(update, context, cmd_milo)
@@ -436,7 +440,7 @@ async def test_command_wrapper(update, context): await cancel_refresh_and_run(up
 async def testfin_command_wrapper(update, context): await cancel_refresh_and_run(update, context, testfin_command)
 async def cmd_refrescar_wrapper(update, context): await cancel_refresh_and_run(update, context, cmd_refrescar)
 
-# Funciones originales
+# Funciones originales (sin wrapper)
 async def cmd_montepo(update, context): await send_station_response(update, context, "montepo", return_to_main=False)
 async def cmd_stesicoro(update, context): await send_station_response(update, context, "stesicoro", return_to_main=False)
 async def cmd_milo(update, context): await send_station_response(update, context, "milo", return_to_main=False)
