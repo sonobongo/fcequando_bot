@@ -26,7 +26,7 @@ SHORT_TIME_THRESHOLD = CONFIG["short_time_threshold"]
 NEXT_TRAIN_THRESHOLD = CONFIG["next_train_threshold"]
 
 # ============================================================================
-# TIEMPOS BASE ENTRE ESTACIONES (en segundos) - valores reales promediados
+# TIEMPOS BASE ENTRE ESTACIONES (en segundos) - valores calibrados con mediciones reales
 # ============================================================================
 # Dirección Monte Po -> Stesicoro (IDA)
 FORWARD_PEAK = [
@@ -36,33 +36,30 @@ FORWARD_PEAK = [
     ("sannullo", "cibali", 106),    # 1:46
     ("cibali", "milo", 124),        # 2:04
     ("milo", "borgo", 131),         # 2:11
-    ("borgo", "giuffrida", 109),    # 1:49 (estimado, sin parada)
-    ("giuffrida", "italia", 96),    # 1:36 (estimado, sin parada)
+    ("borgo", "giuffrida", 79),     # 1:19 (sin parada, estación cerrada)
+    ("giuffrida", "italia", 103),   # 1:43
     ("italia", "galatea", 93),      # 1:33
     ("galatea", "giovanni", 166),   # 2:46
-    ("giovanni", "stesicoro", 139)  # 2:19 (redondeado de 138.5)
+    ("giovanni", "stesicoro", 139)  # 2:19
 ]
 
-# Dirección Stesicoro -> Monte Po (VUELTA) - promediado punta/valle
+# Dirección Stesicoro -> Monte Po (VUELTA) - calibrada con todos los viajes
 REVERSE_PEAK = [
-    ("stesicoro", "giovanni", 138),    # 2:18
-    ("giovanni", "galatea", 150),     # 2:30
-    ("galatea", "italia", 87),        # 1:27
-    ("italia", "giuffrida", 176),     # 2:56 (sin parada)
-    ("giuffrida", "borgo", 92),       # 1:32
-    ("borgo", "milo", 115),           # 1:55
-    ("milo", "cibali", 133),          # 2:13
-    ("cibali", "sannullo", 109),      # 1:49
-    ("sannullo", "nesima", 132),      # 2:12
-    ("nesima", "fontana", 99),        # 1:39
-    ("fontana", "montepo", 98)        # 1:38
+    ("stesicoro", "giovanni", 143),    # 2:23
+    ("giovanni", "galatea", 149),     # 2:29
+    ("galatea", "italia", 90),        # 1:30
+    ("italia", "giuffrida", 97),      # 1:37 (sin parada)
+    ("giuffrida", "borgo", 79),       # 1:19
+    ("borgo", "milo", 112),           # 1:52
+    ("milo", "cibali", 113),          # 1:53
+    ("cibali", "sannullo", 100),      # 1:40
+    ("sannullo", "nesima", 185),      # 3:05 (incluye espera real de 48s)
+    ("nesima", "fontana", 103),       # 1:43
+    ("fontana", "montepo", 93)        # 1:33
 ]
 
-# Tramos afectados por el incremento de segundos en hora punta
-# Dirección ida (Monte Po -> Stesicoro)
+# Tramos afectados por reducción en hora valle (10 segundos)
 EXTRA_TRAMOS_FORWARD = [("milo","borgo"), ("borgo","giuffrida"), ("giuffrida","italia"), ("italia","galatea"), ("galatea","giovanni")]
-
-# Dirección vuelta (Stesicoro -> Monte Po)
 EXTRA_TRAMOS_REVERSE = [
     ("giovanni", "galatea"),
     ("galatea", "italia"),
@@ -76,7 +73,7 @@ EXTRA_TRAMOS_REVERSE = [
 ]
 
 # ============================================================================
-# DETECCIÓN DE HORA PUNTA
+# DETECCIÓN DE HORA PUNTA (sin cambios)
 # ============================================================================
 def is_peak_hour(now: datetime) -> bool:
     if now.weekday() >= 5:
@@ -134,7 +131,7 @@ def get_travel_time_from_stesicoro(station: str, now: datetime) -> int:
     return max(0, minutes)
 
 # ============================================================================
-# CIERRE TEMPORAL DE ESTACIONES
+# CIERRE TEMPORAL DE ESTACIONES (Giuffrida cerrada hasta el 19/4/2026)
 # ============================================================================
 CLOSED_STATIONS = [
     {
@@ -185,7 +182,7 @@ NOMBRE_MOSTRAR = {
 }
 
 # ============================================================================
-# IMÁGENES DE LAS ESTACIONES
+# IMÁGENES DE LAS ESTACIONES (sin cambios)
 # ============================================================================
 STATION_IMAGE = {
     "montepo": "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/st_montepo.jpg",
@@ -226,7 +223,7 @@ SCHEDULES = convert_schedule(SCHEDULE_DATA)
 CATANIA_TZ = pytz.timezone('Europe/Rome')
 
 # ============================================================================
-# FUNCIONES PARA SANT'AGATA
+# FUNCIONES PARA SANT'AGATA, FESTIVOS, HORARIOS (sin cambios relevantes)
 # ============================================================================
 def is_sant_agata(now: datetime) -> bool:
     return (now.month == SANT_AGATA["month"] and 
@@ -288,9 +285,6 @@ def get_next_departure_sant_agata(station: str, now: datetime) -> Tuple[Optional
     sec = int((next_dt - now).total_seconds())
     return (next_dt, sec // 60, sec % 60, True)
 
-# ============================================================================
-# DÍAS FESTIVOS NACIONALES Y NOCHEVIEJA
-# ============================================================================
 FESTIVI_NAZIONALI = [
     (1, 1), (1, 6), (4, 25), (5, 1), (6, 2), (8, 15), (11, 1), (12, 8), (12, 26)
 ]
@@ -350,9 +344,6 @@ def get_next_departure_new_years_eve(station: str, now: datetime) -> Tuple[Optio
     sec = int((next_dt - now).total_seconds())
     return (next_dt, sec // 60, sec % 60, True)
 
-# ============================================================================
-# CIERRES TOTALES (NAVIDAD, PASCUA)
-# ============================================================================
 def is_christmas(now: datetime) -> bool:
     return (now.month == CLOSED_ALL_DAY["christmas"]["month"] and 
             now.day == CLOSED_ALL_DAY["christmas"]["day"] and
@@ -424,9 +415,6 @@ def is_festivo_nazionale(now: datetime) -> bool:
         return True
     return (now.month, now.day) in FESTIVI_NAZIONALI
 
-# ============================================================================
-# FUNCIONES DE HORARIOS (comunes)
-# ============================================================================
 def get_opening_time(now: datetime, station: str = None) -> Tuple[int, int]:
     if is_new_years_eve(now):
         return (6, 0) if station == "Montepo" else (6, 25)
@@ -593,7 +581,6 @@ def format_time(minutes: int, seconds: int) -> str:
             return f"{minutes} minuti e 30 secondi"
 
 def get_last_train_message(now: datetime) -> str:
-    # Mostrar solo a partir de las 20:30
     if now.hour < 20 or (now.hour == 20 and now.minute < 30):
         return ""
     if is_sant_agata(now) or is_closed_all_day(now):
