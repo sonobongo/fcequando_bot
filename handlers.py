@@ -33,7 +33,7 @@ BOTON_TO_KEY = {
 }
 
 # ============================================================================
-# FUNCIONES AUXILIARES DE LOCALIZACIÓN (sin cambios)
+# FUNCIONES AUXILIARES DE LOCALIZACIÓN
 # ============================================================================
 def get_current_station_from_montepo(now: datetime, seconds_passed: int) -> str:
     stations = ["montepo", "fontana", "nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "giovanni", "stesicoro"]
@@ -66,7 +66,7 @@ def get_current_station_from_stesicoro(now: datetime, seconds_passed: int) -> st
     return NOMBRE_MOSTRAR["stesicoro"]
 
 # ============================================================================
-# CONSTRUCCIÓN DE MENSAJES TEMPORALES (sin cambios)
+# CONSTRUCCIÓN DE MENSAJES TEMPORALES
 # ============================================================================
 def build_temporary_messages(now: datetime, estacion_key: str):
     info_mp, info_st = get_next_train_at_station(now, estacion_key)
@@ -168,25 +168,27 @@ def build_temporary_messages(now: datetime, estacion_key: str):
     return msg2, msg3, current_station_key, tiempo_restante
 
 # ============================================================================
-# FUNCIÓN PARA BORRAR MENSAJES ANTERIORES DEL BOT
+# FUNCIÓN PARA BORRAR MENSAJES ANTERIORES DEL BOT (con seguridad)
 # ============================================================================
 async def clear_previous_bot_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Borra todos los mensajes que el bot ha enviado anteriormente en este chat."""
-    if 'bot_messages' in context.chat_data:
-        for msg_id in context.chat_data['bot_messages']:
-            try:
-                await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=msg_id)
-            except Exception:
-                pass  # Si no se puede borrar (por ejemplo, mensaje muy antiguo), ignoramos
+    if 'bot_messages' not in context.chat_data:
         context.chat_data['bot_messages'] = []
-    else:
-        context.chat_data['bot_messages'] = []
+        return
+
+    for msg_id in context.chat_data['bot_messages'][:]:  # copia para iterar mientras borramos
+        try:
+            await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=msg_id)
+        except Exception:
+            pass  # Si no se puede borrar, continuamos
+    context.chat_data['bot_messages'] = []
     
-    # Opcional: borrar también el mensaje del usuario que activó la consulta (si es posible)
-    try:
-        await update.message.delete()
-    except Exception:
-        pass  # En grupos sin permisos o en canales puede fallar, no pasa nada
+    # Borrar también el mensaje del usuario que activó la consulta (solo si existe)
+    if update.message and update.message.from_user.id != context.bot.id:
+        try:
+            await update.message.delete()
+        except Exception:
+            pass
 
 # ============================================================================
 # TAREA DE ACTUALIZACIÓN AUTOMÁTICA (3 ciclos de 45 segundos)
@@ -200,11 +202,14 @@ async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, 
     else:
         context.chat_data.pop('refresh_simulated', None)
 
+    # Asegurar que la lista existe
+    if 'bot_messages' not in context.chat_data:
+        context.chat_data['bot_messages'] = []
+
     # Enviar primera tanda de mensajes (ciclo 0)
     now = simulated_now if (use_simulated and simulated_now) else datetime.now(CATANIA_TZ)
     msg2, msg3, current_station_key, tiempo_restante = build_temporary_messages(now, estacion_key)
     msg2_obj = await update.message.reply_text(msg2, parse_mode='Markdown')
-    # Guardar ID
     context.chat_data['bot_messages'].append(msg2_obj.message_id)
     
     if current_station_key and tiempo_restante is not None and tiempo_restante > 90:
@@ -216,17 +221,16 @@ async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, 
     else:
         msg3_obj = await update.message.reply_text(msg3, parse_mode='Markdown')
     context.chat_data['bot_messages'].append(msg3_obj.message_id)
-    
     context.chat_data['refresh_msg_ids'] = (msg2_obj.message_id, msg3_obj.message_id)
 
-    # Ciclos restantes (1 y 2) con espera de 45s y borrado previo
+    # Ciclos restantes (1 y 2)
     for ciclo in range(1, 3):
         if context.chat_data.get('cancel_refresh', False):
             break
         await asyncio.sleep(45)
         if context.chat_data.get('cancel_refresh', False):
             break
-        # Borrar mensajes anteriores
+        # Borrar mensajes anteriores (solo los del ciclo actual, no todos)
         try:
             await context.bot.delete_message(chat_id=chat_id, message_id=msg2_obj.message_id)
         except:
@@ -271,12 +275,20 @@ async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, 
 # RESPUESTA PRINCIPAL (para comandos normales y test)
 # ============================================================================
 async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str, return_to_main: bool = True):
-    # Borrar todos los mensajes anteriores del bot en este chat
-    await clear_previous_bot_messages(update, context)
+    # Borrar mensajes anteriores del bot (si no existe update.message, salir)
+    if update.message is None:
+        # Esto puede ocurrir en callbacks, pero en nuestro flujo normal no debería.
+        # Si ocurre, simplemente continuamos sin borrar.
+        pass
+    else:
+        await clear_previous_bot_messages(update, context)
 
     simulated = context.chat_data.get('test_time') if context.chat_data else None
     now = simulated if simulated else datetime.now(CATANIA_TZ)
     test_indicator = "🧪 [TEST MODE] " if simulated else ""
+
+    if 'bot_messages' not in context.chat_data:
+        context.chat_data['bot_messages'] = []
 
     warning = get_closing_warning(now)
     if warning:
@@ -502,6 +514,9 @@ async def cmd_galatea(update, context): await send_station_response(update, cont
 async def cmd_giovanni(update, context): await send_station_response(update, context, "giovanni", return_to_main=False)
 async def cmd_altri(update, context): await update.message.reply_text("⬇️ Altre stazioni:", reply_markup=keyboard_altri)
 async def start(update, context):
+    # Al iniciar, también limpiamos mensajes previos del bot para mantener limpieza
+    if update.message:
+        await clear_previous_bot_messages(update, context)
     user = update.effective_user
     now = datetime.now(CATANIA_TZ)
     last_msg = get_last_train_message(now)
@@ -560,14 +575,13 @@ async def cmd_testgif(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await asyncio.sleep(60)
     try:
         await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=gif_message.message_id)
-        # También lo quitamos de la lista
         if gif_message.message_id in context.chat_data['bot_messages']:
             context.chat_data['bot_messages'].remove(gif_message.message_id)
     except Exception as e:
         print(f"Error al borrar el GIF: {e}")
 
 # ============================================================================
-# COMANDOS TEST (2 y 3 argumentos) - sin cambios, pero añadimos limpieza al inicio de send_station_response ya lo hace
+# COMANDOS TEST (2 y 3 argumentos)
 # ============================================================================
 async def test_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     args = context.args
