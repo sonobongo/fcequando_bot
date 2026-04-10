@@ -119,6 +119,19 @@
         {"desde": "Nesima", "hasta": "Fontana", "segundos": 103.352},
         {"desde": "Fontana", "hasta": "Monte Po", "segundos": 93.253}
       ]
+    },
+    {
+      "fecha": "2026-04-10",
+      "hora_inicio": "18:34",
+      "tipo": "hora valle (affollato, venerdì sera)",
+      "direccion": "vuelta",
+      "tramos": [
+        {"desde": "Milo", "hasta": "Borgo", "segundos": 110.228},
+        {"desde": "Borgo", "hasta": "Italia", "segundos": 159.073, "parada": false},
+        {"desde": "Italia", "hasta": "Galatea", "segundos": 96.177},
+        {"desde": "Galatea", "hasta": "Giovanni", "segundos": 147.971},
+        {"desde": "Giovanni", "hasta": "Stesicoro", "segundos": 116.549}
+      ]
     }
   ]
 }
