@@ -2,15 +2,7 @@ import asyncio
 from datetime import datetime, timedelta
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
-from timezone_utils import now_rome, ensure_rome
-from horarios_logic import (
-    NOMBRE_MOSTRAR, SANT_AGATA, get_closing_warning, is_sant_agata, is_closed_all_day,
-    get_station_image, get_next_departure, get_next_departure_after, format_time,
-    get_last_train_message, get_closing_message, get_next_train_at_station,
-    get_total_seconds_from_montepo, get_total_seconds_from_stesicoro,
-    get_current_station_from_montepo, get_current_station_from_stesicoro,
-    is_metro_closed, SHORT_TIME_THRESHOLD
-)
+from horarios_logic import *
 
 # ============================================================================
 # TECLADOS
@@ -36,39 +28,6 @@ BOTON_TO_KEY = {
     "Milo": "milo", "Borgo": "borgo", "Giuffrida": "giuffrida",
     "Italia": "italia", "Galatea": "galatea", "Giovanni XXIII": "giovanni"
 }
-
-# ============================================================================
-# FUNCIONES AUXILIARES DE LOCALIZACIÓN (sin cambios)
-# ============================================================================
-def get_current_station_from_montepo(now: datetime, seconds_passed: int) -> str:
-    stations = ["montepo", "fontana", "nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "giovanni", "stesicoro"]
-    tiempos = {st: get_total_seconds_from_montepo(st, now) for st in stations}
-    if 0 < seconds_passed < 30:
-        return "Il treno è appena partito da Monte Po"
-    for i in range(len(stations)-1):
-        cur, nxt = stations[i], stations[i+1]
-        if seconds_passed >= tiempos[cur] - 1 and seconds_passed < tiempos[nxt]:
-            return NOMBRE_MOSTRAR[cur]
-    if seconds_passed >= tiempos["stesicoro"] - 1:
-        return NOMBRE_MOSTRAR["stesicoro"]
-    if seconds_passed == 0:
-        return "non ancora partito da Monte Po"
-    return NOMBRE_MOSTRAR["montepo"]
-
-def get_current_station_from_stesicoro(now: datetime, seconds_passed: int) -> str:
-    stations = ["stesicoro", "giovanni", "galatea", "italia", "giuffrida", "borgo", "milo", "cibali", "sannullo", "nesima", "fontana", "montepo"]
-    tiempos = {st: get_total_seconds_from_stesicoro(st, now) for st in stations}
-    if 0 < seconds_passed < 30:
-        return "Il treno è appena partito da Stesicoro"
-    for i in range(len(stations)-1):
-        cur, nxt = stations[i], stations[i+1]
-        if seconds_passed >= tiempos[cur] - 1 and seconds_passed < tiempos[nxt]:
-            return NOMBRE_MOSTRAR[cur]
-    if seconds_passed >= tiempos["montepo"] - 1:
-        return NOMBRE_MOSTRAR["montepo"]
-    if seconds_passed == 0:
-        return "non ancora partito da Stesicoro"
-    return NOMBRE_MOSTRAR["stesicoro"]
 
 # ============================================================================
 # CONSTRUCCIÓN DE MENSAJES TEMPORALES
@@ -184,8 +143,7 @@ async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, 
         context.chat_data.pop('refresh_simulated', None)
 
     try:
-        now = simulated_now if (use_simulated and simulated_now) else now_rome()
-        now = ensure_rome(now)
+        now = simulated_now if (use_simulated and simulated_now) else datetime.now()
         msg2, msg3, current_station_key, tiempo_restante = build_temporary_messages(now, estacion_key)
         msg2_obj = await update.message.reply_text(msg2, parse_mode='Markdown')
         if current_station_key and tiempo_restante is not None and tiempo_restante > 90:
@@ -208,8 +166,7 @@ async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, 
                 await context.bot.delete_message(chat_id=chat_id, message_id=msg3_obj.message_id)
             except:
                 pass
-            now = simulated_now if (use_simulated and simulated_now) else now_rome()
-            now = ensure_rome(now)
+            now = simulated_now if (use_simulated and simulated_now) else datetime.now()
             msg2, msg3, current_station_key, tiempo_restante = build_temporary_messages(now, estacion_key)
             msg2_obj = await update.message.reply_text(msg2, parse_mode='Markdown')
             if current_station_key and tiempo_restante is not None and tiempo_restante > 90:
@@ -251,9 +208,9 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
 
     simulated = context.chat_data.get('test_time') if context.chat_data else None
     if simulated:
-        now = ensure_rome(simulated)
+        now = simulated
     else:
-        now = now_rome()
+        now = datetime.now()
     test_indicator = "🧪 [TEST MODE] " if simulated else ""
 
     warning = get_closing_warning(now)
@@ -271,9 +228,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
             await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
         return
 
-    # ========================================================================
-    # CABECERAS Monte Po y Stesicoro
-    # ========================================================================
+    # Cabeceras Monte Po y Stesicoro
     if estacion_key in ["montepo", "stesicoro"]:
         station = "Montepo" if estacion_key == "montepo" else "Stesicoro"
         closed, next_open, special_closing_msg = is_metro_closed(now, station)
@@ -436,6 +391,7 @@ async def cancel_refresh_and_run(update: Update, context: ContextTypes.DEFAULT_T
     context.chat_data['refresh_active'] = False
     await coro(update, context, *args, **kwargs)
 
+# Wrappers
 async def cmd_montepo_wrapper(update, context): await cancel_refresh_and_run(update, context, cmd_montepo)
 async def cmd_stesicoro_wrapper(update, context): await cancel_refresh_and_run(update, context, cmd_stesicoro)
 async def cmd_milo_wrapper(update, context): await cancel_refresh_and_run(update, context, cmd_milo)
@@ -473,7 +429,7 @@ async def cmd_giovanni(update, context): await send_station_response(update, con
 async def cmd_altri(update, context): await update.message.reply_text("⬇️ Altre stazioni:", reply_markup=keyboard_altri)
 async def start(update, context):
     user = update.effective_user
-    now = now_rome()
+    now = datetime.now()
     last_msg = get_last_train_message(now)
     await update.message.reply_text(
         f"Ciao {user.first_name}! 👋\n\n"
@@ -563,7 +519,6 @@ async def test_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         try:
             simulated = datetime(year, month, day, hour, minute)
-            simulated = ensure_rome(simulated)
         except Exception as e:
             await update.message.reply_text(f"Data non valida: {e}")
             return
@@ -597,7 +552,6 @@ async def test_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         try:
             simulated = datetime(year, month, day, hour, minute)
-            simulated = ensure_rome(simulated)
         except Exception as e:
             await update.message.reply_text(f"Data non valida: {e}")
             return
