@@ -441,8 +441,7 @@ def get_closing_time(now: datetime, station: str) -> Tuple[int, int]:
         else:
             return (22, 30)
 
-def is_metro_closed(now: datetime, station: str) -> Tuple[bool, Optional[datetime], str]:
-    # Asegurar que now tiene zona horaria
+def is_metro_closed(now: datetime, station: str):
     if now.tzinfo is None:
         now = CATANIA_TZ.localize(now)
     
