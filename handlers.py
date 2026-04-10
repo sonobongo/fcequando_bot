@@ -205,11 +205,6 @@ async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, 
             msg3_obj = await send_msg3(update, msg3, current_station_key_st, tiempo_restante_st)
             context.chat_data['refresh_msg_ids'] = (msg2_obj.message_id, msg3_obj.message_id)
 
-        # Después del tercer ciclo, enviar botón de refrescar
-        if not context.chat_data.get('cancel_refresh', False):
-            refresh_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔄 Refrescar", callback_data=f"refresh_{estacion_key}")]])
-            await update.message.reply_text("", reply_markup=refresh_keyboard)
-
     except asyncio.CancelledError:
         print("DEBUG: auto_refresh_loop cancelada")
         pass
@@ -378,48 +373,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
     print(f"DEBUG: Tarea de refresco creada: {task}")
 
 # ============================================================================
-# CALLBACK DEL BOTÓN DE REFRESCAR
-# ============================================================================
-async def callback_refrescar(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    data = query.data
-    if not data.startswith("refresh_"):
-        return
-    estacion_key = data.split("_")[1]
-    
-    # Cancelar tarea anterior
-    if 'refresh_task' in context.chat_data:
-        task = context.chat_data['refresh_task']
-        if not task.done():
-            task.cancel()
-            try:
-                await task
-            except asyncio.CancelledError:
-                pass
-        context.chat_data.pop('refresh_task', None)
-    context.chat_data['refresh_active'] = False
-
-    class FakeUpdate:
-        def __init__(self, message):
-            self.message = message
-            self.effective_chat = message.chat
-            self.effective_user = message.from_user
-    fake_update = FakeUpdate(query.message)
-    await send_station_response(fake_update, context, estacion_key, return_to_main=False)
-
-# ============================================================================
-# COMANDO REFRESCAR
-# ============================================================================
-async def cmd_refrescar(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    estacion_key = context.chat_data.get('refresh_station_key')
-    if not estacion_key:
-        await update.message.reply_text("⚠️ Nessuna sessione attiva. Premi prima una stazione.")
-        return
-    await callback_refrescar(update, context)
-
-# ============================================================================
-# MANEJADORES DE COMANDOS
+# MANEJADORES DE COMANDOS (con cancelación de tarea)
 # ============================================================================
 async def cancel_refresh_and_run(update: Update, context: ContextTypes.DEFAULT_TYPE, coro, *args, **kwargs):
     # Cancelar tarea de refresco si existe
@@ -455,7 +409,6 @@ async def handle_button_wrapper(update, context): await cancel_refresh_and_run(u
 async def cmd_testgif_wrapper(update, context): await cancel_refresh_and_run(update, context, cmd_testgif)
 async def test_command_wrapper(update, context): await cancel_refresh_and_run(update, context, test_command)
 async def testfin_command_wrapper(update, context): await cancel_refresh_and_run(update, context, testfin_command)
-async def cmd_refrescar_wrapper(update, context): await cancel_refresh_and_run(update, context, cmd_refrescar)
 
 # Funciones originales
 async def cmd_montepo(update, context): await send_station_response(update, context, "montepo", return_to_main=False)
@@ -495,8 +448,7 @@ async def help_command(update, context):
         "/test DDMMYYYY HHMM - Attiva modalità test\n"
         "/test DDMMYYYY HHMM X - Test con 3 cicli (M, S, ML)\n"
         "/testfin - Disattiva modalità test\n"
-        "/testgif - Invia GIF di prova e lo cancella dopo 1 minuto\n"
-        "/refrescar - Aggiorna i messaggi temporanei (solo dopo il ciclo)\n\n"
+        "/testgif - Invia GIF di prova e lo cancella dopo 1 minuto\n\n"
         "Oppure premi i pulsanti.",
         reply_markup=keyboard_main
     )
