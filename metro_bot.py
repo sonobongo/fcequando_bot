@@ -2,7 +2,7 @@ import os
 import logging
 import threading
 from flask import Flask
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackQueryHandler
+from telegram.ext import Application, CommandHandler, MessageHandler, filters
 from horarios_logic import *
 from handlers import *
 
@@ -32,7 +32,7 @@ def main():
 
     app = Application.builder().token(TOKEN).build()
 
-    # Registrar comandos
+    # Registrar comandos (sin /refrescar)
     commands = [
         ("start", start_wrapper), ("help", help_command_wrapper),
         ("montepo", cmd_montepo_wrapper), ("stesicoro", cmd_stesicoro_wrapper),
@@ -42,21 +42,15 @@ def main():
         ("borgo", cmd_borgo_wrapper), ("giuffrida", cmd_giuffrida_wrapper),
         ("italia", cmd_italia_wrapper), ("galatea", cmd_galatea_wrapper),
         ("giovanni", cmd_giovanni_wrapper), ("test", test_command_wrapper),
-        ("testfin", testfin_command_wrapper), ("testgif", cmd_testgif_wrapper),
-        ("refrescar", cmd_refrescar_wrapper)
+        ("testfin", testfin_command_wrapper), ("testgif", cmd_testgif_wrapper)
     ]
-    # Si tienes el comando /gif, descomenta:
-    # from gif_handler import cmd_gif
-    # commands.append(("gif", cmd_gif))
-
     for cmd, handler in commands:
         app.add_handler(CommandHandler(cmd, handler))
 
-    # Manejador para el botón inline de refrescar
-    app.add_handler(CallbackQueryHandler(callback_refrescar, pattern="^refresh_"))
-
-    # Capturar todos los mensajes de texto que no sean comandos
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_button_wrapper))
+    # Teclados personalizados (ReplyKeyboardMarkup)
+    button_texts = ["Monte Po", "Stesicoro", "Altri", "← Menu", "Fontana", "Nesima", "San Nullo",
+                    "Cibali", "Milo", "Borgo", "Giuffrida", "Italia", "Galatea", "Giovanni XXIII"]
+    app.add_handler(MessageHandler(filters.Text(button_texts), handle_button_wrapper))
 
     logger.info("Bot avviato.")
     print("Bot funzionante... In attesa di messaggi.")
