@@ -35,8 +35,8 @@ FORWARD_PEAK = [
     ("sannullo", "cibali", 106),    # 1:46
     ("cibali", "milo", 124),        # 2:04
     ("milo", "borgo", 131),         # 2:11
-    ("borgo", "giuffrida", 109),    # 1:49 (estimado, sin parada)
-    ("giuffrida", "italia", 96),    # 1:36 (estimado, sin parada)
+    ("borgo", "giuffrida", 109),    # 1:49 (sin parada)
+    ("giuffrida", "italia", 96),    # 1:36 (sin parada)
     ("italia", "galatea", 93),      # 1:33
     ("galatea", "giovanni", 166),   # 2:46
     ("giovanni", "stesicoro", 139)  # 2:19
@@ -417,7 +417,6 @@ def is_festivo_nazionale(now: datetime) -> bool:
 # FUNCIONES DE HORARIOS (comunes) - con corrección de zona horaria
 # ============================================================================
 def get_opening_time(now: datetime, station: str = None) -> Tuple[int, int]:
-    # Asegurar que now es aware
     if now.tzinfo is None:
         now = CATANIA_TZ.localize(now)
     if is_new_years_eve(now):
@@ -448,7 +447,6 @@ def get_closing_time(now: datetime, station: str) -> Tuple[int, int]:
             return (22, 30)
 
 def is_metro_closed(now: datetime, station: str) -> Tuple[bool, Optional[datetime], str]:
-    # Asegurar que now es aware
     if now.tzinfo is None:
         now = CATANIA_TZ.localize(now)
     
