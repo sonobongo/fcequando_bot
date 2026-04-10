@@ -31,13 +31,13 @@ BOTON_TO_KEY = {
 }
 
 # ============================================================================
-# CONSTRUCCIÓN DE MENSAJES TEMPORALES
+# CONSTRUCCIÓN DE MENSAJES TEMPORALES (sin el mensaje de cierre, y con corchetes)
 # ============================================================================
 def build_temporary_messages(now: datetime, estacion_key: str):
     info_mp, info_st = get_next_train_at_station(now, estacion_key)
     closing_msg = get_closing_message(estacion_key, now)
-    last_msg = get_last_train_message(now)
-    last_msg_text = f"\n{last_msg}" if last_msg and not is_sant_agata(now) else ""
+    # NOTA: El mensaje de último tren (get_last_train_message) se mostrará solo en la foto, no aquí
+    # Así que no lo incluimos en msg2 ni msg3
 
     # Mensaje 2 (Monte Po)
     msg2 = ""
@@ -73,9 +73,9 @@ def build_temporary_messages(now: datetime, estacion_key: str):
                 elif current_station == "Il treno è appena partito da Stesicoro":
                     current_station_key_mp = "stesicoro"
                 if "appena partito" in current_station:
-                    line += f"   ({current_station})\n"
+                    line += f"   [{current_station}]\n"   # Corchetes en lugar de paréntesis
                 elif "non ancora partito" not in current_station:
-                    line += f"   (il treno si trova attualmente a {current_station})\n"
+                    line += f"   [il treno si trova attualmente a {current_station}]\n"   # Corchetes
         msg2 += line
         if mins <= 1 and next_info:
             paso2, mins2, secs2 = next_info
@@ -86,8 +86,7 @@ def build_temporary_messages(now: datetime, estacion_key: str):
                 msg2 += f"   Il successivo passerà tra {time_str2}.\n"
     else:
         msg2 += f"🔺 **Per Monte Po**: nessun treno in arrivo al momento.\n"
-    if last_msg_text:
-        msg2 += last_msg_text
+    # No añadimos last_msg_text aquí
 
     # Mensaje 3 (Stesicoro)
     msg3 = ""
@@ -123,9 +122,9 @@ def build_temporary_messages(now: datetime, estacion_key: str):
         if estacion_key in estaciones_localizacion_stesicoro and 2 <= mins <= 10:
             if rest_seconds < total_seconds:
                 if "appena partito" in current_station:
-                    line += f"   ({current_station})\n"
+                    line += f"   [{current_station}]\n"   # Corchetes
                 elif "non ancora partito" not in current_station:
-                    line += f"   (il treno si trova attualmente a {current_station})\n"
+                    line += f"   [il treno si trova attualmente a {current_station}]\n"   # Corchetes
         msg3 = line
         if mins <= 1 and next_info:
             paso2, mins2, secs2 = next_info
@@ -137,22 +136,18 @@ def build_temporary_messages(now: datetime, estacion_key: str):
     else:
         msg3 = f"🔻 **Per Stesicoro**: nessun treno in arrivo al momento.\n"
         tiempo_restante_st = 9999
-    if last_msg_text:
-        msg3 += last_msg_text
+    # No añadimos last_msg_text aquí
 
     return msg2, msg3, current_station_key_mp, tiempo_restante_mp, current_station_key_st, tiempo_restante_st
 
 # ============================================================================
-# FUNCIONES DE ENVÍO (SOLO TEXTO, con logs para Milo)
+# FUNCIONES DE ENVÍO (solo texto por ahora)
 # ============================================================================
 async def send_msg2(update: Update, msg2: str, current_station_key_mp: str, tiempo_restante_mp: int, estacion_key: str):
-    if estacion_key == "milo":
-        print(f"DEBUG Milo: current_station_key_mp = {current_station_key_mp}, tiempo_restante_mp = {tiempo_restante_mp}")
+    # Solo texto por ahora, los GIFs se añadirán después
     return await update.message.reply_text(msg2, parse_mode='Markdown')
 
 async def send_msg3(update: Update, msg3: str, current_station_key_st: str, tiempo_restante_st: int, estacion_key: str):
-    if estacion_key == "milo":
-        print(f"DEBUG Milo: current_station_key_st = {current_station_key_st}, tiempo_restante_st = {tiempo_restante_st}")
     return await update.message.reply_text(msg3, parse_mode='Markdown')
 
 # ============================================================================
@@ -231,7 +226,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
             await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
         return
 
-    # Cabeceras Monte Po y Stesicoro (sin cambios)
+    # Cabeceras Monte Po y Stesicoro (sin cambios en estructura, pero también añadiremos last_msg al caption)
     if estacion_key in ["montepo", "stesicoro"]:
         station = "Montepo" if estacion_key == "montepo" else "Stesicoro"
         closed, next_open, special_closing_msg = is_metro_closed(now, station)
@@ -292,6 +287,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
                 else:
                     msg += f"\n\n🚆 Questo è l'ultimo treno della giornata."
 
+        # Añadir mensaje de último tren (si existe) al caption de la foto
         last_msg = get_last_train_message(now)
         if last_msg and not is_sant_agata(now):
             msg += f"\n\n{last_msg}"
@@ -328,19 +324,19 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
     nombre = NOMBRE_MOSTRAR.get(estacion_key, estacion_key.capitalize())
     img_station = get_station_image(estacion_key, now)
 
-    # 1. Enviar foto de la estación
-    permanent_caption = f"{test_indicator}🚆 Prossimi treni a {nombre}"
+    # 1. Construir caption de la foto: título + mensaje de último tren (si existe)
+    last_msg = get_last_train_message(now)
+    last_msg_text = f"\n\n{last_msg}" if last_msg and not is_sant_agata(now) else ""
+    permanent_caption = f"{test_indicator}🚆 Prossimi treni a {nombre}{last_msg_text}"
+    
     if img_station:
         await update.message.reply_photo(photo=img_station, caption=permanent_caption, reply_markup=keyboard_main if return_to_main else keyboard_altri)
     else:
         await update.message.reply_text(permanent_caption, reply_markup=keyboard_main if return_to_main else keyboard_altri)
-    print("DEBUG: Foto de estación enviada")
+    print("DEBUG: Foto de estación enviada con mensaje de cierre incluido")
 
-    # 2. Enviar primera tanda de mensajes 2 y 3 (solo texto, con logs)
+    # 2. Enviar primera tanda de mensajes 2 y 3 (solo texto, sin last_msg)
     msg2, msg3, current_station_key_mp, tiempo_restante_mp, current_station_key_st, tiempo_restante_st = build_temporary_messages(now, estacion_key)
-    if estacion_key == "milo":
-        print(f"DEBUG Milo: current_station_key_mp = {current_station_key_mp}, tiempo_restante_mp = {tiempo_restante_mp}")
-        print(f"DEBUG Milo: current_station_key_st = {current_station_key_st}, tiempo_restante_st = {tiempo_restante_st}")
     print(f"DEBUG: msg2 = {msg2[:50]}...")
     print(f"DEBUG: msg3 = {msg3[:50]}...")
     msg2_obj = await update.message.reply_text(msg2, parse_mode='Markdown')
@@ -408,6 +404,7 @@ async def start(update, context):
     user = update.effective_user
     now = datetime.now()
     last_msg = get_last_train_message(now)
+    # Para el mensaje de bienvenida también podemos incluir last_msg si se desea, pero no es necesario
     await update.message.reply_text(
         f"Ciao {user.first_name}! 👋\n\n"
         "Posso dirti quando passa il prossimo treno della metropolitana di Catania.\n"
