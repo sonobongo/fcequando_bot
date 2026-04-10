@@ -51,7 +51,7 @@ def main():
     # Manejador para el botón inline de refrescar
     app.add_handler(CallbackQueryHandler(callback_refrescar, pattern="^refresh_"))
 
-    # Teclados personalizados
+    # Teclados personalizados (ReplyKeyboardMarkup) - captura todos los textos que no sean comandos
     button_texts = ["Monte Po", "Stesicoro", "Altri", "← Menu", "Fontana", "Nesima", "San Nullo",
                     "Cibali", "Milo", "Borgo", "Giuffrida", "Italia", "Galatea", "Giovanni XXIII"]
     app.add_handler(MessageHandler(filters.Text(button_texts), handle_button_wrapper))
