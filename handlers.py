@@ -2,7 +2,7 @@ import asyncio
 from datetime import datetime, timedelta
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
-from horarios_logic import *
+from horarios_logic import CATANIA_TZ, NOMBRE_MOSTRAR, SANT_AGATA, get_closing_warning, is_sant_agata, is_closed_all_day, get_station_image, get_next_departure, get_next_departure_after, format_time, get_last_train_message, get_closing_message, get_next_train_at_station, get_total_seconds_from_montepo, get_total_seconds_from_stesicoro, get_current_station_from_montepo, get_current_station_from_stesicoro, is_metro_closed, SHORT_TIME_THRESHOLD
 
 # ============================================================================
 # TECLADOS
@@ -30,7 +30,7 @@ BOTON_TO_KEY = {
 }
 
 # ============================================================================
-# FUNCIONES AUXILIARES DE LOCALIZACIÓN (sin cambios)
+# FUNCIONES AUXILIARES DE LOCALIZACIÓN
 # ============================================================================
 def get_current_station_from_montepo(now: datetime, seconds_passed: int) -> str:
     stations = ["montepo", "fontana", "nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "giovanni", "stesicoro"]
@@ -63,7 +63,7 @@ def get_current_station_from_stesicoro(now: datetime, seconds_passed: int) -> st
     return NOMBRE_MOSTRAR["stesicoro"]
 
 # ============================================================================
-# CONSTRUCCIÓN DE MENSAJES TEMPORALES (sin cambios)
+# CONSTRUCCIÓN DE MENSAJES TEMPORALES
 # ============================================================================
 def build_temporary_messages(now: datetime, estacion_key: str):
     info_mp, info_st = get_next_train_at_station(now, estacion_key)
@@ -168,7 +168,6 @@ def build_temporary_messages(now: datetime, estacion_key: str):
 # TAREA DE ACTUALIZACIÓN AUTOMÁTICA (3 ciclos de 45 segundos)
 # ============================================================================
 async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str, chat_id: int, station_display_name: str, use_simulated: bool = False, simulated_now: datetime = None):
-    # Guardar datos para posible refresco
     context.chat_data['refresh_station_key'] = estacion_key
     context.chat_data['refresh_station_name'] = station_display_name
     if use_simulated and simulated_now:
@@ -177,8 +176,10 @@ async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, 
         context.chat_data.pop('refresh_simulated', None)
 
     try:
-        # Enviar primera tanda de mensajes (ciclo 0)
-        now = simulated_now if (use_simulated and simulated_now) else datetime.now()
+        now = simulated_now if (use_simulated and simulated_now) else datetime.now(CATANIA_TZ)
+        # Asegurar que now es aware (por si acaso)
+        if now.tzinfo is None:
+            now = CATANIA_TZ.localize(now)
         msg2, msg3, current_station_key, tiempo_restante = build_temporary_messages(now, estacion_key)
         msg2_obj = await update.message.reply_text(msg2, parse_mode='Markdown')
         if current_station_key and tiempo_restante is not None and tiempo_restante > 90:
@@ -191,10 +192,8 @@ async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, 
             msg3_obj = await update.message.reply_text(msg3, parse_mode='Markdown')
         context.chat_data['refresh_msg_ids'] = (msg2_obj.message_id, msg3_obj.message_id)
 
-        # Ciclos restantes (1 y 2) con espera de 45s y borrado previo
         for ciclo in range(1, 3):
             await asyncio.sleep(45)
-            # Borrar mensajes anteriores
             try:
                 await context.bot.delete_message(chat_id=chat_id, message_id=msg2_obj.message_id)
             except:
@@ -203,8 +202,9 @@ async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, 
                 await context.bot.delete_message(chat_id=chat_id, message_id=msg3_obj.message_id)
             except:
                 pass
-            # Calcular nuevos mensajes
-            now = simulated_now if (use_simulated and simulated_now) else datetime.now()
+            now = simulated_now if (use_simulated and simulated_now) else datetime.now(CATANIA_TZ)
+            if now.tzinfo is None:
+                now = CATANIA_TZ.localize(now)
             msg2, msg3, current_station_key, tiempo_restante = build_temporary_messages(now, estacion_key)
             msg2_obj = await update.message.reply_text(msg2, parse_mode='Markdown')
             if current_station_key and tiempo_restante is not None and tiempo_restante > 90:
@@ -217,7 +217,6 @@ async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, 
                 msg3_obj = await update.message.reply_text(msg3, parse_mode='Markdown')
             context.chat_data['refresh_msg_ids'] = (msg2_obj.message_id, msg3_obj.message_id)
 
-        # Después del tercer ciclo, enviar botón de refrescar
         refresh_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔄 Refrescar", callback_data=f"refresh_{estacion_key}")]])
         await update.message.reply_text("", reply_markup=refresh_keyboard)
 
@@ -229,10 +228,10 @@ async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, 
         context.chat_data.pop('cancel_refresh', None)
 
 # ============================================================================
-# RESPUESTA PRINCIPAL (con cancelación de tarea anterior)
+# RESPUESTA PRINCIPAL
 # ============================================================================
 async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str, return_to_main: bool = True):
-    # Cancelar cualquier tarea de refresco activa
+    # Cancelar tarea anterior
     if 'refresh_task' in context.chat_data:
         task = context.chat_data['refresh_task']
         if not task.done():
@@ -246,7 +245,13 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
     context.chat_data['cancel_refresh'] = False
 
     simulated = context.chat_data.get('test_time') if context.chat_data else None
-    now = simulated if simulated else datetime.now()
+    if simulated:
+        now = simulated
+    else:
+        now = datetime.now(CATANIA_TZ)
+    # Asegurar que now es aware (por si simulated es naive)
+    if now.tzinfo is None:
+        now = CATANIA_TZ.localize(now)
     test_indicator = "🧪 [TEST MODE] " if simulated else ""
 
     warning = get_closing_warning(now)
@@ -264,7 +269,9 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
             await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
         return
 
-    # Cabeceras Monte Po y Stesicoro
+    # ========================================================================
+    # CABECERAS Monte Po y Stesicoro
+    # ========================================================================
     if estacion_key in ["montepo", "stesicoro"]:
         station = "Montepo" if estacion_key == "montepo" else "Stesicoro"
         closed, next_open, special_closing_msg = is_metro_closed(now, station)
@@ -361,14 +368,12 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
     nombre = NOMBRE_MOSTRAR.get(estacion_key, estacion_key.capitalize())
     img_station = get_station_image(estacion_key, now)
 
-    # 1. Enviar la foto de la estación con título corto
     permanent_caption = f"{test_indicator}🚆 Prossimi treni a {nombre}"
     if img_station:
         await update.message.reply_photo(photo=img_station, caption=permanent_caption, reply_markup=keyboard_main if return_to_main else keyboard_altri)
     else:
         await update.message.reply_text(permanent_caption, reply_markup=keyboard_main if return_to_main else keyboard_altri)
 
-    # 2. Iniciar el ciclo de actualización automática
     context.chat_data['refresh_active'] = True
     task = asyncio.create_task(auto_refresh_loop(update, context, estacion_key, update.effective_chat.id, nombre, use_simulated=(simulated is not None), simulated_now=now if simulated else None))
     context.chat_data['refresh_task'] = task
@@ -414,7 +419,7 @@ async def cmd_refrescar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await callback_refrescar(update, context)
 
 # ============================================================================
-# MANEJADORES DE COMANDOS (con cancelación de tarea antes de ejecutar)
+# MANEJADORES DE COMANDOS (con cancelación de tarea)
 # ============================================================================
 async def cancel_refresh_and_run(update: Update, context: ContextTypes.DEFAULT_TYPE, coro, *args, **kwargs):
     if 'refresh_task' in context.chat_data:
@@ -429,7 +434,6 @@ async def cancel_refresh_and_run(update: Update, context: ContextTypes.DEFAULT_T
     context.chat_data['refresh_active'] = False
     await coro(update, context, *args, **kwargs)
 
-# Wrappers
 async def cmd_montepo_wrapper(update, context): await cancel_refresh_and_run(update, context, cmd_montepo)
 async def cmd_stesicoro_wrapper(update, context): await cancel_refresh_and_run(update, context, cmd_stesicoro)
 async def cmd_milo_wrapper(update, context): await cancel_refresh_and_run(update, context, cmd_milo)
@@ -451,7 +455,7 @@ async def test_command_wrapper(update, context): await cancel_refresh_and_run(up
 async def testfin_command_wrapper(update, context): await cancel_refresh_and_run(update, context, testfin_command)
 async def cmd_refrescar_wrapper(update, context): await cancel_refresh_and_run(update, context, cmd_refrescar)
 
-# Funciones originales (sin wrapper)
+# Funciones originales
 async def cmd_montepo(update, context): await send_station_response(update, context, "montepo", return_to_main=False)
 async def cmd_stesicoro(update, context): await send_station_response(update, context, "stesicoro", return_to_main=False)
 async def cmd_milo(update, context): await send_station_response(update, context, "milo", return_to_main=False)
@@ -467,7 +471,10 @@ async def cmd_giovanni(update, context): await send_station_response(update, con
 async def cmd_altri(update, context): await update.message.reply_text("⬇️ Altre stazioni:", reply_markup=keyboard_altri)
 async def start(update, context):
     user = update.effective_user
-    now = datetime.now()
+    now = datetime.now(CATANIA_TZ)
+    # Asegurar aware
+    if now.tzinfo is None:
+        now = CATANIA_TZ.localize(now)
     last_msg = get_last_train_message(now)
     await update.message.reply_text(
         f"Ciao {user.first_name}! 👋\n\n"
@@ -556,7 +563,7 @@ async def test_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("Ora non valida.")
             return
         try:
-            simulated = datetime(year, month, day, hour, minute)
+            simulated = CATANIA_TZ.localize(datetime(year, month, day, hour, minute))
         except Exception as e:
             await update.message.reply_text(f"Data non valida: {e}")
             return
@@ -589,7 +596,7 @@ async def test_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("Ora non valida.")
             return
         try:
-            simulated = datetime(year, month, day, hour, minute)
+            simulated = CATANIA_TZ.localize(datetime(year, month, day, hour, minute))
         except Exception as e:
             await update.message.reply_text(f"Data non valida: {e}")
             return
