@@ -225,10 +225,8 @@ async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, 
         await update.message.reply_text("", reply_markup=refresh_keyboard)
 
     except asyncio.CancelledError:
-        # Si la tarea se cancela, no hacemos nada
         pass
     finally:
-        # Limpiar flags al finalizar (tanto si termina normal como si se cancela)
         context.chat_data['refresh_active'] = False
         context.chat_data.pop('refresh_task', None)
         context.chat_data.pop('cancel_refresh', None)
@@ -269,7 +267,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
             await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
         return
 
-    # Cabeceras Monte Po y Stesicoro (sin refrescos)
+    # Cabeceras Monte Po y Stesicoro
     if estacion_key in ["montepo", "stesicoro"]:
         station = "Montepo" if estacion_key == "montepo" else "Stesicoro"
         closed, next_open, special_closing_msg = is_metro_closed(now, station)
@@ -389,7 +387,6 @@ async def callback_refrescar(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return
     estacion_key = data.split("_")[1]
     
-    # Cancelar cualquier tarea activa
     if 'refresh_task' in context.chat_data:
         task = context.chat_data['refresh_task']
         if not task.done():
@@ -423,7 +420,6 @@ async def cmd_refrescar(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # MANEJADORES DE COMANDOS (con cancelación de tarea antes de ejecutar)
 # ============================================================================
 async def cancel_refresh_and_run(update: Update, context: ContextTypes.DEFAULT_TYPE, coro, *args, **kwargs):
-    # Cancelar cualquier tarea de refresco activa
     if 'refresh_task' in context.chat_data:
         task = context.chat_data['refresh_task']
         if not task.done():
@@ -503,6 +499,7 @@ async def help_command(update, context):
     )
 async def handle_button(update, context):
     text = update.message.text
+    print(f"DEBUG: Botón pulsado: '{text}'")   # <-- LÍNEA AÑADIDA
     if text == "Altri":
         await cmd_altri(update, context)
     elif text == "← Menu":
