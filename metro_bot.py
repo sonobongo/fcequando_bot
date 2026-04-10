@@ -51,10 +51,8 @@ def main():
     # Manejador para el botón inline de refrescar
     app.add_handler(CallbackQueryHandler(callback_refrescar, pattern="^refresh_"))
 
-    # Teclados personalizados (ReplyKeyboardMarkup) - captura todos los textos que no sean comandos
-    button_texts = ["Monte Po", "Stesicoro", "Altri", "← Menu", "Fontana", "Nesima", "San Nullo",
-                    "Cibali", "Milo", "Borgo", "Giuffrida", "Italia", "Galatea", "Giovanni XXIII"]
-    app.add_handler(MessageHandler(filters.Text(button_texts), handle_button_wrapper))
+    # Capturar todos los mensajes de texto que no sean comandos (para los botones)
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_button_wrapper))
 
     logger.info("Bot avviato.")
     print("Bot funzionante... In attesa di messaggi.")
