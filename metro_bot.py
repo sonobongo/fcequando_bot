@@ -1,11 +1,15 @@
 import os
+import time
+# Forzar zona horaria a Europa/Rome (Roma)
+os.environ['TZ'] = 'Europe/Rome'
+time.tzset()
+
 import logging
 import threading
 from flask import Flask
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackQueryHandler
 from horarios_logic import *
 from handlers import *
-from gif_handler import cmd_gif   # <-- Importamos el nuevo comando
 
 flask_app = Flask(__name__)
 
@@ -33,7 +37,7 @@ def main():
 
     app = Application.builder().token(TOKEN).build()
 
-    # Registrar comandos (incluido /gif)
+    # Registrar comandos (incluido /gif si lo tienes)
     commands = [
         ("start", start_wrapper), ("help", help_command_wrapper),
         ("montepo", cmd_montepo_wrapper), ("stesicoro", cmd_stesicoro_wrapper),
@@ -44,8 +48,11 @@ def main():
         ("italia", cmd_italia_wrapper), ("galatea", cmd_galatea_wrapper),
         ("giovanni", cmd_giovanni_wrapper), ("test", test_command_wrapper),
         ("testfin", testfin_command_wrapper), ("testgif", cmd_testgif_wrapper),
-        ("refrescar", cmd_refrescar_wrapper), ("gif", cmd_gif)   # <-- Nuevo comando
+        ("refrescar", cmd_refrescar_wrapper)
     ]
+    # Si tienes el comando /gif, añádelo aquí:
+    # ("gif", cmd_gif),
+
     for cmd, handler in commands:
         app.add_handler(CommandHandler(cmd, handler))
 
