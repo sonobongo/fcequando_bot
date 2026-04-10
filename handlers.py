@@ -30,7 +30,7 @@ BOTON_TO_KEY = {
 }
 
 # ============================================================================
-# CONSTRUCCIÓN DE MENSAJES TEMPORALES (modificada para devolver también clave de Monte Po)
+# CONSTRUCCIÓN DE MENSAJES TEMPORALES
 # ============================================================================
 def build_temporary_messages(now: datetime, estacion_key: str):
     info_mp, info_st = get_next_train_at_station(now, estacion_key)
@@ -159,7 +159,7 @@ async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, 
 
         # Enviar mensaje 2 (Monte Po) - como GIF si procede
         if current_station_key_mp and tiempo_restante_mp is not None and tiempo_restante_mp > 90:
-            gif_url = f"https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/stesicoro_{current_station_key_mp}.gif"
+            gif_url = f"https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_{current_station_key_mp}.gif"
             try:
                 msg2_obj = await update.message.reply_animation(animation=gif_url, caption=msg2, parse_mode='Markdown')
             except Exception as e:
@@ -194,7 +194,7 @@ async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, 
 
             # Enviar nuevo mensaje 2
             if current_station_key_mp and tiempo_restante_mp is not None and tiempo_restante_mp > 90:
-                gif_url = f"https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/stesicoro_{current_station_key_mp}.gif"
+                gif_url = f"https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_{current_station_key_mp}.gif"
                 try:
                     msg2_obj = await update.message.reply_animation(animation=gif_url, caption=msg2, parse_mode='Markdown')
                 except:
@@ -224,7 +224,7 @@ async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, 
         context.chat_data.pop('cancel_refresh', None)
 
 # ============================================================================
-# RESPUESTA PRINCIPAL (sin cambios relevantes, solo se adapta a la nueva estructura)
+# RESPUESTA PRINCIPAL
 # ============================================================================
 async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str, return_to_main: bool = True):
     # Cancelar tarea anterior
@@ -262,7 +262,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
             await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
         return
 
-    # Cabeceras Monte Po y Stesicoro (sin cambios)
+    # Cabeceras Monte Po y Stesicoro
     if estacion_key in ["montepo", "stesicoro"]:
         station = "Montepo" if estacion_key == "montepo" else "Stesicoro"
         closed, next_open, special_closing_msg = is_metro_closed(now, station)
@@ -370,7 +370,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
     context.chat_data['refresh_task'] = task
 
 # ============================================================================
-# CALLBACK DEL BOTÓN DE REFRESCAR (sin cambios)
+# CALLBACK DEL BOTÓN DE REFRESCAR
 # ============================================================================
 async def callback_refrescar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -400,7 +400,7 @@ async def callback_refrescar(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await send_station_response(fake_update, context, estacion_key, return_to_main=False)
 
 # ============================================================================
-# COMANDO REFRESCAR (sin cambios)
+# COMANDO REFRESCAR
 # ============================================================================
 async def cmd_refrescar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     estacion_key = context.chat_data.get('refresh_station_key')
@@ -410,7 +410,7 @@ async def cmd_refrescar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await callback_refrescar(update, context)
 
 # ============================================================================
-# MANEJADORES DE COMANDOS (sin cambios)
+# MANEJADORES DE COMANDOS
 # ============================================================================
 async def cancel_refresh_and_run(update: Update, context: ContextTypes.DEFAULT_TYPE, coro, *args, **kwargs):
     if 'refresh_task' in context.chat_data:
@@ -447,7 +447,7 @@ async def test_command_wrapper(update, context): await cancel_refresh_and_run(up
 async def testfin_command_wrapper(update, context): await cancel_refresh_and_run(update, context, testfin_command)
 async def cmd_refrescar_wrapper(update, context): await cancel_refresh_and_run(update, context, cmd_refrescar)
 
-# Funciones originales (sin wrapper)
+# Funciones originales
 async def cmd_montepo(update, context): await send_station_response(update, context, "montepo", return_to_main=False)
 async def cmd_stesicoro(update, context): await send_station_response(update, context, "stesicoro", return_to_main=False)
 async def cmd_milo(update, context): await send_station_response(update, context, "milo", return_to_main=False)
@@ -503,7 +503,7 @@ async def handle_button(update, context):
         await update.message.reply_text("Scelta non valida. Usa i pulsanti.", reply_markup=keyboard_main)
 
 # ============================================================================
-# COMANDO TEST GIF (sin cambios)
+# COMANDO TEST GIF
 # ============================================================================
 async def cmd_testgif(update: Update, context: ContextTypes.DEFAULT_TYPE):
     gif_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/montepo-fontana.gif"
@@ -521,7 +521,7 @@ async def cmd_testgif(update: Update, context: ContextTypes.DEFAULT_TYPE):
         print(f"Error al borrar el GIF: {e}")
 
 # ============================================================================
-# COMANDOS TEST (2 y 3 argumentos) - sin cambios
+# COMANDOS TEST
 # ============================================================================
 async def test_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     args = context.args
