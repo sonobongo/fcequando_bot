@@ -3,9 +3,6 @@ from datetime import datetime, timedelta
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from horarios_logic import *
-import pytz
-
-CATANIA_TZ = pytz.timezone('Europe/Rome')
 
 # ============================================================================
 # TECLADOS
@@ -33,7 +30,7 @@ BOTON_TO_KEY = {
 }
 
 # ============================================================================
-# FUNCIONES AUXILIARES DE LOCALIZACIÓN
+# FUNCIONES AUXILIARES DE LOCALIZACIÓN (sin cambios)
 # ============================================================================
 def get_current_station_from_montepo(now: datetime, seconds_passed: int) -> str:
     stations = ["montepo", "fontana", "nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "giovanni", "stesicoro"]
@@ -66,7 +63,7 @@ def get_current_station_from_stesicoro(now: datetime, seconds_passed: int) -> st
     return NOMBRE_MOSTRAR["stesicoro"]
 
 # ============================================================================
-# CONSTRUCCIÓN DE MENSAJES TEMPORALES
+# CONSTRUCCIÓN DE MENSAJES TEMPORALES (sin cambios)
 # ============================================================================
 def build_temporary_messages(now: datetime, estacion_key: str):
     info_mp, info_st = get_next_train_at_station(now, estacion_key)
@@ -181,7 +178,7 @@ async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, 
 
     try:
         # Enviar primera tanda de mensajes (ciclo 0)
-        now = simulated_now if (use_simulated and simulated_now) else datetime.now(CATANIA_TZ)
+        now = simulated_now if (use_simulated and simulated_now) else datetime.now()
         msg2, msg3, current_station_key, tiempo_restante = build_temporary_messages(now, estacion_key)
         msg2_obj = await update.message.reply_text(msg2, parse_mode='Markdown')
         if current_station_key and tiempo_restante is not None and tiempo_restante > 90:
@@ -207,7 +204,7 @@ async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, 
             except:
                 pass
             # Calcular nuevos mensajes
-            now = simulated_now if (use_simulated and simulated_now) else datetime.now(CATANIA_TZ)
+            now = simulated_now if (use_simulated and simulated_now) else datetime.now()
             msg2, msg3, current_station_key, tiempo_restante = build_temporary_messages(now, estacion_key)
             msg2_obj = await update.message.reply_text(msg2, parse_mode='Markdown')
             if current_station_key and tiempo_restante is not None and tiempo_restante > 90:
@@ -249,7 +246,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
     context.chat_data['cancel_refresh'] = False
 
     simulated = context.chat_data.get('test_time') if context.chat_data else None
-    now = simulated if simulated else datetime.now(CATANIA_TZ)
+    now = simulated if simulated else datetime.now()
     test_indicator = "🧪 [TEST MODE] " if simulated else ""
 
     warning = get_closing_warning(now)
@@ -470,7 +467,7 @@ async def cmd_giovanni(update, context): await send_station_response(update, con
 async def cmd_altri(update, context): await update.message.reply_text("⬇️ Altre stazioni:", reply_markup=keyboard_altri)
 async def start(update, context):
     user = update.effective_user
-    now = datetime.now(CATANIA_TZ)
+    now = datetime.now()
     last_msg = get_last_train_message(now)
     await update.message.reply_text(
         f"Ciao {user.first_name}! 👋\n\n"
@@ -499,7 +496,7 @@ async def help_command(update, context):
     )
 async def handle_button(update, context):
     text = update.message.text
-    print(f"DEBUG: Botón pulsado: '{text}'")   # <-- LÍNEA AÑADIDA
+    print(f"DEBUG: Botón pulsado: '{text}'")
     if text == "Altri":
         await cmd_altri(update, context)
     elif text == "← Menu":
@@ -559,7 +556,7 @@ async def test_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("Ora non valida.")
             return
         try:
-            simulated = CATANIA_TZ.localize(datetime(year, month, day, hour, minute))
+            simulated = datetime(year, month, day, hour, minute)
         except Exception as e:
             await update.message.reply_text(f"Data non valida: {e}")
             return
@@ -592,7 +589,7 @@ async def test_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("Ora non valida.")
             return
         try:
-            simulated = CATANIA_TZ.localize(datetime(year, month, day, hour, minute))
+            simulated = datetime(year, month, day, hour, minute)
         except Exception as e:
             await update.message.reply_text(f"Data non valida: {e}")
             return
