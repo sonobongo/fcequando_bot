@@ -36,7 +36,6 @@ BOTON_TO_KEY = {
 def build_temporary_messages(now: datetime, estacion_key: str):
     info_mp, info_st = get_next_train_at_station(now, estacion_key)
     closing_msg = get_closing_message(estacion_key, now)
-    # El mensaje de último tren (get_last_train_message) se muestra solo en la foto
 
     # Mensaje 2 (Monte Po)
     msg2 = ""
@@ -168,15 +167,19 @@ async def send_msg3(update: Update, msg3: str, current_station_key_st: str, tiem
         return await update.message.reply_text(msg3, parse_mode='Markdown')
 
 # ============================================================================
-# TAREA DE ACTUALIZACIÓN AUTOMÁTICA (3 ciclos de 45 segundos)
+# TAREA DE ACTUALIZACIÓN AUTOMÁTICA (3 ciclos: 35, 45, 55 segundos)
 # ============================================================================
 async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str, chat_id: int, station_display_name: str, use_simulated: bool = False, simulated_now: datetime = None):
     print(f"DEBUG: auto_refresh_loop iniciada para {estacion_key}")
+    # Definir los tiempos de espera para los tres ciclos (el primero ya se envió fuera)
+    # Esperas: primer ciclo 35s, segundo 45s, tercero 55s (total 135s)
+    tiempos_espera = [35, 45, 55]
     try:
-        for ciclo in range(1, 3):
-            await asyncio.sleep(45)
+        for idx, espera in enumerate(tiempos_espera):
+            await asyncio.sleep(espera)
             if context.chat_data.get('cancel_refresh', False):
                 break
+            # Borrar mensajes anteriores
             msg_ids = context.chat_data.get('refresh_msg_ids')
             if msg_ids:
                 try:
@@ -189,7 +192,9 @@ async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, 
                     pass
             now = simulated_now if (use_simulated and simulated_now) else datetime.now()
             msg2, msg3, current_station_key_mp, tiempo_restante_mp, current_station_key_st, tiempo_restante_st = build_temporary_messages(now, estacion_key)
+            # Enviar mensaje 2 y 3 con una pequeña pausa entre ellos para evitar saturación
             msg2_obj = await send_msg2(update, msg2, current_station_key_mp, tiempo_restante_mp, estacion_key)
+            await asyncio.sleep(0.5)  # pausa de medio segundo
             msg3_obj = await send_msg3(update, msg3, current_station_key_st, tiempo_restante_st, estacion_key)
             context.chat_data['refresh_msg_ids'] = (msg2_obj.message_id, msg3_obj.message_id)
     except asyncio.CancelledError:
@@ -202,7 +207,7 @@ async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, 
         print("DEBUG: auto_refresh_loop finalizada")
 
 # ============================================================================
-# RESPUESTA PRINCIPAL
+# RESPUESTA PRINCIPAL (sin cambios, pero se ajusta la llamada al bucle)
 # ============================================================================
 async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str, return_to_main: bool = True):
     print(f"DEBUG: send_station_response llamada para {estacion_key}")
@@ -242,7 +247,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
             await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
         return
 
-    # Cabeceras Monte Po y Stesicoro
+    # Cabeceras Monte Po y Stesicoro (sin cambios)
     if estacion_key in ["montepo", "stesicoro"]:
         station = "Montepo" if estacion_key == "montepo" else "Stesicoro"
         closed, next_open, special_closing_msg = is_metro_closed(now, station)
@@ -303,7 +308,6 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
                 else:
                     msg += f"\n\n🚆 Questo è l'ultimo treno della giornata."
 
-        # Mensaje de cierre con emoji adecuado
         last_msg = get_last_train_message(now)
         if last_msg and not is_sant_agata(now):
             if "01:00" in last_msg:
@@ -361,16 +365,17 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
         await update.message.reply_text(permanent_caption, reply_markup=keyboard_main if return_to_main else keyboard_altri)
     print("DEBUG: Foto de estación enviada con mensaje de cierre")
 
-    # Enviar mensajes 2 y 3 (sin el mensaje de cierre)
+    # Enviar primera tanda de mensajes 2 y 3 (con pausa entre ellos)
     msg2, msg3, current_station_key_mp, tiempo_restante_mp, current_station_key_st, tiempo_restante_st = build_temporary_messages(now, estacion_key)
     print(f"DEBUG: msg2 = {msg2[:50]}...")
     print(f"DEBUG: msg3 = {msg3[:50]}...")
     msg2_obj = await send_msg2(update, msg2, current_station_key_mp, tiempo_restante_mp, estacion_key)
+    await asyncio.sleep(0.5)  # pausa para evitar saturación
     msg3_obj = await send_msg3(update, msg3, current_station_key_st, tiempo_restante_st, estacion_key)
     context.chat_data['refresh_msg_ids'] = (msg2_obj.message_id, msg3_obj.message_id)
     print(f"DEBUG: Mensajes 2 y 3 enviados. IDs: {msg2_obj.message_id}, {msg3_obj.message_id}")
 
-    # Iniciar bucle de actualización
+    # Iniciar bucle de actualización con los nuevos tiempos
     context.chat_data['refresh_active'] = True
     task = asyncio.create_task(auto_refresh_loop(update, context, estacion_key, update.effective_chat.id, nombre, use_simulated=(simulated is not None), simulated_now=now if simulated else None))
     context.chat_data['refresh_task'] = task
