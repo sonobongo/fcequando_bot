@@ -51,7 +51,7 @@ def main():
     # Manejador para el botón inline de refrescar
     app.add_handler(CallbackQueryHandler(callback_refrescar, pattern="^refresh_"))
 
-    # Capturar todos los mensajes de texto que no sean comandos (para los botones)
+    # Capturar todos los mensajes de texto que no sean comandos
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_button_wrapper))
 
     logger.info("Bot avviato.")
