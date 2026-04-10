@@ -31,7 +31,7 @@ BOTON_TO_KEY = {
 }
 
 # ============================================================================
-# CONSTRUCCIÓN DE MENSAJES TEMPORALES (sin cambios, solo texto)
+# CONSTRUCCIÓN DE MENSAJES TEMPORALES
 # ============================================================================
 def build_temporary_messages(now: datetime, estacion_key: str):
     info_mp, info_st = get_next_train_at_station(now, estacion_key)
@@ -143,36 +143,17 @@ def build_temporary_messages(now: datetime, estacion_key: str):
     return msg2, msg3, current_station_key_mp, tiempo_restante_mp, current_station_key_st, tiempo_restante_st
 
 # ============================================================================
-# FUNCIONES DE ENVÍO (con soporte solo para Milo)
+# FUNCIONES DE ENVÍO (SOLO TEXTO, con logs para Milo)
 # ============================================================================
 async def send_msg2(update: Update, msg2: str, current_station_key_mp: str, tiempo_restante_mp: int, estacion_key: str):
-    # Solo para Milo intentamos enviar GIF
-    if estacion_key == "milo" and current_station_key_mp and tiempo_restante_mp is not None and tiempo_restante_mp > 90:
-        cache_buster = int(time.time())
-        gif_url = f"https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_{current_station_key_mp}.gif?v={cache_buster}"
-        try:
-            print(f"DEBUG: Intentando enviar GIF para Milo (Monte Po): {gif_url}")
-            return await update.message.reply_animation(animation=gif_url, caption=msg2, parse_mode='Markdown')
-        except Exception as e:
-            print(f"Error enviando GIF para Milo: {e}")
-            return await update.message.reply_text(msg2, parse_mode='Markdown')
-    else:
-        # Para otras estaciones o si no aplica GIF, enviamos texto
-        return await update.message.reply_text(msg2, parse_mode='Markdown')
+    if estacion_key == "milo":
+        print(f"DEBUG Milo: current_station_key_mp = {current_station_key_mp}, tiempo_restante_mp = {tiempo_restante_mp}")
+    return await update.message.reply_text(msg2, parse_mode='Markdown')
 
 async def send_msg3(update: Update, msg3: str, current_station_key_st: str, tiempo_restante_st: int, estacion_key: str):
-    # Para Stesicoro también intentamos enviar PNG (o GIF si se quiere, pero mantendremos PNG por ahora)
-    # También solo para Milo probamos el envío de imagen (pero usamos PNG, no GIF)
-    if estacion_key == "milo" and current_station_key_st and tiempo_restante_st is not None and tiempo_restante_st > 90:
-        ruta_url = f"https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_montepo_{current_station_key_st}.png?v={int(time.time())}"
-        try:
-            print(f"DEBUG: Intentando enviar PNG para Milo (Stesicoro): {ruta_url}")
-            return await update.message.reply_photo(photo=ruta_url, caption=msg3, parse_mode='Markdown')
-        except Exception as e:
-            print(f"Error enviando PNG para Milo: {e}")
-            return await update.message.reply_text(msg3, parse_mode='Markdown')
-    else:
-        return await update.message.reply_text(msg3, parse_mode='Markdown')
+    if estacion_key == "milo":
+        print(f"DEBUG Milo: current_station_key_st = {current_station_key_st}, tiempo_restante_st = {tiempo_restante_st}")
+    return await update.message.reply_text(msg3, parse_mode='Markdown')
 
 # ============================================================================
 # TAREA DE ACTUALIZACIÓN AUTOMÁTICA (3 ciclos de 45 segundos)
@@ -197,7 +178,6 @@ async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, 
                     pass
             now = simulated_now if (use_simulated and simulated_now) else datetime.now()
             msg2, msg3, current_station_key_mp, tiempo_restante_mp, current_station_key_st, tiempo_restante_st = build_temporary_messages(now, estacion_key)
-            # Enviar nuevos mensajes usando las funciones especiales (que manejan Milo)
             msg2_obj = await send_msg2(update, msg2, current_station_key_mp, tiempo_restante_mp, estacion_key)
             msg3_obj = await send_msg3(update, msg3, current_station_key_st, tiempo_restante_st, estacion_key)
             context.chat_data['refresh_msg_ids'] = (msg2_obj.message_id, msg3_obj.message_id)
@@ -356,12 +336,15 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
         await update.message.reply_text(permanent_caption, reply_markup=keyboard_main if return_to_main else keyboard_altri)
     print("DEBUG: Foto de estación enviada")
 
-    # 2. Enviar primera tanda de mensajes 2 y 3 (usando las funciones con soporte Milo)
+    # 2. Enviar primera tanda de mensajes 2 y 3 (solo texto, con logs)
     msg2, msg3, current_station_key_mp, tiempo_restante_mp, current_station_key_st, tiempo_restante_st = build_temporary_messages(now, estacion_key)
+    if estacion_key == "milo":
+        print(f"DEBUG Milo: current_station_key_mp = {current_station_key_mp}, tiempo_restante_mp = {tiempo_restante_mp}")
+        print(f"DEBUG Milo: current_station_key_st = {current_station_key_st}, tiempo_restante_st = {tiempo_restante_st}")
     print(f"DEBUG: msg2 = {msg2[:50]}...")
     print(f"DEBUG: msg3 = {msg3[:50]}...")
-    msg2_obj = await send_msg2(update, msg2, current_station_key_mp, tiempo_restante_mp, estacion_key)
-    msg3_obj = await send_msg3(update, msg3, current_station_key_st, tiempo_restante_st, estacion_key)
+    msg2_obj = await update.message.reply_text(msg2, parse_mode='Markdown')
+    msg3_obj = await update.message.reply_text(msg3, parse_mode='Markdown')
     context.chat_data['refresh_msg_ids'] = (msg2_obj.message_id, msg3_obj.message_id)
     print(f"DEBUG: Mensajes 2 y 3 enviados. IDs: {msg2_obj.message_id}, {msg3_obj.message_id}")
 
