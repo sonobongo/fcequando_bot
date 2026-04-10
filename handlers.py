@@ -31,13 +31,12 @@ BOTON_TO_KEY = {
 }
 
 # ============================================================================
-# CONSTRUCCIÓN DE MENSAJES TEMPORALES (sin el mensaje de cierre, y con corchetes)
+# CONSTRUCCIÓN DE MENSAJES TEMPORALES (sin mensaje de cierre, con corchetes)
 # ============================================================================
 def build_temporary_messages(now: datetime, estacion_key: str):
     info_mp, info_st = get_next_train_at_station(now, estacion_key)
     closing_msg = get_closing_message(estacion_key, now)
-    # NOTA: El mensaje de último tren (get_last_train_message) se mostrará solo en la foto, no aquí
-    # Así que no lo incluimos en msg2 ni msg3
+    # El mensaje de último tren (get_last_train_message) se mostrará solo en la foto, no aquí
 
     # Mensaje 2 (Monte Po)
     msg2 = ""
@@ -73,9 +72,9 @@ def build_temporary_messages(now: datetime, estacion_key: str):
                 elif current_station == "Il treno è appena partito da Stesicoro":
                     current_station_key_mp = "stesicoro"
                 if "appena partito" in current_station:
-                    line += f"   [{current_station}]\n"   # Corchetes en lugar de paréntesis
+                    line += f"   [{current_station}]\n"
                 elif "non ancora partito" not in current_station:
-                    line += f"   [il treno si trova attualmente a {current_station}]\n"   # Corchetes
+                    line += f"   [il treno si trova attualmente a {current_station}]\n"
         msg2 += line
         if mins <= 1 and next_info:
             paso2, mins2, secs2 = next_info
@@ -86,7 +85,6 @@ def build_temporary_messages(now: datetime, estacion_key: str):
                 msg2 += f"   Il successivo passerà tra {time_str2}.\n"
     else:
         msg2 += f"🔺 **Per Monte Po**: nessun treno in arrivo al momento.\n"
-    # No añadimos last_msg_text aquí
 
     # Mensaje 3 (Stesicoro)
     msg3 = ""
@@ -117,14 +115,13 @@ def build_temporary_messages(now: datetime, estacion_key: str):
                         break
             elif current_station == "Il treno è appena partito da Monte Po":
                 current_station_key_st = "montepo"
-        # Mostrar texto de localización solo si 2-10 min
         estaciones_localizacion_stesicoro = ["nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "giovanni"]
         if estacion_key in estaciones_localizacion_stesicoro and 2 <= mins <= 10:
             if rest_seconds < total_seconds:
                 if "appena partito" in current_station:
-                    line += f"   [{current_station}]\n"   # Corchetes
+                    line += f"   [{current_station}]\n"
                 elif "non ancora partito" not in current_station:
-                    line += f"   [il treno si trova attualmente a {current_station}]\n"   # Corchetes
+                    line += f"   [il treno si trova attualmente a {current_station}]\n"
         msg3 = line
         if mins <= 1 and next_info:
             paso2, mins2, secs2 = next_info
@@ -136,18 +133,29 @@ def build_temporary_messages(now: datetime, estacion_key: str):
     else:
         msg3 = f"🔻 **Per Stesicoro**: nessun treno in arrivo al momento.\n"
         tiempo_restante_st = 9999
-    # No añadimos last_msg_text aquí
 
     return msg2, msg3, current_station_key_mp, tiempo_restante_mp, current_station_key_st, tiempo_restante_st
 
 # ============================================================================
-# FUNCIONES DE ENVÍO (solo texto por ahora)
+# FUNCIONES DE ENVÍO (con GIFs solo para Milo)
 # ============================================================================
 async def send_msg2(update: Update, msg2: str, current_station_key_mp: str, tiempo_restante_mp: int, estacion_key: str):
-    # Solo texto por ahora, los GIFs se añadirán después
-    return await update.message.reply_text(msg2, parse_mode='Markdown')
+    # Solo para Milo y si se cumplen condiciones, enviamos GIF
+    if estacion_key == "milo" and current_station_key_mp and tiempo_restante_mp is not None and tiempo_restante_mp > 90:
+        cache_buster = int(time.time())
+        gif_url = f"https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_montepo_{current_station_key_mp}.gif?v={cache_buster}"
+        try:
+            print(f"DEBUG: Enviando GIF para Milo (Monte Po): {gif_url}")
+            return await update.message.reply_animation(animation=gif_url, caption=msg2, parse_mode='Markdown')
+        except Exception as e:
+            print(f"Error enviando GIF: {e}")
+            return await update.message.reply_text(msg2, parse_mode='Markdown')
+    else:
+        return await update.message.reply_text(msg2, parse_mode='Markdown')
 
 async def send_msg3(update: Update, msg3: str, current_station_key_st: str, tiempo_restante_st: int, estacion_key: str):
+    # Para la dirección Stesicoro, también podemos poner PNG o GIF, pero por ahora texto
+    # (más adelante se puede añadir)
     return await update.message.reply_text(msg3, parse_mode='Markdown')
 
 # ============================================================================
@@ -160,7 +168,6 @@ async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, 
             await asyncio.sleep(45)
             if context.chat_data.get('cancel_refresh', False):
                 break
-            # Borrar mensajes anteriores
             msg_ids = context.chat_data.get('refresh_msg_ids')
             if msg_ids:
                 try:
@@ -226,7 +233,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
             await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
         return
 
-    # Cabeceras Monte Po y Stesicoro (sin cambios en estructura, pero también añadiremos last_msg al caption)
+    # Cabeceras Monte Po y Stesicoro
     if estacion_key in ["montepo", "stesicoro"]:
         station = "Montepo" if estacion_key == "montepo" else "Stesicoro"
         closed, next_open, special_closing_msg = is_metro_closed(now, station)
@@ -287,9 +294,14 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
                 else:
                     msg += f"\n\n🚆 Questo è l'ultimo treno della giornata."
 
-        # Añadir mensaje de último tren (si existe) al caption de la foto
+        # Mensaje de cierre con emoji adecuado
         last_msg = get_last_train_message(now)
         if last_msg and not is_sant_agata(now):
+            # Reemplazar el emoji del reloj según la hora
+            if "01:00" in last_msg:
+                last_msg = last_msg.replace("📌", "🕐")
+            elif "22:30" in last_msg:
+                last_msg = last_msg.replace("📌", "🕙")
             msg += f"\n\n{last_msg}"
         img = get_station_image(estacion_key, now)
         if img:
@@ -324,27 +336,33 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
     nombre = NOMBRE_MOSTRAR.get(estacion_key, estacion_key.capitalize())
     img_station = get_station_image(estacion_key, now)
 
-    # 1. Construir caption de la foto: título + mensaje de último tren (si existe)
+    # Caption de la foto: título (con emoji 🚇) + mensaje de cierre (con emoji adecuado)
     last_msg = get_last_train_message(now)
-    last_msg_text = f"\n\n{last_msg}" if last_msg and not is_sant_agata(now) else ""
-    permanent_caption = f"{test_indicator}🚆 Prossimi treni a {nombre}{last_msg_text}"
+    last_msg_text = ""
+    if last_msg and not is_sant_agata(now):
+        if "01:00" in last_msg:
+            last_msg = last_msg.replace("📌", "🕐")
+        elif "22:30" in last_msg:
+            last_msg = last_msg.replace("📌", "🕙")
+        last_msg_text = f"\n\n{last_msg}"
+    permanent_caption = f"{test_indicator}🚇 Prossimi treni a {nombre}{last_msg_text}"
     
     if img_station:
         await update.message.reply_photo(photo=img_station, caption=permanent_caption, reply_markup=keyboard_main if return_to_main else keyboard_altri)
     else:
         await update.message.reply_text(permanent_caption, reply_markup=keyboard_main if return_to_main else keyboard_altri)
-    print("DEBUG: Foto de estación enviada con mensaje de cierre incluido")
+    print("DEBUG: Foto de estación enviada con mensaje de cierre")
 
-    # 2. Enviar primera tanda de mensajes 2 y 3 (solo texto, sin last_msg)
+    # Enviar mensajes 2 y 3 (sin el mensaje de cierre)
     msg2, msg3, current_station_key_mp, tiempo_restante_mp, current_station_key_st, tiempo_restante_st = build_temporary_messages(now, estacion_key)
     print(f"DEBUG: msg2 = {msg2[:50]}...")
     print(f"DEBUG: msg3 = {msg3[:50]}...")
-    msg2_obj = await update.message.reply_text(msg2, parse_mode='Markdown')
-    msg3_obj = await update.message.reply_text(msg3, parse_mode='Markdown')
+    msg2_obj = await send_msg2(update, msg2, current_station_key_mp, tiempo_restante_mp, estacion_key)
+    msg3_obj = await send_msg3(update, msg3, current_station_key_st, tiempo_restante_st, estacion_key)
     context.chat_data['refresh_msg_ids'] = (msg2_obj.message_id, msg3_obj.message_id)
     print(f"DEBUG: Mensajes 2 y 3 enviados. IDs: {msg2_obj.message_id}, {msg3_obj.message_id}")
 
-    # 3. Iniciar el bucle de actualización
+    # Iniciar bucle de actualización
     context.chat_data['refresh_active'] = True
     task = asyncio.create_task(auto_refresh_loop(update, context, estacion_key, update.effective_chat.id, nombre, use_simulated=(simulated is not None), simulated_now=now if simulated else None))
     context.chat_data['refresh_task'] = task
@@ -404,7 +422,10 @@ async def start(update, context):
     user = update.effective_user
     now = datetime.now()
     last_msg = get_last_train_message(now)
-    # Para el mensaje de bienvenida también podemos incluir last_msg si se desea, pero no es necesario
+    if "01:00" in last_msg:
+        last_msg = last_msg.replace("📌", "🕐")
+    elif "22:30" in last_msg:
+        last_msg = last_msg.replace("📌", "🕙")
     await update.message.reply_text(
         f"Ciao {user.first_name}! 👋\n\n"
         "Posso dirti quando passa il prossimo treno della metropolitana di Catania.\n"
@@ -445,7 +466,7 @@ async def handle_button(update, context):
 # COMANDO TEST GIF
 # ============================================================================
 async def cmd_testgif(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    gif_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/montepo-fontana.gif"
+    gif_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_montepo_fontana.gif"
     text_msg = (
         "🚆 Prossimi treni a Nesima\n\n"
         "🔺 Per Monte Po: Passa tra 3 minuti.\n"
