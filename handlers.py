@@ -1,4 +1,5 @@
 import asyncio
+import time
 from datetime import datetime, timedelta
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
@@ -64,7 +65,6 @@ def build_temporary_messages(now: datetime, estacion_key: str):
                 if seconds_passed < 0:
                     seconds_passed = 0
                 current_station = get_current_station_from_stesicoro(now, seconds_passed)
-                # Guardar clave para el GIF
                 if current_station not in ["non ancora partito da Stesicoro", "Il treno è appena partito da Stesicoro"]:
                     for key, name in NOMBRE_MOSTRAR.items():
                         if name == current_station:
@@ -157,9 +157,10 @@ async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, 
         now = simulated_now if (use_simulated and simulated_now) else datetime.now()
         msg2, msg3, current_station_key_mp, tiempo_restante_mp, current_station_key_st, tiempo_restante_st = build_temporary_messages(now, estacion_key)
 
-        # Enviar mensaje 2 (Monte Po) - como GIF si procede
+        # Enviar mensaje 2 (Monte Po) - como GIF si procede (con cache buster)
         if current_station_key_mp and tiempo_restante_mp is not None and tiempo_restante_mp > 90:
-            gif_url = f"https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_{current_station_key_mp}.gif"
+            cache_buster = int(time.time())
+            gif_url = f"https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_{current_station_key_mp}.gif?v={cache_buster}"
             try:
                 msg2_obj = await update.message.reply_animation(animation=gif_url, caption=msg2, parse_mode='Markdown')
             except Exception as e:
@@ -194,7 +195,8 @@ async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, 
 
             # Enviar nuevo mensaje 2
             if current_station_key_mp and tiempo_restante_mp is not None and tiempo_restante_mp > 90:
-                gif_url = f"https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_{current_station_key_mp}.gif"
+                cache_buster = int(time.time())
+                gif_url = f"https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_{current_station_key_mp}.gif?v={cache_buster}"
                 try:
                     msg2_obj = await update.message.reply_animation(animation=gif_url, caption=msg2, parse_mode='Markdown')
                 except:
