@@ -5,6 +5,7 @@ from flask import Flask
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackQueryHandler
 from horarios_logic import *
 from handlers import *
+from gif_handler import cmd_gif   # <-- Importamos el nuevo comando
 
 flask_app = Flask(__name__)
 
@@ -32,7 +33,7 @@ def main():
 
     app = Application.builder().token(TOKEN).build()
 
-    # Registrar comandos
+    # Registrar comandos (incluido /gif)
     commands = [
         ("start", start_wrapper), ("help", help_command_wrapper),
         ("montepo", cmd_montepo_wrapper), ("stesicoro", cmd_stesicoro_wrapper),
@@ -43,7 +44,7 @@ def main():
         ("italia", cmd_italia_wrapper), ("galatea", cmd_galatea_wrapper),
         ("giovanni", cmd_giovanni_wrapper), ("test", test_command_wrapper),
         ("testfin", testfin_command_wrapper), ("testgif", cmd_testgif_wrapper),
-        ("refrescar", cmd_refrescar_wrapper)
+        ("refrescar", cmd_refrescar_wrapper), ("gif", cmd_gif)   # <-- Nuevo comando
     ]
     for cmd, handler in commands:
         app.add_handler(CommandHandler(cmd, handler))
@@ -51,7 +52,7 @@ def main():
     # Manejador para el botón inline de refrescar
     app.add_handler(CallbackQueryHandler(callback_refrescar, pattern="^refresh_"))
 
-    # Capturar todos los mensajes de texto que no sean comandos
+    # Capturar todos los mensajes de texto que no sean comandos (para los botones)
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_button_wrapper))
 
     logger.info("Bot avviato.")
