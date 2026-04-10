@@ -3,7 +3,6 @@ import json
 import time as timer
 from datetime import datetime, time, timedelta, date
 from typing import Tuple, Optional, List, Dict, Any
-import pytz
 
 # ============================================================================
 # CARGAR CONFIGURACIÓN DESDE horarios.json
@@ -62,8 +61,6 @@ EXTRA_TRAMOS_REVERSE = [
     ("giuffrida", "borgo"), ("borgo", "milo"), ("milo", "cibali"),
     ("cibali", "sannullo"), ("sannullo", "nesima"), ("nesima", "fontana")
 ]
-
-CATANIA_TZ = pytz.timezone('Europe/Rome')
 
 # ============================================================================
 # DETECCIÓN DE HORA PUNTA
@@ -240,13 +237,11 @@ def get_next_departure_sant_agata(station: str, now: datetime) -> Tuple[Optional
     
     if current_min < first_min:
         next_dt = datetime.combine(now.date(), first)
-        next_dt = CATANIA_TZ.localize(next_dt)
         sec = int((next_dt - now).total_seconds())
         return (next_dt, sec // 60, sec % 60, True)
     if current_min >= last_min:
         tomorrow = now.date() + timedelta(days=1)
         next_dt = datetime.combine(tomorrow, first)
-        next_dt = CATANIA_TZ.localize(next_dt)
         sec = int((next_dt - now).total_seconds())
         return (next_dt, sec // 60, sec % 60, True)
     
@@ -266,14 +261,12 @@ def get_next_departure_sant_agata(station: str, now: datetime) -> Tuple[Optional
     if next_min > last_min:
         tomorrow = now.date() + timedelta(days=1)
         next_dt = datetime.combine(tomorrow, first)
-        next_dt = CATANIA_TZ.localize(next_dt)
         sec = int((next_dt - now).total_seconds())
         return (next_dt, sec // 60, sec % 60, True)
     
     next_hour = next_min // 60
     next_minute = next_min % 60
     next_dt = datetime.combine(now.date(), time(next_hour, next_minute))
-    next_dt = CATANIA_TZ.localize(next_dt)
     sec = int((next_dt - now).total_seconds())
     return (next_dt, sec // 60, sec % 60, True)
 
@@ -335,7 +328,6 @@ def get_next_departure_new_years_eve(station: str, now: datetime) -> Tuple[Optio
     next_hour = next_min_actual // 60
     next_minute = next_min_actual % 60
     next_dt = datetime.combine(next_date, time(next_hour, next_minute))
-    next_dt = CATANIA_TZ.localize(next_dt)
     sec = int((next_dt - now).total_seconds())
     return (next_dt, sec // 60, sec % 60, True)
 
@@ -414,11 +406,9 @@ def is_festivo_nazionale(now: datetime) -> bool:
     return (now.month, now.day) in FESTIVI_NAZIONALI
 
 # ============================================================================
-# FUNCIONES DE HORARIOS (comunes) - con corrección de zona horaria
+# FUNCIONES DE HORARIOS (comunes)
 # ============================================================================
 def get_opening_time(now: datetime, station: str = None) -> Tuple[int, int]:
-    if now.tzinfo is None:
-        now = CATANIA_TZ.localize(now)
     if is_new_years_eve(now):
         return (6, 0) if station == "Montepo" else (6, 25)
     if is_sant_agata(now):
@@ -430,8 +420,6 @@ def get_opening_time(now: datetime, station: str = None) -> Tuple[int, int]:
         return (6, 0)
 
 def get_closing_time(now: datetime, station: str) -> Tuple[int, int]:
-    if now.tzinfo is None:
-        now = CATANIA_TZ.localize(now)
     if is_new_years_eve(now):
         return (3, 0)
     if is_sant_agata(now):
@@ -447,14 +435,10 @@ def get_closing_time(now: datetime, station: str) -> Tuple[int, int]:
             return (22, 30)
 
 def is_metro_closed(now: datetime, station: str) -> Tuple[bool, Optional[datetime], str]:
-    if now.tzinfo is None:
-        now = CATANIA_TZ.localize(now)
-    
     if is_closed_all_day(now):
         tomorrow = now + timedelta(days=1)
         open_h, open_m = get_opening_time(tomorrow, station)
         next_open = datetime.combine(tomorrow.date(), time(open_h, open_m))
-        next_open = CATANIA_TZ.localize(next_open)
         return (True, next_open, "")
     
     if is_new_years_eve(now):
@@ -463,7 +447,6 @@ def is_metro_closed(now: datetime, station: str) -> Tuple[bool, Optional[datetim
             next_open = datetime.combine(now.date(), time(open_h, open_m))
             if next_open <= now:
                 next_open = datetime.combine(now.date() + timedelta(days=1), time(open_h, open_m))
-            next_open = CATANIA_TZ.localize(next_open)
             special_msg = "🚇 Non ci sono informazioni disponibili. Ricorda che oggi l'ultima metropolitana è partita alle 03:00."
             return (True, next_open, special_msg)
     
@@ -474,7 +457,6 @@ def is_metro_closed(now: datetime, station: str) -> Tuple[bool, Optional[datetim
             next_open = datetime.combine(now.date(), time(open_h, open_m))
             if next_open <= now:
                 next_open = datetime.combine(now.date() + timedelta(days=1), time(open_h, open_m))
-            next_open = CATANIA_TZ.localize(next_open)
             special_msg = "🚇 Non ci sono informazioni disponibili. Ricorda che oggi l'ultima metropolitana è partita alle 01:00."
             return (True, next_open, special_msg)
     
@@ -491,7 +473,6 @@ def is_metro_closed(now: datetime, station: str) -> Tuple[bool, Optional[datetim
             next_open = datetime.combine(now.date(), opening_time)
             if next_open <= now:
                 next_open = datetime.combine(now.date() + timedelta(days=1), opening_time)
-            next_open = CATANIA_TZ.localize(next_open)
             return (True, next_open, "")
     else:
         if current_time >= closing_time or current_time < opening_time:
@@ -499,7 +480,6 @@ def is_metro_closed(now: datetime, station: str) -> Tuple[bool, Optional[datetim
                 next_open = datetime.combine(now.date(), opening_time)
             else:
                 next_open = datetime.combine(now.date() + timedelta(days=1), opening_time)
-            next_open = CATANIA_TZ.localize(next_open)
             return (True, next_open, "")
         return (False, None, "")
 
@@ -535,8 +515,6 @@ def get_schedule_list(station: str, now: datetime) -> List[time]:
     return normal_list
 
 def get_next_departure(station: str, now: datetime) -> Tuple[Optional[datetime], int, int, bool]:
-    if now.tzinfo is None:
-        now = CATANIA_TZ.localize(now)
     if is_new_years_eve(now):
         return get_next_departure_new_years_eve(station, now)
     if is_sant_agata(now):
@@ -547,28 +525,22 @@ def get_next_departure(station: str, now: datetime) -> Tuple[Optional[datetime],
     for dep_time in schedule_list:
         if dep_time > current_time:
             next_dt = datetime.combine(now.date(), dep_time)
-            next_dt = CATANIA_TZ.localize(next_dt)
             delta = int((next_dt - now).total_seconds())
             return (next_dt, delta // 60, delta % 60, True)
     return (None, 0, 0, False)
 
 def get_next_departure_after(station: str, now: datetime, after_time: time) -> Tuple[Optional[datetime], int, int, bool]:
-    if now.tzinfo is None:
-        now = CATANIA_TZ.localize(now)
     if is_sant_agata(now):
         fake_now = datetime.combine(now.date(), after_time) + timedelta(minutes=1)
-        fake_now = CATANIA_TZ.localize(fake_now)
         return get_next_departure(station, fake_now)
     if is_new_years_eve(now):
         fake_now = datetime.combine(now.date(), after_time) + timedelta(minutes=1)
-        fake_now = CATANIA_TZ.localize(fake_now)
         return get_next_departure(station, fake_now)
     
     schedule_list = get_schedule_list(station, now)
     for dep_time in schedule_list:
         if dep_time > after_time:
             next_dt = datetime.combine(now.date(), dep_time)
-            next_dt = CATANIA_TZ.localize(next_dt)
             delta = int((next_dt - now).total_seconds())
             return (next_dt, delta // 60, delta % 60, True)
     return (None, 0, 0, False)
@@ -610,8 +582,6 @@ def get_last_train_message(now: datetime) -> str:
 # FUNCIONES PARA ESTACIONES INTERMEDIAS (usando segundos exactos)
 # ============================================================================
 def get_total_seconds_from_montepo(station: str, now: datetime) -> int:
-    if now.tzinfo is None:
-        now = CATANIA_TZ.localize(now)
     total = 0
     peak = is_peak_hour(now)
     for (start, end, base_sec) in FORWARD_PEAK:
@@ -629,8 +599,6 @@ def get_total_seconds_from_montepo(station: str, now: datetime) -> int:
     return max(0, total)
 
 def get_total_seconds_from_stesicoro(station: str, now: datetime) -> int:
-    if now.tzinfo is None:
-        now = CATANIA_TZ.localize(now)
     total = 0
     peak = is_peak_hour(now)
     for (start, end, base_sec) in REVERSE_PEAK:
@@ -648,8 +616,6 @@ def get_total_seconds_from_stesicoro(station: str, now: datetime) -> int:
     return max(0, total)
 
 def get_next_train_at_station(now: datetime, estacion_key: str) -> Tuple[Optional[Tuple], Optional[Tuple]]:
-    if now.tzinfo is None:
-        now = CATANIA_TZ.localize(now)
     tiempos_seg = {}
     stations = ["montepo", "fontana", "nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "giovanni", "stesicoro"]
     for st in stations:
@@ -665,7 +631,6 @@ def get_next_train_at_station(now: datetime, estacion_key: str) -> Tuple[Optiona
         pasos = []
         for salida in schedule_list:
             paso_dt = datetime.combine(now.date(), salida) + timedelta(seconds=seg_mp)
-            paso_dt = CATANIA_TZ.localize(paso_dt)
             pasos.append(paso_dt)
         next_paso = None
         next_idx = -1
@@ -694,7 +659,6 @@ def get_next_train_at_station(now: datetime, estacion_key: str) -> Tuple[Optiona
         pasos = []
         for salida in schedule_list:
             paso_dt = datetime.combine(now.date(), salida) + timedelta(seconds=seg_st)
-            paso_dt = CATANIA_TZ.localize(paso_dt)
             pasos.append(paso_dt)
         next_paso = None
         next_idx = -1
