@@ -1,7 +1,7 @@
 import asyncio
 import time
 from datetime import datetime, timedelta
-from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import ContextTypes
 from horarios_logic import *
 
@@ -31,7 +31,7 @@ BOTON_TO_KEY = {
 }
 
 # ============================================================================
-# CONSTRUCCIÓN DE MENSAJES TEMPORALES
+# CONSTRUCCIÓN DE MENSAJES TEMPORALES (solo texto, sin claves de estación)
 # ============================================================================
 def build_temporary_messages(now: datetime, estacion_key: str):
     info_mp, info_st = get_next_train_at_station(now, estacion_key)
@@ -39,16 +39,12 @@ def build_temporary_messages(now: datetime, estacion_key: str):
     last_msg = get_last_train_message(now)
     last_msg_text = f"\n{last_msg}" if last_msg and not is_sant_agata(now) else ""
 
-    # Mensaje 2 (Monte Po)
     msg2 = ""
-    current_station_key_mp = None
-    tiempo_restante_mp = None
     if closing_msg:
         msg2 += f"{closing_msg}\n"
     if info_st:
         paso_st, mins, secs, next_info = info_st
         time_str = format_time(mins, secs)
-        tiempo_restante_mp = mins*60 + secs
         if mins == 0 and secs < 30:
             line = f"🔺 **Per Monte Po**: treno in arrivo.\n"
         else:
@@ -56,6 +52,7 @@ def build_temporary_messages(now: datetime, estacion_key: str):
                 line = f"🔺 **Per Monte Po**: Passa tra **{time_str}**, alle {paso_st.strftime('%H:%M')}.\n"
             else:
                 line = f"🔺 **Per Monte Po**: Passa tra **{time_str}**.\n"
+        # Localización simplificada
         estaciones_localizacion_montepo = ["nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "fontana"]
         if estacion_key in estaciones_localizacion_montepo and 2 <= mins <= 10:
             rest_seconds = mins*60 + secs
@@ -65,13 +62,6 @@ def build_temporary_messages(now: datetime, estacion_key: str):
                 if seconds_passed < 0:
                     seconds_passed = 0
                 current_station = get_current_station_from_stesicoro(now, seconds_passed)
-                if current_station not in ["non ancora partito da Stesicoro", "Il treno è appena partito da Stesicoro"]:
-                    for key, name in NOMBRE_MOSTRAR.items():
-                        if name == current_station:
-                            current_station_key_mp = key
-                            break
-                elif current_station == "Il treno è appena partito da Stesicoro":
-                    current_station_key_mp = "stesicoro"
                 if "appena partito" in current_station:
                     line += f"   ({current_station})\n"
                 elif "non ancora partito" not in current_station:
@@ -89,14 +79,10 @@ def build_temporary_messages(now: datetime, estacion_key: str):
     if last_msg_text:
         msg2 += last_msg_text
 
-    # Mensaje 3 (Stesicoro)
     msg3 = ""
-    current_station_key_st = None
-    tiempo_restante_st = None
     if info_mp:
         paso_mp, mins, secs, next_info = info_mp
         time_str = format_time(mins, secs)
-        tiempo_restante_st = mins*60 + secs
         if mins == 0 and secs < 30:
             line = f"🔻 **Per Stesicoro**: treno in arrivo.\n"
         else:
@@ -104,24 +90,15 @@ def build_temporary_messages(now: datetime, estacion_key: str):
                 line = f"🔻 **Per Stesicoro**: Passa tra **{time_str}**, alle {paso_mp.strftime('%H:%M')}.\n"
             else:
                 line = f"🔻 **Per Stesicoro**: Passa tra **{time_str}**.\n"
-        rest_seconds = tiempo_restante_st
-        total_seconds = get_total_seconds_from_montepo(estacion_key, now)
-        if rest_seconds < total_seconds:
-            seconds_passed = total_seconds - rest_seconds
-            if seconds_passed < 0:
-                seconds_passed = 0
-            current_station = get_current_station_from_montepo(now, seconds_passed)
-            if current_station not in ["non ancora partito da Monte Po", "Il treno è appena partito da Monte Po"]:
-                for key, name in NOMBRE_MOSTRAR.items():
-                    if name == current_station:
-                        current_station_key_st = key
-                        break
-            elif current_station == "Il treno è appena partito da Monte Po":
-                current_station_key_st = "montepo"
-        # Mostrar texto de localización solo si 2-10 min
         estaciones_localizacion_stesicoro = ["nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "giovanni"]
         if estacion_key in estaciones_localizacion_stesicoro and 2 <= mins <= 10:
+            rest_seconds = mins*60 + secs
+            total_seconds = get_total_seconds_from_montepo(estacion_key, now)
             if rest_seconds < total_seconds:
+                seconds_passed = total_seconds - rest_seconds
+                if seconds_passed < 0:
+                    seconds_passed = 0
+                current_station = get_current_station_from_montepo(now, seconds_passed)
                 if "appena partito" in current_station:
                     line += f"   ({current_station})\n"
                 elif "non ancora partito" not in current_station:
@@ -136,57 +113,22 @@ def build_temporary_messages(now: datetime, estacion_key: str):
                 msg3 += f"   Il successivo passerà tra {time_str2}.\n"
     else:
         msg3 = f"🔻 **Per Stesicoro**: nessun treno in arrivo al momento.\n"
-        tiempo_restante_st = 9999
     if last_msg_text:
         msg3 += last_msg_text
 
-    return msg2, msg3, current_station_key_mp, tiempo_restante_mp, current_station_key_st, tiempo_restante_st
-
-# ============================================================================
-# FUNCIONES DE ENVÍO
-# ============================================================================
-async def send_msg2(update: Update, msg2: str, current_station_key_mp: str, tiempo_restante_mp: int):
-    if current_station_key_mp and tiempo_restante_mp is not None and tiempo_restante_mp > 90:
-        cache_buster = int(time.time())
-        gif_url = f"https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_{current_station_key_mp}.gif?v={cache_buster}"
-        try:
-            return await update.message.reply_animation(animation=gif_url, caption=msg2, parse_mode='Markdown')
-        except Exception as e:
-            print(f"Error GIF: {e}")
-            return await update.message.reply_text(msg2, parse_mode='Markdown')
-    else:
-        return await update.message.reply_text(msg2, parse_mode='Markdown')
-
-async def send_msg3(update: Update, msg3: str, current_station_key_st: str, tiempo_restante_st: int):
-    if current_station_key_st and tiempo_restante_st is not None and tiempo_restante_st > 90:
-        ruta_url = f"https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_montepo_{current_station_key_st}.png"
-        try:
-            return await update.message.reply_photo(photo=ruta_url, caption=msg3, parse_mode='Markdown')
-        except Exception as e:
-            print(f"Error foto: {e}")
-            return await update.message.reply_text(msg3, parse_mode='Markdown')
-    else:
-        return await update.message.reply_text(msg3, parse_mode='Markdown')
+    return msg2, msg3
 
 # ============================================================================
 # TAREA DE ACTUALIZACIÓN AUTOMÁTICA (3 ciclos de 45 segundos)
 # ============================================================================
 async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str, chat_id: int, station_display_name: str, use_simulated: bool = False, simulated_now: datetime = None):
     print(f"DEBUG: auto_refresh_loop iniciada para {estacion_key}")
-    context.chat_data['refresh_station_key'] = estacion_key
-    context.chat_data['refresh_station_name'] = station_display_name
-    if use_simulated and simulated_now:
-        context.chat_data['refresh_simulated'] = simulated_now
-    else:
-        context.chat_data.pop('refresh_simulated', None)
-
     try:
-        # Ciclos 1 y 2 (esperar 45s, borrar mensajes anteriores, reenviar)
         for ciclo in range(1, 3):
             await asyncio.sleep(45)
             if context.chat_data.get('cancel_refresh', False):
                 break
-            # Borrar mensajes anteriores (los que están en refresh_msg_ids)
+            # Borrar mensajes anteriores
             msg_ids = context.chat_data.get('refresh_msg_ids')
             if msg_ids:
                 try:
@@ -197,14 +139,11 @@ async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, 
                     await context.bot.delete_message(chat_id=chat_id, message_id=msg_ids[1])
                 except:
                     pass
-            # Calcular nuevos mensajes
             now = simulated_now if (use_simulated and simulated_now) else datetime.now()
-            msg2, msg3, current_station_key_mp, tiempo_restante_mp, current_station_key_st, tiempo_restante_st = build_temporary_messages(now, estacion_key)
-            # Enviar nuevos
-            msg2_obj = await send_msg2(update, msg2, current_station_key_mp, tiempo_restante_mp)
-            msg3_obj = await send_msg3(update, msg3, current_station_key_st, tiempo_restante_st)
+            msg2, msg3 = build_temporary_messages(now, estacion_key)
+            msg2_obj = await update.message.reply_text(msg2, parse_mode='Markdown')
+            msg3_obj = await update.message.reply_text(msg3, parse_mode='Markdown')
             context.chat_data['refresh_msg_ids'] = (msg2_obj.message_id, msg3_obj.message_id)
-
     except asyncio.CancelledError:
         print("DEBUG: auto_refresh_loop cancelada")
         pass
@@ -220,7 +159,7 @@ async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, 
 async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str, return_to_main: bool = True):
     print(f"DEBUG: send_station_response llamada para {estacion_key}")
     
-    # Cancelar cualquier tarea de refresco anterior
+    # Cancelar tarea anterior
     if 'refresh_task' in context.chat_data:
         task = context.chat_data['refresh_task']
         if not task.done():
@@ -358,25 +297,27 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
         await update.message.reply_photo(photo=img_station, caption=permanent_caption, reply_markup=keyboard_main if return_to_main else keyboard_altri)
     else:
         await update.message.reply_text(permanent_caption, reply_markup=keyboard_main if return_to_main else keyboard_altri)
+    print("DEBUG: Foto de estación enviada")
 
     # 2. Enviar primera tanda de mensajes 2 y 3 (SIEMPRE)
-    msg2, msg3, current_station_key_mp, tiempo_restante_mp, current_station_key_st, tiempo_restante_st = build_temporary_messages(now, estacion_key)
-    msg2_obj = await send_msg2(update, msg2, current_station_key_mp, tiempo_restante_mp)
-    msg3_obj = await send_msg3(update, msg3, current_station_key_st, tiempo_restante_st)
+    msg2, msg3 = build_temporary_messages(now, estacion_key)
+    print(f"DEBUG: msg2 = {msg2[:50]}...")
+    print(f"DEBUG: msg3 = {msg3[:50]}...")
+    msg2_obj = await update.message.reply_text(msg2, parse_mode='Markdown')
+    msg3_obj = await update.message.reply_text(msg3, parse_mode='Markdown')
     context.chat_data['refresh_msg_ids'] = (msg2_obj.message_id, msg3_obj.message_id)
     print(f"DEBUG: Mensajes 2 y 3 enviados. IDs: {msg2_obj.message_id}, {msg3_obj.message_id}")
 
-    # 3. Iniciar el bucle de actualización (comenzará en ciclo=1, después de 45s)
+    # 3. Iniciar el bucle de actualización
     context.chat_data['refresh_active'] = True
     task = asyncio.create_task(auto_refresh_loop(update, context, estacion_key, update.effective_chat.id, nombre, use_simulated=(simulated is not None), simulated_now=now if simulated else None))
     context.chat_data['refresh_task'] = task
     print(f"DEBUG: Tarea de refresco creada: {task}")
 
 # ============================================================================
-# MANEJADORES DE COMANDOS (con cancelación de tarea)
+# MANEJADORES DE COMANDOS
 # ============================================================================
 async def cancel_refresh_and_run(update: Update, context: ContextTypes.DEFAULT_TYPE, coro, *args, **kwargs):
-    # Cancelar tarea de refresco si existe
     if 'refresh_task' in context.chat_data:
         task = context.chat_data['refresh_task']
         if not task.done():
@@ -389,7 +330,6 @@ async def cancel_refresh_and_run(update: Update, context: ContextTypes.DEFAULT_T
     context.chat_data['refresh_active'] = False
     await coro(update, context, *args, **kwargs)
 
-# Wrappers
 async def cmd_montepo_wrapper(update, context): await cancel_refresh_and_run(update, context, cmd_montepo)
 async def cmd_stesicoro_wrapper(update, context): await cancel_refresh_and_run(update, context, cmd_stesicoro)
 async def cmd_milo_wrapper(update, context): await cancel_refresh_and_run(update, context, cmd_milo)
@@ -483,7 +423,7 @@ async def cmd_testgif(update: Update, context: ContextTypes.DEFAULT_TYPE):
         print(f"Error al borrar el GIF: {e}")
 
 # ============================================================================
-# COMANDOS TEST
+# COMANDOS TEST (2 y 3 argumentos)
 # ============================================================================
 async def test_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     args = context.args
