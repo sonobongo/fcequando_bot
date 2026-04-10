@@ -31,7 +31,7 @@ BOTON_TO_KEY = {
 }
 
 # ============================================================================
-# CONSTRUCCIÓN DE MENSAJES TEMPORALES
+# CONSTRUCCIÓN DE MENSAJES TEMPORALES (SIEMPRE DEVUELVE TEXTO, aunque no haya trenes)
 # ============================================================================
 def build_temporary_messages(now: datetime, estacion_key: str):
     info_mp, info_st = get_next_train_at_station(now, estacion_key)
@@ -143,9 +143,39 @@ def build_temporary_messages(now: datetime, estacion_key: str):
     return msg2, msg3, current_station_key_mp, tiempo_restante_mp, current_station_key_st, tiempo_restante_st
 
 # ============================================================================
+# FUNCIÓN PARA ENVIAR MENSAJE 2 (Monte Po) con GIF o texto
+# ============================================================================
+async def send_msg2(update: Update, msg2: str, current_station_key_mp: str, tiempo_restante_mp: int):
+    if current_station_key_mp and tiempo_restante_mp is not None and tiempo_restante_mp > 90:
+        cache_buster = int(time.time())
+        gif_url = f"https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_{current_station_key_mp}.gif?v={cache_buster}"
+        try:
+            return await update.message.reply_animation(animation=gif_url, caption=msg2, parse_mode='Markdown')
+        except Exception as e:
+            print(f"Error enviando GIF para Monte Po: {e}")
+            return await update.message.reply_text(msg2, parse_mode='Markdown')
+    else:
+        return await update.message.reply_text(msg2, parse_mode='Markdown')
+
+# ============================================================================
+# FUNCIÓN PARA ENVIAR MENSAJE 3 (Stesicoro) con foto o texto
+# ============================================================================
+async def send_msg3(update: Update, msg3: str, current_station_key_st: str, tiempo_restante_st: int):
+    if current_station_key_st and tiempo_restante_st is not None and tiempo_restante_st > 90:
+        ruta_url = f"https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_montepo_{current_station_key_st}.png"
+        try:
+            return await update.message.reply_photo(photo=ruta_url, caption=msg3, parse_mode='Markdown')
+        except Exception as e:
+            print(f"Error enviando foto para Stesicoro: {e}")
+            return await update.message.reply_text(msg3, parse_mode='Markdown')
+    else:
+        return await update.message.reply_text(msg3, parse_mode='Markdown')
+
+# ============================================================================
 # TAREA DE ACTUALIZACIÓN AUTOMÁTICA (3 ciclos de 45 segundos)
 # ============================================================================
 async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str, chat_id: int, station_display_name: str, use_simulated: bool = False, simulated_now: datetime = None):
+    print(f"DEBUG: auto_refresh_loop iniciada para {estacion_key}")
     context.chat_data['refresh_station_key'] = estacion_key
     context.chat_data['refresh_station_name'] = station_display_name
     if use_simulated and simulated_now:
@@ -154,81 +184,49 @@ async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, 
         context.chat_data.pop('refresh_simulated', None)
 
     try:
-        now = simulated_now if (use_simulated and simulated_now) else datetime.now()
-        msg2, msg3, current_station_key_mp, tiempo_restante_mp, current_station_key_st, tiempo_restante_st = build_temporary_messages(now, estacion_key)
-
-        # Enviar mensaje 2 (Monte Po) - como GIF si procede (con cache buster)
-        if current_station_key_mp and tiempo_restante_mp is not None and tiempo_restante_mp > 90:
-            cache_buster = int(time.time())
-            gif_url = f"https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_{current_station_key_mp}.gif?v={cache_buster}"
-            try:
-                msg2_obj = await update.message.reply_animation(animation=gif_url, caption=msg2, parse_mode='Markdown')
-            except Exception as e:
-                print(f"Error enviando GIF para Monte Po: {e}")
-                msg2_obj = await update.message.reply_text(msg2, parse_mode='Markdown')
-        else:
-            msg2_obj = await update.message.reply_text(msg2, parse_mode='Markdown')
-
-        # Enviar mensaje 3 (Stesicoro) - como foto PNG si procede
-        if current_station_key_st and tiempo_restante_st is not None and tiempo_restante_st > 90:
-            ruta_url = f"https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_montepo_{current_station_key_st}.png"
-            try:
-                msg3_obj = await update.message.reply_photo(photo=ruta_url, caption=msg3, parse_mode='Markdown')
-            except:
-                msg3_obj = await update.message.reply_text(msg3, parse_mode='Markdown')
-        else:
-            msg3_obj = await update.message.reply_text(msg3, parse_mode='Markdown')
-        context.chat_data['refresh_msg_ids'] = (msg2_obj.message_id, msg3_obj.message_id)
-
+        # Ciclos 1 y 2 (esperar 45s, borrar mensajes anteriores, reenviar)
         for ciclo in range(1, 3):
             await asyncio.sleep(45)
-            try:
-                await context.bot.delete_message(chat_id=chat_id, message_id=msg2_obj.message_id)
-            except:
-                pass
-            try:
-                await context.bot.delete_message(chat_id=chat_id, message_id=msg3_obj.message_id)
-            except:
-                pass
+            if context.chat_data.get('cancel_refresh', False):
+                break
+            # Borrar mensajes anteriores (los que están en refresh_msg_ids)
+            msg_ids = context.chat_data.get('refresh_msg_ids')
+            if msg_ids:
+                try:
+                    await context.bot.delete_message(chat_id=chat_id, message_id=msg_ids[0])
+                except:
+                    pass
+                try:
+                    await context.bot.delete_message(chat_id=chat_id, message_id=msg_ids[1])
+                except:
+                    pass
+            # Calcular nuevos mensajes
             now = simulated_now if (use_simulated and simulated_now) else datetime.now()
             msg2, msg3, current_station_key_mp, tiempo_restante_mp, current_station_key_st, tiempo_restante_st = build_temporary_messages(now, estacion_key)
-
-            # Enviar nuevo mensaje 2
-            if current_station_key_mp and tiempo_restante_mp is not None and tiempo_restante_mp > 90:
-                cache_buster = int(time.time())
-                gif_url = f"https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_{current_station_key_mp}.gif?v={cache_buster}"
-                try:
-                    msg2_obj = await update.message.reply_animation(animation=gif_url, caption=msg2, parse_mode='Markdown')
-                except:
-                    msg2_obj = await update.message.reply_text(msg2, parse_mode='Markdown')
-            else:
-                msg2_obj = await update.message.reply_text(msg2, parse_mode='Markdown')
-
-            # Enviar nuevo mensaje 3
-            if current_station_key_st and tiempo_restante_st is not None and tiempo_restante_st > 90:
-                ruta_url = f"https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_montepo_{current_station_key_st}.png"
-                try:
-                    msg3_obj = await update.message.reply_photo(photo=ruta_url, caption=msg3, parse_mode='Markdown')
-                except:
-                    msg3_obj = await update.message.reply_text(msg3, parse_mode='Markdown')
-            else:
-                msg3_obj = await update.message.reply_text(msg3, parse_mode='Markdown')
+            # Enviar nuevos mensajes
+            msg2_obj = await send_msg2(update, msg2, current_station_key_mp, tiempo_restante_mp)
+            msg3_obj = await send_msg3(update, msg3, current_station_key_st, tiempo_restante_st)
             context.chat_data['refresh_msg_ids'] = (msg2_obj.message_id, msg3_obj.message_id)
 
-        refresh_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔄 Refrescar", callback_data=f"refresh_{estacion_key}")]])
-        await update.message.reply_text("", reply_markup=refresh_keyboard)
+        # Después del tercer ciclo, enviar botón de refrescar (si no se canceló)
+        if not context.chat_data.get('cancel_refresh', False):
+            refresh_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔄 Refrescar", callback_data=f"refresh_{estacion_key}")]])
+            await update.message.reply_text("", reply_markup=refresh_keyboard)
 
     except asyncio.CancelledError:
+        print("DEBUG: auto_refresh_loop cancelada")
         pass
     finally:
         context.chat_data['refresh_active'] = False
         context.chat_data.pop('refresh_task', None)
         context.chat_data.pop('cancel_refresh', None)
+        print("DEBUG: auto_refresh_loop finalizada")
 
 # ============================================================================
 # RESPUESTA PRINCIPAL
 # ============================================================================
 async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str, return_to_main: bool = True):
+    print(f"DEBUG: send_station_response llamada para {estacion_key}")
     # Cancelar tarea anterior
     if 'refresh_task' in context.chat_data:
         task = context.chat_data['refresh_task']
@@ -264,7 +262,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
             await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
         return
 
-    # Cabeceras Monte Po y Stesicoro
+    # Cabeceras Monte Po y Stesicoro (sin cambios)
     if estacion_key in ["montepo", "stesicoro"]:
         station = "Montepo" if estacion_key == "montepo" else "Stesicoro"
         closed, next_open, special_closing_msg = is_metro_closed(now, station)
@@ -367,9 +365,18 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
     else:
         await update.message.reply_text(permanent_caption, reply_markup=keyboard_main if return_to_main else keyboard_altri)
 
+    # Enviar la primera tanda de mensajes 2 y 3 inmediatamente (SIEMPRE)
+    msg2, msg3, current_station_key_mp, tiempo_restante_mp, current_station_key_st, tiempo_restante_st = build_temporary_messages(now, estacion_key)
+    msg2_obj = await send_msg2(update, msg2, current_station_key_mp, tiempo_restante_mp)
+    msg3_obj = await send_msg3(update, msg3, current_station_key_st, tiempo_restante_st)
+    context.chat_data['refresh_msg_ids'] = (msg2_obj.message_id, msg3_obj.message_id)
+    print(f"DEBUG: Mensajes 2 y 3 enviados. IDs: {msg2_obj.message_id}, {msg3_obj.message_id}")
+
+    # Iniciar el bucle de actualización (comenzará en ciclo=1, después de 45s)
     context.chat_data['refresh_active'] = True
     task = asyncio.create_task(auto_refresh_loop(update, context, estacion_key, update.effective_chat.id, nombre, use_simulated=(simulated is not None), simulated_now=now if simulated else None))
     context.chat_data['refresh_task'] = task
+    print(f"DEBUG: Tarea de refresco creada: {task}")
 
 # ============================================================================
 # CALLBACK DEL BOTÓN DE REFRESCAR
@@ -412,7 +419,7 @@ async def cmd_refrescar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await callback_refrescar(update, context)
 
 # ============================================================================
-# MANEJADORES DE COMANDOS
+# MANEJADORES DE COMANDOS (con cancelación de tarea)
 # ============================================================================
 async def cancel_refresh_and_run(update: Update, context: ContextTypes.DEFAULT_TYPE, coro, *args, **kwargs):
     if 'refresh_task' in context.chat_data:
