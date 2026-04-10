@@ -1,5 +1,5 @@
 import asyncio
-import time
+import time as timer
 from datetime import datetime, timedelta
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import ContextTypes
@@ -31,12 +31,11 @@ BOTON_TO_KEY = {
 }
 
 # ============================================================================
-# CONSTRUCCIÓN DE MENSAJES TEMPORALES (sin mensaje de cierre, con corchetes)
+# CONSTRUCCIÓN DE MENSAJES TEMPORALES (con corchetes y sin mensaje de cierre)
 # ============================================================================
 def build_temporary_messages(now: datetime, estacion_key: str):
     info_mp, info_st = get_next_train_at_station(now, estacion_key)
     closing_msg = get_closing_message(estacion_key, now)
-    # El mensaje de último tren (get_last_train_message) se mostrará solo en la foto, no aquí
 
     # Mensaje 2 (Monte Po)
     msg2 = ""
@@ -137,25 +136,26 @@ def build_temporary_messages(now: datetime, estacion_key: str):
     return msg2, msg3, current_station_key_mp, tiempo_restante_mp, current_station_key_st, tiempo_restante_st
 
 # ============================================================================
-# FUNCIONES DE ENVÍO (con GIFs solo para Milo)
+# FUNCIONES DE ENVÍO (con GIFs solo para Milo, con manejo de errores)
 # ============================================================================
 async def send_msg2(update: Update, msg2: str, current_station_key_mp: str, tiempo_restante_mp: int, estacion_key: str):
     # Solo para Milo y si se cumplen condiciones, enviamos GIF
     if estacion_key == "milo" and current_station_key_mp and tiempo_restante_mp is not None and tiempo_restante_mp > 90:
-        cache_buster = int(time.time())
+        cache_buster = int(timer.time())
         gif_url = f"https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_montepo_{current_station_key_mp}.gif?v={cache_buster}"
         try:
             print(f"DEBUG: Enviando GIF para Milo (Monte Po): {gif_url}")
             return await update.message.reply_animation(animation=gif_url, caption=msg2, parse_mode='Markdown')
         except Exception as e:
             print(f"Error enviando GIF: {e}")
+            # Si falla, enviamos texto
             return await update.message.reply_text(msg2, parse_mode='Markdown')
     else:
+        # Para otras estaciones o si no aplica GIF, enviamos texto
         return await update.message.reply_text(msg2, parse_mode='Markdown')
 
 async def send_msg3(update: Update, msg3: str, current_station_key_st: str, tiempo_restante_st: int, estacion_key: str):
-    # Para la dirección Stesicoro, también podemos poner PNG o GIF, pero por ahora texto
-    # (más adelante se puede añadir)
+    # Por ahora, solo texto para Stesicoro (puede ampliarse después)
     return await update.message.reply_text(msg3, parse_mode='Markdown')
 
 # ============================================================================
@@ -294,10 +294,8 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
                 else:
                     msg += f"\n\n🚆 Questo è l'ultimo treno della giornata."
 
-        # Mensaje de cierre con emoji adecuado
         last_msg = get_last_train_message(now)
         if last_msg and not is_sant_agata(now):
-            # Reemplazar el emoji del reloj según la hora
             if "01:00" in last_msg:
                 last_msg = last_msg.replace("📌", "🕐")
             elif "22:30" in last_msg:
@@ -353,7 +351,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
         await update.message.reply_text(permanent_caption, reply_markup=keyboard_main if return_to_main else keyboard_altri)
     print("DEBUG: Foto de estación enviada con mensaje de cierre")
 
-    # Enviar mensajes 2 y 3 (sin el mensaje de cierre)
+    # Enviar mensajes 2 y 3
     msg2, msg3, current_station_key_mp, tiempo_restante_mp, current_station_key_st, tiempo_restante_st = build_temporary_messages(now, estacion_key)
     print(f"DEBUG: msg2 = {msg2[:50]}...")
     print(f"DEBUG: msg3 = {msg3[:50]}...")
