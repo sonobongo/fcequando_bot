@@ -30,7 +30,7 @@ BOTON_TO_KEY = {
 }
 
 # ============================================================================
-# CONSTRUCCIÓN DE MENSAJES TEMPORALES
+# CONSTRUCCIÓN DE MENSAJES TEMPORALES (modificada para devolver también clave de Monte Po)
 # ============================================================================
 def build_temporary_messages(now: datetime, estacion_key: str):
     info_mp, info_st = get_next_train_at_station(now, estacion_key)
@@ -40,11 +40,14 @@ def build_temporary_messages(now: datetime, estacion_key: str):
 
     # Mensaje 2 (Monte Po)
     msg2 = ""
+    current_station_key_mp = None
+    tiempo_restante_mp = None
     if closing_msg:
         msg2 += f"{closing_msg}\n"
     if info_st:
         paso_st, mins, secs, next_info = info_st
         time_str = format_time(mins, secs)
+        tiempo_restante_mp = mins*60 + secs
         if mins == 0 and secs < 30:
             line = f"🔺 **Per Monte Po**: treno in arrivo.\n"
         else:
@@ -61,6 +64,14 @@ def build_temporary_messages(now: datetime, estacion_key: str):
                 if seconds_passed < 0:
                     seconds_passed = 0
                 current_station = get_current_station_from_stesicoro(now, seconds_passed)
+                # Guardar clave para el GIF
+                if current_station not in ["non ancora partito da Stesicoro", "Il treno è appena partito da Stesicoro"]:
+                    for key, name in NOMBRE_MOSTRAR.items():
+                        if name == current_station:
+                            current_station_key_mp = key
+                            break
+                elif current_station == "Il treno è appena partito da Stesicoro":
+                    current_station_key_mp = "stesicoro"
                 if "appena partito" in current_station:
                     line += f"   ({current_station})\n"
                 elif "non ancora partito" not in current_station:
@@ -80,12 +91,12 @@ def build_temporary_messages(now: datetime, estacion_key: str):
 
     # Mensaje 3 (Stesicoro) y clave para foto de ruta
     msg3 = ""
-    current_station_key = None
-    tiempo_restante = None
+    current_station_key_st = None
+    tiempo_restante_st = None
     if info_mp:
         paso_mp, mins, secs, next_info = info_mp
         time_str = format_time(mins, secs)
-        tiempo_restante = mins*60 + secs
+        tiempo_restante_st = mins*60 + secs
         if mins == 0 and secs < 30:
             line = f"🔻 **Per Stesicoro**: treno in arrivo.\n"
         else:
@@ -93,7 +104,7 @@ def build_temporary_messages(now: datetime, estacion_key: str):
                 line = f"🔻 **Per Stesicoro**: Passa tra **{time_str}**, alle {paso_mp.strftime('%H:%M')}.\n"
             else:
                 line = f"🔻 **Per Stesicoro**: Passa tra **{time_str}**.\n"
-        rest_seconds = tiempo_restante
+        rest_seconds = tiempo_restante_st
         total_seconds = get_total_seconds_from_montepo(estacion_key, now)
         if rest_seconds < total_seconds:
             seconds_passed = total_seconds - rest_seconds
@@ -103,10 +114,10 @@ def build_temporary_messages(now: datetime, estacion_key: str):
             if current_station not in ["non ancora partito da Monte Po", "Il treno è appena partito da Monte Po"]:
                 for key, name in NOMBRE_MOSTRAR.items():
                     if name == current_station:
-                        current_station_key = key
+                        current_station_key_st = key
                         break
             elif current_station == "Il treno è appena partito da Monte Po":
-                current_station_key = "montepo"
+                current_station_key_st = "montepo"
         # Mostrar texto de localización solo si 2-10 min
         estaciones_localizacion_stesicoro = ["nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "giovanni"]
         if estacion_key in estaciones_localizacion_stesicoro and 2 <= mins <= 10:
@@ -125,11 +136,11 @@ def build_temporary_messages(now: datetime, estacion_key: str):
                 msg3 += f"   Il successivo passerà tra {time_str2}.\n"
     else:
         msg3 = f"🔻 **Per Stesicoro**: nessun treno in arrivo al momento.\n"
-        tiempo_restante = 9999
+        tiempo_restante_st = 9999
     if last_msg_text:
         msg3 += last_msg_text
 
-    return msg2, msg3, current_station_key, tiempo_restante
+    return msg2, msg3, current_station_key_mp, tiempo_restante_mp, current_station_key_st, tiempo_restante_st
 
 # ============================================================================
 # TAREA DE ACTUALIZACIÓN AUTOMÁTICA (3 ciclos de 45 segundos)
@@ -144,10 +155,22 @@ async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, 
 
     try:
         now = simulated_now if (use_simulated and simulated_now) else datetime.now()
-        msg2, msg3, current_station_key, tiempo_restante = build_temporary_messages(now, estacion_key)
-        msg2_obj = await update.message.reply_text(msg2, parse_mode='Markdown')
-        if current_station_key and tiempo_restante is not None and tiempo_restante > 90:
-            ruta_url = f"https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_montepo_{current_station_key}.png"
+        msg2, msg3, current_station_key_mp, tiempo_restante_mp, current_station_key_st, tiempo_restante_st = build_temporary_messages(now, estacion_key)
+
+        # Enviar mensaje 2 (Monte Po) - como GIF si procede
+        if current_station_key_mp and tiempo_restante_mp is not None and tiempo_restante_mp > 90:
+            gif_url = f"https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/stesicoro_{current_station_key_mp}.gif"
+            try:
+                msg2_obj = await update.message.reply_animation(animation=gif_url, caption=msg2, parse_mode='Markdown')
+            except Exception as e:
+                print(f"Error enviando GIF para Monte Po: {e}")
+                msg2_obj = await update.message.reply_text(msg2, parse_mode='Markdown')
+        else:
+            msg2_obj = await update.message.reply_text(msg2, parse_mode='Markdown')
+
+        # Enviar mensaje 3 (Stesicoro) - como foto PNG si procede
+        if current_station_key_st and tiempo_restante_st is not None and tiempo_restante_st > 90:
+            ruta_url = f"https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_montepo_{current_station_key_st}.png"
             try:
                 msg3_obj = await update.message.reply_photo(photo=ruta_url, caption=msg3, parse_mode='Markdown')
             except:
@@ -167,10 +190,21 @@ async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, 
             except:
                 pass
             now = simulated_now if (use_simulated and simulated_now) else datetime.now()
-            msg2, msg3, current_station_key, tiempo_restante = build_temporary_messages(now, estacion_key)
-            msg2_obj = await update.message.reply_text(msg2, parse_mode='Markdown')
-            if current_station_key and tiempo_restante is not None and tiempo_restante > 90:
-                ruta_url = f"https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_montepo_{current_station_key}.png"
+            msg2, msg3, current_station_key_mp, tiempo_restante_mp, current_station_key_st, tiempo_restante_st = build_temporary_messages(now, estacion_key)
+
+            # Enviar nuevo mensaje 2
+            if current_station_key_mp and tiempo_restante_mp is not None and tiempo_restante_mp > 90:
+                gif_url = f"https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/stesicoro_{current_station_key_mp}.gif"
+                try:
+                    msg2_obj = await update.message.reply_animation(animation=gif_url, caption=msg2, parse_mode='Markdown')
+                except:
+                    msg2_obj = await update.message.reply_text(msg2, parse_mode='Markdown')
+            else:
+                msg2_obj = await update.message.reply_text(msg2, parse_mode='Markdown')
+
+            # Enviar nuevo mensaje 3
+            if current_station_key_st and tiempo_restante_st is not None and tiempo_restante_st > 90:
+                ruta_url = f"https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_montepo_{current_station_key_st}.png"
                 try:
                     msg3_obj = await update.message.reply_photo(photo=ruta_url, caption=msg3, parse_mode='Markdown')
                 except:
@@ -190,7 +224,7 @@ async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, 
         context.chat_data.pop('cancel_refresh', None)
 
 # ============================================================================
-# RESPUESTA PRINCIPAL
+# RESPUESTA PRINCIPAL (sin cambios relevantes, solo se adapta a la nueva estructura)
 # ============================================================================
 async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str, return_to_main: bool = True):
     # Cancelar tarea anterior
@@ -228,7 +262,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
             await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
         return
 
-    # Cabeceras Monte Po y Stesicoro
+    # Cabeceras Monte Po y Stesicoro (sin cambios)
     if estacion_key in ["montepo", "stesicoro"]:
         station = "Montepo" if estacion_key == "montepo" else "Stesicoro"
         closed, next_open, special_closing_msg = is_metro_closed(now, station)
@@ -336,7 +370,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
     context.chat_data['refresh_task'] = task
 
 # ============================================================================
-# CALLBACK DEL BOTÓN DE REFRESCAR
+# CALLBACK DEL BOTÓN DE REFRESCAR (sin cambios)
 # ============================================================================
 async def callback_refrescar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -366,7 +400,7 @@ async def callback_refrescar(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await send_station_response(fake_update, context, estacion_key, return_to_main=False)
 
 # ============================================================================
-# COMANDO REFRESCAR
+# COMANDO REFRESCAR (sin cambios)
 # ============================================================================
 async def cmd_refrescar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     estacion_key = context.chat_data.get('refresh_station_key')
@@ -376,7 +410,7 @@ async def cmd_refrescar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await callback_refrescar(update, context)
 
 # ============================================================================
-# MANEJADORES DE COMANDOS (con cancelación de tarea)
+# MANEJADORES DE COMANDOS (sin cambios)
 # ============================================================================
 async def cancel_refresh_and_run(update: Update, context: ContextTypes.DEFAULT_TYPE, coro, *args, **kwargs):
     if 'refresh_task' in context.chat_data:
@@ -469,7 +503,7 @@ async def handle_button(update, context):
         await update.message.reply_text("Scelta non valida. Usa i pulsanti.", reply_markup=keyboard_main)
 
 # ============================================================================
-# COMANDO TEST GIF
+# COMANDO TEST GIF (sin cambios)
 # ============================================================================
 async def cmd_testgif(update: Update, context: ContextTypes.DEFAULT_TYPE):
     gif_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/montepo-fontana.gif"
@@ -487,7 +521,7 @@ async def cmd_testgif(update: Update, context: ContextTypes.DEFAULT_TYPE):
         print(f"Error al borrar el GIF: {e}")
 
 # ============================================================================
-# COMANDOS TEST (2 y 3 argumentos)
+# COMANDOS TEST (2 y 3 argumentos) - sin cambios
 # ============================================================================
 async def test_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     args = context.args
