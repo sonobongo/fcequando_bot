@@ -31,7 +31,22 @@ BOTON_TO_KEY = {
 }
 
 # ============================================================================
-# CONSTRUCCIÓN DE MENSAJES TEMPORALES (SIEMPRE DEVUELVE TEXTO, aunque no haya trenes)
+# FUNCIONES DE LIMPIEZA
+# ============================================================================
+async def clear_all_bot_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Borra todos los mensajes que el bot ha enviado en este chat (lista guardada)."""
+    if 'bot_messages' in context.chat_data:
+        for msg_id in context.chat_data['bot_messages']:
+            try:
+                await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=msg_id)
+            except:
+                pass
+        context.chat_data['bot_messages'] = []
+    else:
+        context.chat_data['bot_messages'] = []
+
+# ============================================================================
+# CONSTRUCCIÓN DE MENSAJES TEMPORALES
 # ============================================================================
 def build_temporary_messages(now: datetime, estacion_key: str):
     info_mp, info_st = get_next_train_at_station(now, estacion_key)
@@ -89,7 +104,7 @@ def build_temporary_messages(now: datetime, estacion_key: str):
     if last_msg_text:
         msg2 += last_msg_text
 
-    # Mensaje 3 (Stesicoro) y clave para foto de ruta
+    # Mensaje 3 (Stesicoro)
     msg3 = ""
     current_station_key_st = None
     tiempo_restante_st = None
@@ -143,7 +158,7 @@ def build_temporary_messages(now: datetime, estacion_key: str):
     return msg2, msg3, current_station_key_mp, tiempo_restante_mp, current_station_key_st, tiempo_restante_st
 
 # ============================================================================
-# FUNCIÓN PARA ENVIAR MENSAJE 2 (Monte Po) con GIF o texto
+# FUNCIONES DE ENVÍO
 # ============================================================================
 async def send_msg2(update: Update, msg2: str, current_station_key_mp: str, tiempo_restante_mp: int):
     if current_station_key_mp and tiempo_restante_mp is not None and tiempo_restante_mp > 90:
@@ -152,21 +167,18 @@ async def send_msg2(update: Update, msg2: str, current_station_key_mp: str, tiem
         try:
             return await update.message.reply_animation(animation=gif_url, caption=msg2, parse_mode='Markdown')
         except Exception as e:
-            print(f"Error enviando GIF para Monte Po: {e}")
+            print(f"Error GIF: {e}")
             return await update.message.reply_text(msg2, parse_mode='Markdown')
     else:
         return await update.message.reply_text(msg2, parse_mode='Markdown')
 
-# ============================================================================
-# FUNCIÓN PARA ENVIAR MENSAJE 3 (Stesicoro) con foto o texto
-# ============================================================================
 async def send_msg3(update: Update, msg3: str, current_station_key_st: str, tiempo_restante_st: int):
     if current_station_key_st and tiempo_restante_st is not None and tiempo_restante_st > 90:
         ruta_url = f"https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_montepo_{current_station_key_st}.png"
         try:
             return await update.message.reply_photo(photo=ruta_url, caption=msg3, parse_mode='Markdown')
         except Exception as e:
-            print(f"Error enviando foto para Stesicoro: {e}")
+            print(f"Error foto: {e}")
             return await update.message.reply_text(msg3, parse_mode='Markdown')
     else:
         return await update.message.reply_text(msg3, parse_mode='Markdown')
@@ -184,12 +196,12 @@ async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, 
         context.chat_data.pop('refresh_simulated', None)
 
     try:
-        # Ciclos 1 y 2 (esperar 45s, borrar mensajes anteriores, reenviar)
+        # Ciclos 1 y 2 (esperar 45s, borrar mensajes temporales, reenviar)
         for ciclo in range(1, 3):
             await asyncio.sleep(45)
             if context.chat_data.get('cancel_refresh', False):
                 break
-            # Borrar mensajes anteriores (los que están en refresh_msg_ids)
+            # Borrar mensajes temporales actuales
             msg_ids = context.chat_data.get('refresh_msg_ids')
             if msg_ids:
                 try:
@@ -203,15 +215,19 @@ async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, 
             # Calcular nuevos mensajes
             now = simulated_now if (use_simulated and simulated_now) else datetime.now()
             msg2, msg3, current_station_key_mp, tiempo_restante_mp, current_station_key_st, tiempo_restante_st = build_temporary_messages(now, estacion_key)
-            # Enviar nuevos mensajes
+            # Enviar nuevos
             msg2_obj = await send_msg2(update, msg2, current_station_key_mp, tiempo_restante_mp)
             msg3_obj = await send_msg3(update, msg3, current_station_key_st, tiempo_restante_st)
             context.chat_data['refresh_msg_ids'] = (msg2_obj.message_id, msg3_obj.message_id)
+            # Añadir a la lista de mensajes del bot para limpieza futura
+            context.chat_data['bot_messages'].append(msg2_obj.message_id)
+            context.chat_data['bot_messages'].append(msg3_obj.message_id)
 
-        # Después del tercer ciclo, enviar botón de refrescar (si no se canceló)
+        # Después del tercer ciclo, enviar botón de refrescar
         if not context.chat_data.get('cancel_refresh', False):
             refresh_keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔄 Refrescar", callback_data=f"refresh_{estacion_key}")]])
-            await update.message.reply_text("", reply_markup=refresh_keyboard)
+            btn_msg = await update.message.reply_text("", reply_markup=refresh_keyboard)
+            context.chat_data['bot_messages'].append(btn_msg.message_id)
 
     except asyncio.CancelledError:
         print("DEBUG: auto_refresh_loop cancelada")
@@ -227,7 +243,8 @@ async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, 
 # ============================================================================
 async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str, return_to_main: bool = True):
     print(f"DEBUG: send_station_response llamada para {estacion_key}")
-    # Cancelar tarea anterior
+    
+    # Cancelar cualquier tarea de refresco anterior
     if 'refresh_task' in context.chat_data:
         task = context.chat_data['refresh_task']
         if not task.done():
@@ -239,7 +256,10 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
         context.chat_data.pop('refresh_task', None)
     context.chat_data['refresh_active'] = False
     context.chat_data['cancel_refresh'] = False
-
+    
+    # Borrar todos los mensajes anteriores del bot en este chat
+    await clear_all_bot_messages(update, context)
+    
     simulated = context.chat_data.get('test_time') if context.chat_data else None
     if simulated:
         now = simulated
@@ -249,7 +269,8 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
 
     warning = get_closing_warning(now)
     if warning:
-        await update.message.reply_text(warning, reply_markup=keyboard_main if return_to_main else keyboard_altri)
+        warn_msg = await update.message.reply_text(warning, reply_markup=keyboard_main if return_to_main else keyboard_altri)
+        context.chat_data['bot_messages'].append(warn_msg.message_id)
 
     special_msg = SANT_AGATA.get("message", "") + "\n\n" if is_sant_agata(now) else ""
 
@@ -257,12 +278,14 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
         msg = f"{special_msg}{test_indicator}🚇 Oggi la metropolitana è chiusa tutto il giorno.\n🕒 Riaprirà domani mattina."
         img = get_station_image(estacion_key, now)
         if img:
-            await update.message.reply_photo(photo=img, caption=msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
+            photo_msg = await update.message.reply_photo(photo=img, caption=msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
+            context.chat_data['bot_messages'].append(photo_msg.message_id)
         else:
-            await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
+            text_msg = await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
+            context.chat_data['bot_messages'].append(text_msg.message_id)
         return
 
-    # Cabeceras Monte Po y Stesicoro (sin cambios)
+    # Cabeceras Monte Po y Stesicoro
     if estacion_key in ["montepo", "stesicoro"]:
         station = "Montepo" if estacion_key == "montepo" else "Stesicoro"
         closed, next_open, special_closing_msg = is_metro_closed(now, station)
@@ -281,9 +304,11 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
                     msg = f"{special_msg}{test_indicator}🚇 La metropolitana è chiusa in questo momento.\n🕒 Riaprirà alle {next_open.strftime('%H:%M')}."
             img = get_station_image(estacion_key, now)
             if img:
-                await update.message.reply_photo(photo=img, caption=msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
+                photo_msg = await update.message.reply_photo(photo=img, caption=msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
+                context.chat_data['bot_messages'].append(photo_msg.message_id)
             else:
-                await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
+                text_msg = await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
+                context.chat_data['bot_messages'].append(text_msg.message_id)
             return
 
         next_dep, minutes, seconds, has_trains = get_next_departure(station, now)
@@ -291,9 +316,11 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
             msg = f"{special_msg}{test_indicator}🚇 Non ci sono più treni oggi. Il servizio riprenderà domani mattina."
             img = get_station_image(estacion_key, now)
             if img:
-                await update.message.reply_photo(photo=img, caption=msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
+                photo_msg = await update.message.reply_photo(photo=img, caption=msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
+                context.chat_data['bot_messages'].append(photo_msg.message_id)
             else:
-                await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
+                text_msg = await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
+                context.chat_data['bot_messages'].append(text_msg.message_id)
             return
 
         dest = "Stesicoro" if station == "Montepo" else "Monte Po"
@@ -328,9 +355,11 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
             msg += f"\n\n{last_msg}"
         img = get_station_image(estacion_key, now)
         if img:
-            await update.message.reply_photo(photo=img, caption=msg, reply_markup=keyboard_main if return_to_main else keyboard_altri, parse_mode='Markdown')
+            photo_msg = await update.message.reply_photo(photo=img, caption=msg, reply_markup=keyboard_main if return_to_main else keyboard_altri, parse_mode='Markdown')
+            context.chat_data['bot_messages'].append(photo_msg.message_id)
         else:
-            await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri, parse_mode='Markdown')
+            text_msg = await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri, parse_mode='Markdown')
+            context.chat_data['bot_messages'].append(text_msg.message_id)
         return
 
     # ========================================================================
@@ -351,28 +380,35 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
                 msg = f"{special_msg}{test_indicator}🚇 La metropolitana è chiusa in questo momento.\n🕒 Riaprirà alle {next_open.strftime('%H:%M')}."
         img = get_station_image(estacion_key, now)
         if img:
-            await update.message.reply_photo(photo=img, caption=msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
+            photo_msg = await update.message.reply_photo(photo=img, caption=msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
+            context.chat_data['bot_messages'].append(photo_msg.message_id)
         else:
-            await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
+            text_msg = await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
+            context.chat_data['bot_messages'].append(text_msg.message_id)
         return
 
     nombre = NOMBRE_MOSTRAR.get(estacion_key, estacion_key.capitalize())
     img_station = get_station_image(estacion_key, now)
 
+    # 1. Enviar foto de la estación
     permanent_caption = f"{test_indicator}🚆 Prossimi treni a {nombre}"
     if img_station:
-        await update.message.reply_photo(photo=img_station, caption=permanent_caption, reply_markup=keyboard_main if return_to_main else keyboard_altri)
+        photo_msg = await update.message.reply_photo(photo=img_station, caption=permanent_caption, reply_markup=keyboard_main if return_to_main else keyboard_altri)
+        context.chat_data['bot_messages'].append(photo_msg.message_id)
     else:
-        await update.message.reply_text(permanent_caption, reply_markup=keyboard_main if return_to_main else keyboard_altri)
+        text_msg = await update.message.reply_text(permanent_caption, reply_markup=keyboard_main if return_to_main else keyboard_altri)
+        context.chat_data['bot_messages'].append(text_msg.message_id)
 
-    # Enviar la primera tanda de mensajes 2 y 3 inmediatamente (SIEMPRE)
+    # 2. Enviar primera tanda de mensajes 2 y 3 (SIEMPRE)
     msg2, msg3, current_station_key_mp, tiempo_restante_mp, current_station_key_st, tiempo_restante_st = build_temporary_messages(now, estacion_key)
     msg2_obj = await send_msg2(update, msg2, current_station_key_mp, tiempo_restante_mp)
     msg3_obj = await send_msg3(update, msg3, current_station_key_st, tiempo_restante_st)
+    context.chat_data['bot_messages'].append(msg2_obj.message_id)
+    context.chat_data['bot_messages'].append(msg3_obj.message_id)
     context.chat_data['refresh_msg_ids'] = (msg2_obj.message_id, msg3_obj.message_id)
     print(f"DEBUG: Mensajes 2 y 3 enviados. IDs: {msg2_obj.message_id}, {msg3_obj.message_id}")
 
-    # Iniciar el bucle de actualización (comenzará en ciclo=1, después de 45s)
+    # 3. Iniciar el bucle de actualización (comenzará en ciclo=1, después de 45s)
     context.chat_data['refresh_active'] = True
     task = asyncio.create_task(auto_refresh_loop(update, context, estacion_key, update.effective_chat.id, nombre, use_simulated=(simulated is not None), simulated_now=now if simulated else None))
     context.chat_data['refresh_task'] = task
@@ -389,6 +425,7 @@ async def callback_refrescar(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return
     estacion_key = data.split("_")[1]
     
+    # Cancelar tarea anterior
     if 'refresh_task' in context.chat_data:
         task = context.chat_data['refresh_task']
         if not task.done():
@@ -399,6 +436,9 @@ async def callback_refrescar(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 pass
         context.chat_data.pop('refresh_task', None)
     context.chat_data['refresh_active'] = False
+
+    # Borrar todos los mensajes del bot antes de reiniciar
+    await clear_all_bot_messages(update, context)
 
     class FakeUpdate:
         def __init__(self, message):
@@ -419,9 +459,10 @@ async def cmd_refrescar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await callback_refrescar(update, context)
 
 # ============================================================================
-# MANEJADORES DE COMANDOS (con cancelación de tarea)
+# MANEJADORES DE COMANDOS
 # ============================================================================
 async def cancel_refresh_and_run(update: Update, context: ContextTypes.DEFAULT_TYPE, coro, *args, **kwargs):
+    # Cancelar tarea de refresco si existe
     if 'refresh_task' in context.chat_data:
         task = context.chat_data['refresh_task']
         if not task.done():
@@ -432,6 +473,7 @@ async def cancel_refresh_and_run(update: Update, context: ContextTypes.DEFAULT_T
                 pass
         context.chat_data.pop('refresh_task', None)
     context.chat_data['refresh_active'] = False
+    # No borramos mensajes aquí para que el comando que se ejecuta pueda hacerlo si es necesario
     await coro(update, context, *args, **kwargs)
 
 # Wrappers
