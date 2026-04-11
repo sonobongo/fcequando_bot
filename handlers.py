@@ -142,7 +142,7 @@ async def send_with_default_image(update: Update, msg: str, current_station_key:
     if not send_image:
         return await update.message.reply_text(msg, parse_mode='Markdown')
     
-    # Prioridad máxima: tiempo restante <= 90 segundos
+    # Prioridad máxima: tiempo restante <= 90 segundos (1.5 minutos)
     if tiempo_restante is not None and tiempo_restante <= 90:
         img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_trenoarriva.png"
         cache_buster = int(time_module.time())
@@ -170,6 +170,7 @@ async def send_with_default_image(update: Update, msg: str, current_station_key:
 # ============================================================================
 async def send_msg2_milo(update: Update, msg2: str, current_station_key_mp: str, tiempo_restante_mp: int):
     """Para Milo: envía GIF (ruta_stesicoro) si tiempo > 90 y hay estación, sino imagen por defecto."""
+    # Prioridad: tiempo <= 90 -> imagen trenoarriva
     if tiempo_restante_mp is not None and tiempo_restante_mp <= 90:
         print(f"DEBUG Milo Monte Po: tiempo {tiempo_restante_mp} <= 90, usando imagen trenoarriva")
         return await send_with_default_image(update, msg2, current_station_key_mp, tiempo_restante_mp, "Monte Po", send_image=True)
@@ -245,7 +246,6 @@ async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, 
             msg2, msg3, key_mp, time_mp, key_st, time_st = build_temporary_messages(now, estacion_key)
             
             # Determinar si ambos van a usar imagen default (sin GIF y sin tiempo <=90)
-            # Para Milo, evaluamos condiciones de GIF
             if estacion_key == "milo":
                 cond_mp = (key_mp and time_mp is not None and time_mp > 90)
                 cond_st = (key_st and time_st is not None and time_st > 90)
