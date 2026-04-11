@@ -142,6 +142,7 @@ async def send_with_default_image(update: Update, msg: str, current_station_key:
     if not send_image:
         return await update.message.reply_text(msg, parse_mode='Markdown')
     
+    # Prioridad máxima: tiempo restante <= 90 segundos
     if tiempo_restante is not None and tiempo_restante <= 90:
         img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_trenoarriva.png"
         cache_buster = int(time_module.time())
@@ -152,6 +153,7 @@ async def send_with_default_image(update: Update, msg: str, current_station_key:
         except Exception as e:
             print(f"Error enviando imagen trenoarriva: {e}")
             return await update.message.reply_text(msg, parse_mode='Markdown')
+    # Si no hay localización y tiempo > 90, usar default
     elif current_station_key is None:
         img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_default.png"
         cache_buster = int(time_module.time())
@@ -166,11 +168,15 @@ async def send_with_default_image(update: Update, msg: str, current_station_key:
         return await update.message.reply_text(msg, parse_mode='Markdown')
 
 # ============================================================================
-# FUNCIONES DE ENVÍO PARA MILO (GIFs sin restricción de tiempo)
+# FUNCIONES DE ENVÍO PARA MILO (con prioridad a tiempo <= 90)
 # ============================================================================
 async def send_msg2_milo(update: Update, msg2: str, current_station_key_mp: str, tiempo_restante_mp: int):
-    """Para Milo: dirección Monte Po usa ruta_stesicoro_{estacion}.gif (siempre que haya estación actual)."""
-    if current_station_key_mp:
+    """Para Milo: si tiempo <= 90, usar imagen trenoarriva; si no y hay estación, usar GIF; si no, imagen por defecto."""
+    # Prioridad: tiempo <= 90 -> imagen trenoarriva
+    if tiempo_restante_mp is not None and tiempo_restante_mp <= 90:
+        return await send_with_default_image(update, msg2, current_station_key_mp, tiempo_restante_mp, "Monte Po", send_image=True)
+    # Si no, y hay estación actual -> GIF
+    elif current_station_key_mp:
         cache_buster = int(time_module.time())
         gif_url = f"https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_stesicoro_{current_station_key_mp}.gif?v={cache_buster}"
         try:
@@ -183,8 +189,10 @@ async def send_msg2_milo(update: Update, msg2: str, current_station_key_mp: str,
         return await send_with_default_image(update, msg2, current_station_key_mp, tiempo_restante_mp, "Monte Po", send_image=True)
 
 async def send_msg3_milo(update: Update, msg3: str, current_station_key_st: str, tiempo_restante_st: int):
-    """Para Milo: dirección Stesicoro usa ruta_montepo_{estacion}.gif (siempre que haya estación actual)."""
-    if current_station_key_st:
+    """Para Milo: si tiempo <= 90, usar imagen trenoarriva; si no y hay estación, usar GIF; si no, imagen por defecto."""
+    if tiempo_restante_st is not None and tiempo_restante_st <= 90:
+        return await send_with_default_image(update, msg3, current_station_key_st, tiempo_restante_st, "Stesicoro", send_image=True)
+    elif current_station_key_st:
         cache_buster = int(time_module.time())
         gif_url = f"https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_montepo_{current_station_key_st}.gif?v={cache_buster}"
         try:
@@ -303,7 +311,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
             await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
         return
 
-    # Cabeceras Monte Po y Stesicoro (sin cambios)
+    # Cabeceras Monte Po y Stesicoro
     if estacion_key in ["montepo", "stesicoro"]:
         station = "Montepo" if estacion_key == "montepo" else "Stesicoro"
         closed, next_open, special_closing_msg = is_metro_closed(now, station)
@@ -459,7 +467,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
     print(f"DEBUG: Tarea de refresco creada: {task}")
 
 # ============================================================================
-# MANEJADORES DE COMANDOS (con cancelación de tarea)
+# MANEJADORES DE COMANDOS
 # ============================================================================
 async def cancel_refresh_and_run(update: Update, context: ContextTypes.DEFAULT_TYPE, coro, *args, **kwargs):
     if 'refresh_task' in context.chat_data:
