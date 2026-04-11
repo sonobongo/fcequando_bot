@@ -218,7 +218,7 @@ async def send_msg3_other(update: Update, msg3: str, current_station_key_st: str
     return await send_with_default_image(update, msg3, current_station_key_st, tiempo_restante_st, "Stesicoro", send_image)
 
 # ============================================================================
-# TAREA DE ACTUALIZACIÓN AUTOMÁTICA (35, 45, 55 segundos)
+# TAREA DE ACTUALIZACIÓN AUTOMÁTICA (3 ciclos: 35, 45, 55 segundos)
 # ============================================================================
 async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str, chat_id: int, station_display_name: str, use_simulated: bool = False, simulated_now: datetime = None):
     print(f"DEBUG: auto_refresh_loop iniciada para {estacion_key}")
@@ -228,67 +228,49 @@ async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, 
             await asyncio.sleep(espera)
             if context.chat_data.get('cancel_refresh', False):
                 break
+            # Borrar mensajes anteriores (los de la tanda previa)
             msg_ids = context.chat_data.get('refresh_msg_ids')
             if msg_ids:
+                print(f"DEBUG: Borrando mensajes anteriores: {msg_ids}")
                 try:
                     await context.bot.delete_message(chat_id=chat_id, message_id=msg_ids[0])
-                except:
-                    pass
+                except Exception as e:
+                    print(f"Error borrando mensaje {msg_ids[0]}: {e}")
                 try:
                     await context.bot.delete_message(chat_id=chat_id, message_id=msg_ids[1])
-                except:
-                    pass
+                except Exception as e:
+                    print(f"Error borrando mensaje {msg_ids[1]}: {e}")
+            # Calcular nuevos mensajes
             now = simulated_now if (use_simulated and simulated_now) else datetime.now()
             msg2, msg3, key_mp, time_mp, key_st, time_st = build_temporary_messages(now, estacion_key)
             
-            # Para Milo, evaluamos si ambos van a usar imagen default (sin GIF) para evitar duplicados
-            if estacion_key == "milo":
-                # Determinar si cada dirección usará GIF o default
-                cond_mp = (key_mp and time_mp is not None and time_mp > 90)
-                cond_st = (key_st and time_st is not None and time_st > 90)
-                # Si ambos usan default (no GIF), entonces solo enviamos imagen en mensaje 2
-                if not cond_mp and not cond_st:
-                    # Ambos usarán send_with_default_image con send_image=True, lo que mostrará ruta_default.png o trenoarriva
-                    # Para evitar duplicar, enviamos mensaje 2 con imagen y mensaje 3 sin imagen
-                    msg2_obj = await send_msg2_milo(update, msg2, key_mp, time_mp)
-                    await asyncio.sleep(0.5)
-                    msg3_obj = await send_msg3_milo(update, msg3, key_st, time_st)  # pero este también enviaría imagen
-                    # En realidad, send_msg3_milo también llamará a send_with_default_image con send_image=True.
-                    # Para evitar la duplicación, necesitamos modificar send_msg3_milo para que acepte send_image=False en este caso.
-                    # Como es más complejo, vamos a manejar la duplicación aquí mismo: si ambos son default, enviamos msg2 con imagen y msg3 solo texto.
-                    # Para ello, creamos una versión especial para msg3 sin imagen.
-                    # Reemplazamos la llamada a send_msg3_milo por una llamada directa a send_with_default_image con send_image=False.
-                    # Pero como send_msg3_milo tiene lógica de GIF, mejor la reutilizamos pasando un flag.
-                    # Por simplicidad, rehacemos la sección:
-                    # Enviamos msg2 normalmente
-                    # Luego para msg3, si ambos son default, enviamos solo texto.
-                    # Esto requiere duplicar un poco de código, pero es claro.
-                    # Como ya tenemos las condiciones, haremos:
-                    # Volvemos a enviar msg2 (ya lo hicimos) y luego msg3 sin imagen.
-                    # Nota: ya enviamos msg2_obj arriba, pero lo rehacemos para mantener coherencia.
-                    # Vamos a reestructurar:
-                    pass
-                # Mejor: vamos a salir de esta rama y tratar Milo de forma unificada más abajo.
-            # Debido a la complejidad, optamos por un enfoque más simple: en la respuesta principal ya controlamos la duplicación para Milo también.
-            # Aquí en el bucle, haremos lo mismo que en send_station_response.
-            
-            # Para simplificar y no duplicar, dejamos que Milo envíe ambos normalmente, y luego en la siguiente iteración se borrarán.
-            # Pero el usuario pidió no duplicar default. Aplicaremos la misma lógica que en send_station_response.
+            # Determinar si ambos van a usar imagen default (sin GIF y sin tiempo <=90)
+            # Para Milo, evaluamos condiciones de GIF
             if estacion_key == "milo":
                 cond_mp = (key_mp and time_mp is not None and time_mp > 90)
                 cond_st = (key_st and time_st is not None and time_st > 90)
+                # Si ambos no cumplen condiciones de GIF, entonces ambos irán a send_with_default_image
                 if not cond_mp and not cond_st:
-                    # Ambos usarán default: enviamos msg2 con imagen, msg3 sin imagen
-                    msg2_obj = await send_msg2_milo(update, msg2, key_mp, time_mp)
-                    await asyncio.sleep(0.5)
-                    # Para msg3, forzamos sin imagen
-                    msg3_obj = await send_with_default_image(update, msg3, key_st, time_st, "Stesicoro", send_image=False)
+                    # Verificar si ambos tienen tiempo > 90 (para evitar el caso de tiempo <=90 que ya muestra trenoarriva)
+                    if (time_mp is None or time_mp > 90) and (time_st is None or time_st > 90):
+                        # Ambos usarán default (sin trenoarriva) -> solo imagen en msg2
+                        print("DEBUG: Milo: ambos usan default, solo imagen en msg2")
+                        msg2_obj = await send_msg2_milo(update, msg2, key_mp, time_mp)
+                        await asyncio.sleep(0.5)
+                        msg3_obj = await send_with_default_image(update, msg3, key_st, time_st, "Stesicoro", send_image=False)
+                    else:
+                        # Uno o ambos tienen tiempo <=90 (trenoarriva) -> cada uno con su imagen
+                        print("DEBUG: Milo: al menos uno tiene tiempo<=90, ambos con imagen")
+                        msg2_obj = await send_msg2_milo(update, msg2, key_mp, time_mp)
+                        await asyncio.sleep(0.5)
+                        msg3_obj = await send_msg3_milo(update, msg3, key_st, time_st)
                 else:
+                    # Al menos uno cumple condiciones de GIF -> cada uno con su contenido
                     msg2_obj = await send_msg2_milo(update, msg2, key_mp, time_mp)
                     await asyncio.sleep(0.5)
                     msg3_obj = await send_msg3_milo(update, msg3, key_st, time_st)
             else:
-                # Otras estaciones: lógica de no duplicar default ya implementada
+                # Otras estaciones: lógica de no duplicar default
                 use_default_mp = (time_mp is not None and time_mp > 90 and key_mp is None)
                 use_default_st = (time_st is not None and time_st > 90 and key_st is None)
                 if time_mp is not None and time_mp <= 90:
@@ -297,6 +279,7 @@ async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, 
                     use_default_st = False
                 
                 if use_default_mp and use_default_st:
+                    print("DEBUG: Otras estaciones: ambos usan default, solo imagen en msg2")
                     msg2_obj = await send_msg2_other(update, msg2, key_mp, time_mp, send_image=True)
                     await asyncio.sleep(0.5)
                     msg3_obj = await send_msg3_other(update, msg3, key_st, time_st, send_image=False)
@@ -305,7 +288,9 @@ async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, 
                     await asyncio.sleep(0.5)
                     msg3_obj = await send_msg3_other(update, msg3, key_st, time_st, send_image=True)
             
+            # Guardar IDs de los nuevos mensajes
             context.chat_data['refresh_msg_ids'] = (msg2_obj.message_id, msg3_obj.message_id)
+            print(f"DEBUG: Nuevos mensajes guardados: {msg2_obj.message_id}, {msg3_obj.message_id}")
     except asyncio.CancelledError:
         print("DEBUG: auto_refresh_loop cancelada")
         pass
@@ -476,21 +461,25 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
     print(f"DEBUG: msg2 = {msg2[:50]}... | tiempo_mp={time_mp}, key_mp={key_mp}")
     print(f"DEBUG: msg3 = {msg3[:50]}... | tiempo_st={time_st}, key_st={key_st}")
     
+    # Lógica para evitar duplicar default (solo cuando ambos usan default sin trenoarriva)
     if estacion_key == "milo":
-        # Determinar si ambos van a usar imagen default (sin GIF)
         cond_mp = (key_mp and time_mp is not None and time_mp > 90)
         cond_st = (key_st and time_st is not None and time_st > 90)
         if not cond_mp and not cond_st:
-            # Ambos usarán default: enviamos msg2 con imagen, msg3 sin imagen
-            msg2_obj = await send_msg2_milo(update, msg2, key_mp, time_mp)
-            await asyncio.sleep(0.5)
-            msg3_obj = await send_with_default_image(update, msg3, key_st, time_st, "Stesicoro", send_image=False)
+            if (time_mp is None or time_mp > 90) and (time_st is None or time_st > 90):
+                print("DEBUG: Milo inicial: ambos usan default, solo imagen en msg2")
+                msg2_obj = await send_msg2_milo(update, msg2, key_mp, time_mp)
+                await asyncio.sleep(0.5)
+                msg3_obj = await send_with_default_image(update, msg3, key_st, time_st, "Stesicoro", send_image=False)
+            else:
+                msg2_obj = await send_msg2_milo(update, msg2, key_mp, time_mp)
+                await asyncio.sleep(0.5)
+                msg3_obj = await send_msg3_milo(update, msg3, key_st, time_st)
         else:
             msg2_obj = await send_msg2_milo(update, msg2, key_mp, time_mp)
             await asyncio.sleep(0.5)
             msg3_obj = await send_msg3_milo(update, msg3, key_st, time_st)
     else:
-        # Otras estaciones: lógica de no duplicar default
         use_default_mp = (time_mp is not None and time_mp > 90 and key_mp is None)
         use_default_st = (time_st is not None and time_st > 90 and key_st is None)
         if time_mp is not None and time_mp <= 90:
@@ -499,6 +488,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
             use_default_st = False
         
         if use_default_mp and use_default_st:
+            print("DEBUG: Otras estaciones inicial: ambos usan default, solo imagen en msg2")
             msg2_obj = await send_msg2_other(update, msg2, key_mp, time_mp, send_image=True)
             await asyncio.sleep(0.5)
             msg3_obj = await send_msg3_other(update, msg3, key_st, time_st, send_image=False)
