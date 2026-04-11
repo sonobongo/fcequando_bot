@@ -31,7 +31,7 @@ BOTON_TO_KEY = {
 }
 
 # ============================================================================
-# CONSTRUCCIÓN DE MENSAJES TEMPORALES (sin mensaje de cierre, con corchetes)
+# CONSTRUCCIÓN DE MENSAJES TEMPORALES
 # ============================================================================
 def build_temporary_messages(now: datetime, estacion_key: str):
     info_mp, info_st = get_next_train_at_station(now, estacion_key)
@@ -136,21 +136,16 @@ def build_temporary_messages(now: datetime, estacion_key: str):
     return msg2, msg3, current_station_key_mp, tiempo_restante_mp, current_station_key_st, tiempo_restante_st
 
 # ============================================================================
-# FUNCIONES DE ENVÍO CON IMÁGENES POR DEFECTO (para todas las estaciones excepto cabeceras)
+# FUNCIÓN DE IMAGEN POR DEFECTO (con prioridad a tiempo <= 90)
 # ============================================================================
 async def send_with_default_image(update: Update, msg: str, current_station_key: str, tiempo_restante: int, direction: str):
-    """
-    Envía un mensaje con imagen según las reglas:
-    - Si tiempo_restante <= 90 segundos -> ruta_trenoarriva.png
-    - Si current_station_key es None (sin localización) -> ruta_default.png
-    - Si no, solo texto (sin imagen)
-    """
+    """Envía imagen según reglas: prioridad a tiempo <= 90 (treno in arrivo), luego si sin localización -> default, sino solo texto."""
     if tiempo_restante is not None and tiempo_restante <= 90:
         img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_trenoarriva.png"
         cache_buster = int(time_module.time())
         img_url = f"{img_url}?v={cache_buster}"
         try:
-            print(f"DEBUG: Enviando imagen 'treno in arrivo' para {direction}: {img_url}")
+            print(f"DEBUG: Enviando imagen 'treno in arrivo' para {direction} (tiempo={tiempo_restante}s): {img_url}")
             return await update.message.reply_photo(photo=img_url, caption=msg, parse_mode='Markdown')
         except Exception as e:
             print(f"Error enviando imagen trenoarriva: {e}")
@@ -160,7 +155,7 @@ async def send_with_default_image(update: Update, msg: str, current_station_key:
         cache_buster = int(time_module.time())
         img_url = f"{img_url}?v={cache_buster}"
         try:
-            print(f"DEBUG: Enviando imagen 'default' para {direction}: {img_url}")
+            print(f"DEBUG: Enviando imagen 'default' para {direction} (sin localización): {img_url}")
             return await update.message.reply_photo(photo=img_url, caption=msg, parse_mode='Markdown')
         except Exception as e:
             print(f"Error enviando imagen default: {e}")
@@ -169,36 +164,34 @@ async def send_with_default_image(update: Update, msg: str, current_station_key:
         return await update.message.reply_text(msg, parse_mode='Markdown')
 
 # ============================================================================
-# FUNCIONES DE ENVÍO PARA MILO (con GIFs y PNGs específicos)
+# FUNCIONES DE ENVÍO PARA MILO (GIF animado para Monte Po, PNG estático para Stesicoro)
 # ============================================================================
 async def send_msg2_milo(update: Update, msg2: str, current_station_key_mp: str, tiempo_restante_mp: int):
-    """Para Milo: intenta enviar GIF animado (Monte Po) si cumple condiciones, sino texto."""
+    """Para Milo: intenta enviar GIF animado (Monte Po) si cumple condiciones, sino imagen por defecto."""
     if current_station_key_mp and tiempo_restante_mp is not None and tiempo_restante_mp > 90:
         cache_buster = int(time_module.time())
         gif_url = f"https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_montepo_{current_station_key_mp}.gif?v={cache_buster}"
         try:
-            print(f"DEBUG: Enviando GIF animado para Milo (Monte Po): {gif_url}")
+            print(f"DEBUG: Enviando GIF animado para Milo (Monte Po) hacia {current_station_key_mp}: {gif_url}")
             return await update.message.reply_animation(animation=gif_url, caption=msg2, parse_mode='Markdown')
         except Exception as e:
             print(f"Error enviando GIF Milo Monte Po: {e}")
-            return await update.message.reply_text(msg2, parse_mode='Markdown')
+            return await send_with_default_image(update, msg2, current_station_key_mp, tiempo_restante_mp, "Monte Po")
     else:
-        # Si no cumple condiciones, usar la lógica de imagen por defecto
         return await send_with_default_image(update, msg2, current_station_key_mp, tiempo_restante_mp, "Monte Po")
 
 async def send_msg3_milo(update: Update, msg3: str, current_station_key_st: str, tiempo_restante_st: int):
-    """Para Milo: intenta enviar PNG estático (Stesicoro) si cumple condiciones, sino texto."""
+    """Para Milo: intenta enviar PNG estático (Stesicoro) si cumple condiciones, sino imagen por defecto."""
     if current_station_key_st and tiempo_restante_st is not None and tiempo_restante_st > 90:
         cache_buster = int(time_module.time())
         png_url = f"https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_montepo_{current_station_key_st}_statico.png?v={cache_buster}"
         try:
-            print(f"DEBUG: Enviando PNG estático para Milo (Stesicoro): {png_url}")
+            print(f"DEBUG: Enviando PNG estático para Milo (Stesicoro) desde {current_station_key_st}: {png_url}")
             return await update.message.reply_photo(photo=png_url, caption=msg3, parse_mode='Markdown')
         except Exception as e:
             print(f"Error enviando PNG Milo Stesicoro: {e}")
-            return await update.message.reply_text(msg3, parse_mode='Markdown')
+            return await send_with_default_image(update, msg3, current_station_key_st, tiempo_restante_st, "Stesicoro")
     else:
-        # Si no cumple condiciones, usar la lógica de imagen por defecto
         return await send_with_default_image(update, msg3, current_station_key_st, tiempo_restante_st, "Stesicoro")
 
 # ============================================================================
@@ -211,7 +204,7 @@ async def send_msg3_other(update: Update, msg3: str, current_station_key_st: str
     return await send_with_default_image(update, msg3, current_station_key_st, tiempo_restante_st, "Stesicoro")
 
 # ============================================================================
-# TAREA DE ACTUALIZACIÓN AUTOMÁTICA (3 ciclos: 35, 45, 55 segundos)
+# TAREA DE ACTUALIZACIÓN AUTOMÁTICA (35, 45, 55 segundos)
 # ============================================================================
 async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str, chat_id: int, station_display_name: str, use_simulated: bool = False, simulated_now: datetime = None):
     print(f"DEBUG: auto_refresh_loop iniciada para {estacion_key}")
@@ -235,7 +228,6 @@ async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, 
             now = simulated_now if (use_simulated and simulated_now) else datetime.now()
             msg2, msg3, key_mp, time_mp, key_st, time_st = build_temporary_messages(now, estacion_key)
             
-            # Elegir función según la estación
             if estacion_key == "milo":
                 msg2_obj = await send_msg2_milo(update, msg2, key_mp, time_mp)
                 await asyncio.sleep(0.5)
@@ -296,7 +288,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
             await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
         return
 
-    # Cabeceras Monte Po y Stesicoro (sin cambios, sin imágenes de ruta)
+    # Cabeceras Monte Po y Stesicoro
     if estacion_key in ["montepo", "stesicoro"]:
         station = "Montepo" if estacion_key == "montepo" else "Stesicoro"
         closed, next_open, special_closing_msg = is_metro_closed(now, station)
@@ -397,7 +389,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
     nombre = NOMBRE_MOSTRAR.get(estacion_key, estacion_key.capitalize())
     img_station = get_station_image(estacion_key, now)
 
-    # Caption de la foto: título (con emoji 🚇) + mensaje de cierre (con emoji adecuado)
+    # Caption de la foto: título + mensaje de cierre
     last_msg = get_last_train_message(now)
     last_msg_text = ""
     if last_msg and not is_sant_agata(now):
@@ -416,10 +408,10 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
 
     # Obtener mensajes temporales
     msg2, msg3, key_mp, time_mp, key_st, time_st = build_temporary_messages(now, estacion_key)
-    print(f"DEBUG: msg2 = {msg2[:50]}...")
-    print(f"DEBUG: msg3 = {msg3[:50]}...")
+    print(f"DEBUG: msg2 = {msg2[:50]}... | tiempo_mp={time_mp}, key_mp={key_mp}")
+    print(f"DEBUG: msg3 = {msg3[:50]}... | tiempo_st={time_st}, key_st={key_st}")
     
-    # Elegir función según la estación
+    # Enviar según estación
     if estacion_key == "milo":
         msg2_obj = await send_msg2_milo(update, msg2, key_mp, time_mp)
         await asyncio.sleep(0.5)
