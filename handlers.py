@@ -136,39 +136,51 @@ def build_temporary_messages(now: datetime, estacion_key: str):
     return msg2, msg3, current_station_key_mp, tiempo_restante_mp, current_station_key_st, tiempo_restante_st
 
 # ============================================================================
-# FUNCIONES DE ENVÍO CON GIFS SOLO PARA MILO (prioridad al más cercano)
+# FUNCIONES DE ENVÍO (solo para Milo, con regla especial)
 # ============================================================================
-async def send_gif_or_document(update: Update, msg: str, station_key: str, is_animated: bool, direction: str):
-    """Envía un GIF animado (reply_animation) o estático (reply_document) según is_animated."""
-    if not station_key:
-        return await update.message.reply_text(msg, parse_mode='Markdown')
-    
-    cache_buster = int(time.time())
-    if direction == "montepo":
-        url = f"https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_montepo_{station_key}.gif?v={cache_buster}"
-    else:
-        url = f"https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_stesicoro_{station_key}.gif?v={cache_buster}"
-    
-    try:
-        if is_animated:
-            print(f"DEBUG: Enviando GIF ANIMADO para {direction}: {url}")
-            return await update.message.reply_animation(animation=url, caption=msg, parse_mode='Markdown')
-        else:
-            print(f"DEBUG: Enviando GIF ESTÁTICO (documento) para {direction}: {url}")
-            return await update.message.reply_document(document=url, caption=msg, parse_mode='Markdown')
-    except Exception as e:
-        print(f"Error enviando GIF para {direction}: {e}")
-        return await update.message.reply_text(msg, parse_mode='Markdown')
-
-async def send_msg2(update: Update, msg2: str, current_station_key_mp: str, tiempo_restante_mp: int, estacion_key: str, is_animated: bool = False):
+async def send_msg2(update: Update, msg2: str, current_station_key_mp: str, tiempo_restante_mp: int, estacion_key: str, is_static: bool = False):
+    """Envía mensaje 2 (Monte Po). Para Milo, si hay estación y tiempo>90, envía GIF animado (si is_static=False) o estático (si is_static=True)."""
     if estacion_key == "milo" and current_station_key_mp and tiempo_restante_mp is not None and tiempo_restante_mp > 90:
-        return await send_gif_or_document(update, msg2, current_station_key_mp, is_animated, "montepo")
+        cache_buster = int(time.time())
+        if is_static:
+            url = f"https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_montepo_{current_station_key_mp}_statico.png?v={cache_buster}"
+            try:
+                print(f"DEBUG: Enviando PNG estático para Milo (Monte Po): {url}")
+                return await update.message.reply_photo(photo=url, caption=msg2, parse_mode='Markdown')
+            except Exception as e:
+                print(f"Error enviando PNG estático: {e}")
+                return await update.message.reply_text(msg2, parse_mode='Markdown')
+        else:
+            gif_url = f"https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_montepo_{current_station_key_mp}.gif?v={cache_buster}"
+            try:
+                print(f"DEBUG: Enviando GIF animado para Milo (Monte Po): {gif_url}")
+                return await update.message.reply_animation(animation=gif_url, caption=msg2, parse_mode='Markdown')
+            except Exception as e:
+                print(f"Error enviando GIF animado: {e}")
+                return await update.message.reply_text(msg2, parse_mode='Markdown')
     else:
         return await update.message.reply_text(msg2, parse_mode='Markdown')
 
-async def send_msg3(update: Update, msg3: str, current_station_key_st: str, tiempo_restante_st: int, estacion_key: str, is_animated: bool = False):
+async def send_msg3(update: Update, msg3: str, current_station_key_st: str, tiempo_restante_st: int, estacion_key: str, use_static: bool = False):
+    """Envía mensaje 3 (Stesicoro). Para Milo, si use_static=True, envía PNG estático; si no y cumple, envía GIF animado."""
     if estacion_key == "milo" and current_station_key_st and tiempo_restante_st is not None and tiempo_restante_st > 90:
-        return await send_gif_or_document(update, msg3, current_station_key_st, is_animated, "stesicoro")
+        cache_buster = int(time.time())
+        if use_static:
+            url = f"https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_montepo_{current_station_key_st}_statico.png?v={cache_buster}"
+            try:
+                print(f"DEBUG: Enviando PNG estático para Milo (Stesicoro): {url}")
+                return await update.message.reply_photo(photo=url, caption=msg3, parse_mode='Markdown')
+            except Exception as e:
+                print(f"Error enviando PNG estático: {e}")
+                return await update.message.reply_text(msg3, parse_mode='Markdown')
+        else:
+            gif_url = f"https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_stesicoro_{current_station_key_st}.gif?v={cache_buster}"
+            try:
+                print(f"DEBUG: Enviando GIF animado para Milo (Stesicoro): {gif_url}")
+                return await update.message.reply_animation(animation=gif_url, caption=msg3, parse_mode='Markdown')
+            except Exception as e:
+                print(f"Error enviando GIF animado: {e}")
+                return await update.message.reply_text(msg3, parse_mode='Markdown')
     else:
         return await update.message.reply_text(msg3, parse_mode='Markdown')
 
@@ -197,28 +209,31 @@ async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, 
             now = simulated_now if (use_simulated and simulated_now) else datetime.now()
             msg2, msg3, key_mp, time_mp, key_st, time_st = build_temporary_messages(now, estacion_key)
             
-            # Determinar prioridad: el GIF con menor tiempo restante será animado
-            animated_mp = False
-            animated_st = False
-            if estacion_key == "milo":
-                # Condiciones para poder enviar GIF
-                cond_mp = (key_mp and time_mp is not None and time_mp > 90)
-                cond_st = (key_st and time_st is not None and time_st > 90)
-                if cond_mp and cond_st:
-                    # Ambos pueden enviar GIF, elegir el más cercano (menor tiempo)
-                    if time_mp < time_st:
-                        animated_mp = True
-                    else:
-                        animated_st = True
-                elif cond_mp:
-                    animated_mp = True
-                elif cond_st:
-                    animated_st = True
+            # Decidir cómo enviar para Milo
+            cond_mp = (estacion_key == "milo" and key_mp and time_mp is not None and time_mp > 90)
+            cond_st = (estacion_key == "milo" and key_st and time_st is not None and time_st > 90)
             
-            # Enviar con prioridad
-            msg2_obj = await send_msg2(update, msg2, key_mp, time_mp, estacion_key, animated_mp)
-            await asyncio.sleep(0.5)  # pausa para evitar saturación
-            msg3_obj = await send_msg3(update, msg3, key_st, time_st, estacion_key, animated_st)
+            if cond_mp and cond_st:
+                # Ambos pueden usar multimedia: Monte Po GIF animado, Stesicoro PNG estático
+                msg2_obj = await send_msg2(update, msg2, key_mp, time_mp, estacion_key, is_static=False)
+                await asyncio.sleep(0.5)
+                msg3_obj = await send_msg3(update, msg3, key_st, time_st, estacion_key, use_static=True)
+            elif cond_mp:
+                # Solo Monte Po: GIF animado
+                msg2_obj = await send_msg2(update, msg2, key_mp, time_mp, estacion_key, is_static=False)
+                await asyncio.sleep(0.5)
+                msg3_obj = await update.message.reply_text(msg3, parse_mode='Markdown')
+            elif cond_st:
+                # Solo Stesicoro: GIF animado
+                msg2_obj = await update.message.reply_text(msg2, parse_mode='Markdown')
+                await asyncio.sleep(0.5)
+                msg3_obj = await send_msg3(update, msg3, key_st, time_st, estacion_key, use_static=False)
+            else:
+                # Ninguno: texto
+                msg2_obj = await update.message.reply_text(msg2, parse_mode='Markdown')
+                await asyncio.sleep(0.5)
+                msg3_obj = await update.message.reply_text(msg3, parse_mode='Markdown')
+            
             context.chat_data['refresh_msg_ids'] = (msg2_obj.message_id, msg3_obj.message_id)
     except asyncio.CancelledError:
         print("DEBUG: auto_refresh_loop cancelada")
@@ -230,7 +245,7 @@ async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, 
         print("DEBUG: auto_refresh_loop finalizada")
 
 # ============================================================================
-# RESPUESTA PRINCIPAL (con prioridad para la primera tanda)
+# RESPUESTA PRINCIPAL (con la misma lógica para la primera tanda)
 # ============================================================================
 async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str, return_to_main: bool = True):
     print(f"DEBUG: send_station_response llamada para {estacion_key}")
@@ -391,28 +406,31 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
     # Obtener mensajes temporales
     msg2, msg3, key_mp, time_mp, key_st, time_st = build_temporary_messages(now, estacion_key)
     
-    # Determinar prioridad para la primera tanda
-    animated_mp = False
-    animated_st = False
-    if estacion_key == "milo":
-        cond_mp = (key_mp and time_mp is not None and time_mp > 90)
-        cond_st = (key_st and time_st is not None and time_st > 90)
-        if cond_mp and cond_st:
-            if time_mp < time_st:
-                animated_mp = True
-            else:
-                animated_st = True
-        elif cond_mp:
-            animated_mp = True
-        elif cond_st:
-            animated_st = True
+    # Decidir cómo enviar para Milo (primera tanda)
+    cond_mp = (estacion_key == "milo" and key_mp and time_mp is not None and time_mp > 90)
+    cond_st = (estacion_key == "milo" and key_st and time_st is not None and time_st > 90)
     
-    # Enviar primera tanda con prioridad
-    print(f"DEBUG: msg2 = {msg2[:50]}...")
-    print(f"DEBUG: msg3 = {msg3[:50]}...")
-    msg2_obj = await send_msg2(update, msg2, key_mp, time_mp, estacion_key, animated_mp)
-    await asyncio.sleep(0.5)
-    msg3_obj = await send_msg3(update, msg3, key_st, time_st, estacion_key, animated_st)
+    if cond_mp and cond_st:
+        # Ambos: Monte Po GIF animado, Stesicoro PNG estático
+        msg2_obj = await send_msg2(update, msg2, key_mp, time_mp, estacion_key, is_static=False)
+        await asyncio.sleep(0.5)
+        msg3_obj = await send_msg3(update, msg3, key_st, time_st, estacion_key, use_static=True)
+    elif cond_mp:
+        # Solo Monte Po: GIF animado
+        msg2_obj = await send_msg2(update, msg2, key_mp, time_mp, estacion_key, is_static=False)
+        await asyncio.sleep(0.5)
+        msg3_obj = await update.message.reply_text(msg3, parse_mode='Markdown')
+    elif cond_st:
+        # Solo Stesicoro: GIF animado
+        msg2_obj = await update.message.reply_text(msg2, parse_mode='Markdown')
+        await asyncio.sleep(0.5)
+        msg3_obj = await send_msg3(update, msg3, key_st, time_st, estacion_key, use_static=False)
+    else:
+        # Ninguno: texto
+        msg2_obj = await update.message.reply_text(msg2, parse_mode='Markdown')
+        await asyncio.sleep(0.5)
+        msg3_obj = await update.message.reply_text(msg3, parse_mode='Markdown')
+    
     context.chat_data['refresh_msg_ids'] = (msg2_obj.message_id, msg3_obj.message_id)
     print(f"DEBUG: Mensajes 2 y 3 enviados. IDs: {msg2_obj.message_id}, {msg3_obj.message_id}")
 
