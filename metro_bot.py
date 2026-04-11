@@ -2,7 +2,8 @@ import os
 import logging
 import threading
 from flask import Flask
-from telegram.ext import Application, CommandHandler, MessageHandler, filters
+from telegram import Update
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, Defaults
 from horarios_logic import *
 from handlers import *
 
@@ -30,7 +31,9 @@ def main():
     flask_thread.start()
     logger.info("Flask server avviato sulla porta 8080")
 
-    app = Application.builder().token(TOKEN).build()
+    # Configuración para enviar todos los mensajes sin notificación activa
+    defaults = Defaults(disable_notification=True)
+    app = Application.builder().token(TOKEN).defaults(defaults).build()
 
     # Registrar comandos (sin /refrescar)
     commands = [
