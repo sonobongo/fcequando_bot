@@ -1,5 +1,5 @@
 import asyncio
-import time
+import time as time_module  # Renombramos para evitar conflictos
 from datetime import datetime, timedelta
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import ContextTypes
@@ -136,14 +136,14 @@ def build_temporary_messages(now: datetime, estacion_key: str):
     return msg2, msg3, current_station_key_mp, tiempo_restante_mp, current_station_key_st, tiempo_restante_st
 
 # ============================================================================
-# FUNCIONES DE ENVÍO SIMPLIFICADAS PARA MILO
+# FUNCIONES DE ENVÍO PARA MILO (con manejo de errores)
 # ============================================================================
 async def send_msg2(update: Update, msg2: str, current_station_key_mp: str, tiempo_restante_mp: int, estacion_key: str):
     """Para Milo: intenta enviar GIF animado; si falla o no aplica, texto."""
     if estacion_key == "milo" and current_station_key_mp and tiempo_restante_mp is not None and tiempo_restante_mp > 90:
-        cache_buster = int(time.time())
-        gif_url = f"https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_montepo_{current_station_key_mp}.gif?v={cache_buster}"
         try:
+            cache_buster = int(time_module.time())
+            gif_url = f"https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_montepo_{current_station_key_mp}.gif?v={cache_buster}"
             print(f"DEBUG: Enviando GIF para Milo (Monte Po): {gif_url}")
             return await update.message.reply_animation(animation=gif_url, caption=msg2, parse_mode='Markdown')
         except Exception as e:
@@ -155,9 +155,9 @@ async def send_msg2(update: Update, msg2: str, current_station_key_mp: str, tiem
 async def send_msg3(update: Update, msg3: str, current_station_key_st: str, tiempo_restante_st: int, estacion_key: str):
     """Para Milo: intenta enviar PNG estático; si falla o no aplica, texto."""
     if estacion_key == "milo" and current_station_key_st and tiempo_restante_st is not None and tiempo_restante_st > 90:
-        cache_buster = int(time.time())
-        png_url = f"https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_montepo_{current_station_key_st}_statico.png?v={cache_buster}"
         try:
+            cache_buster = int(time_module.time())
+            png_url = f"https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_montepo_{current_station_key_st}_statico.png?v={cache_buster}"
             print(f"DEBUG: Enviando PNG estático para Milo (Stesicoro): {png_url}")
             return await update.message.reply_photo(photo=png_url, caption=msg3, parse_mode='Markdown')
         except Exception as e:
@@ -190,7 +190,6 @@ async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, 
                     pass
             now = simulated_now if (use_simulated and simulated_now) else datetime.now()
             msg2, msg3, key_mp, time_mp, key_st, time_st = build_temporary_messages(now, estacion_key)
-            
             # Enviar mensaje 2 y 3 con pausa
             msg2_obj = await send_msg2(update, msg2, key_mp, time_mp, estacion_key)
             await asyncio.sleep(0.5)
