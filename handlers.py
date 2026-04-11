@@ -138,8 +138,17 @@ def build_temporary_messages(now: datetime, estacion_key: str):
 # ============================================================================
 # FUNCIÓN DE IMAGEN POR DEFECTO (con prioridad a tiempo <= 90)
 # ============================================================================
-async def send_with_default_image(update: Update, msg: str, current_station_key: str, tiempo_restante: int, direction: str):
-    """Envía imagen según reglas: prioridad a tiempo <= 90 (treno in arrivo), luego si sin localización -> default, sino solo texto."""
+async def send_with_default_image(update: Update, msg: str, current_station_key: str, tiempo_restante: int, direction: str, send_image: bool = True):
+    """
+    Envía un mensaje con imagen si send_image es True, según reglas:
+    - Si tiempo_restante <= 90 -> ruta_trenoarriva.png
+    - Si current_station_key is None -> ruta_default.png
+    - Si no -> solo texto
+    Si send_image es False, envía solo texto.
+    """
+    if not send_image:
+        return await update.message.reply_text(msg, parse_mode='Markdown')
+    
     if tiempo_restante is not None and tiempo_restante <= 90:
         img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_trenoarriva.png"
         cache_buster = int(time_module.time())
@@ -176,9 +185,11 @@ async def send_msg2_milo(update: Update, msg2: str, current_station_key_mp: str,
             return await update.message.reply_animation(animation=gif_url, caption=msg2, parse_mode='Markdown')
         except Exception as e:
             print(f"Error enviando GIF Milo Monte Po: {e}")
-            return await send_with_default_image(update, msg2, current_station_key_mp, tiempo_restante_mp, "Monte Po")
+            # Si falla el GIF, se usa imagen por defecto (con send_image=True)
+            return await send_with_default_image(update, msg2, current_station_key_mp, tiempo_restante_mp, "Monte Po", send_image=True)
     else:
-        return await send_with_default_image(update, msg2, current_station_key_mp, tiempo_restante_mp, "Monte Po")
+        # Si no cumple condiciones para GIF, se usa imagen por defecto
+        return await send_with_default_image(update, msg2, current_station_key_mp, tiempo_restante_mp, "Monte Po", send_image=True)
 
 async def send_msg3_milo(update: Update, msg3: str, current_station_key_st: str, tiempo_restante_st: int):
     """Para Milo: intenta enviar PNG estático (Stesicoro) si cumple condiciones, sino imagen por defecto."""
@@ -190,18 +201,18 @@ async def send_msg3_milo(update: Update, msg3: str, current_station_key_st: str,
             return await update.message.reply_photo(photo=png_url, caption=msg3, parse_mode='Markdown')
         except Exception as e:
             print(f"Error enviando PNG Milo Stesicoro: {e}")
-            return await send_with_default_image(update, msg3, current_station_key_st, tiempo_restante_st, "Stesicoro")
+            return await send_with_default_image(update, msg3, current_station_key_st, tiempo_restante_st, "Stesicoro", send_image=True)
     else:
-        return await send_with_default_image(update, msg3, current_station_key_st, tiempo_restante_st, "Stesicoro")
+        return await send_with_default_image(update, msg3, current_station_key_st, tiempo_restante_st, "Stesicoro", send_image=True)
 
 # ============================================================================
 # FUNCIONES DE ENVÍO PARA OTRAS ESTACIONES (solo imágenes por defecto)
 # ============================================================================
-async def send_msg2_other(update: Update, msg2: str, current_station_key_mp: str, tiempo_restante_mp: int):
-    return await send_with_default_image(update, msg2, current_station_key_mp, tiempo_restante_mp, "Monte Po")
+async def send_msg2_other(update: Update, msg2: str, current_station_key_mp: str, tiempo_restante_mp: int, send_image: bool = True):
+    return await send_with_default_image(update, msg2, current_station_key_mp, tiempo_restante_mp, "Monte Po", send_image)
 
-async def send_msg3_other(update: Update, msg3: str, current_station_key_st: str, tiempo_restante_st: int):
-    return await send_with_default_image(update, msg3, current_station_key_st, tiempo_restante_st, "Stesicoro")
+async def send_msg3_other(update: Update, msg3: str, current_station_key_st: str, tiempo_restante_st: int, send_image: bool = True):
+    return await send_with_default_image(update, msg3, current_station_key_st, tiempo_restante_st, "Stesicoro", send_image)
 
 # ============================================================================
 # TAREA DE ACTUALIZACIÓN AUTOMÁTICA (35, 45, 55 segundos)
@@ -229,13 +240,30 @@ async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, 
             msg2, msg3, key_mp, time_mp, key_st, time_st = build_temporary_messages(now, estacion_key)
             
             if estacion_key == "milo":
+                # Para Milo, las funciones ya deciden internamente si enviar imagen o GIF
                 msg2_obj = await send_msg2_milo(update, msg2, key_mp, time_mp)
                 await asyncio.sleep(0.5)
                 msg3_obj = await send_msg3_milo(update, msg3, key_st, time_st)
             else:
-                msg2_obj = await send_msg2_other(update, msg2, key_mp, time_mp)
-                await asyncio.sleep(0.5)
-                msg3_obj = await send_msg3_other(update, msg3, key_st, time_st)
+                # Para otras estaciones, determinar si ambas usarían la misma imagen default
+                # Calcular si msg2 y msg3 usarían ruta_default (sin localización y tiempo>90)
+                use_default_mp = (time_mp is not None and time_mp > 90 and key_mp is None)
+                use_default_st = (time_st is not None and time_st > 90 and key_st is None)
+                # También considerar trenoarriva (tiempo <=90) -> entonces no es default
+                if time_mp is not None and time_mp <= 90:
+                    use_default_mp = False
+                if time_st is not None and time_st <= 90:
+                    use_default_st = False
+                
+                # Si ambos usarían la imagen default, solo enviamos imagen en el mensaje 2, y mensaje 3 sin imagen
+                if use_default_mp and use_default_st:
+                    msg2_obj = await send_msg2_other(update, msg2, key_mp, time_mp, send_image=True)
+                    await asyncio.sleep(0.5)
+                    msg3_obj = await send_msg3_other(update, msg3, key_st, time_st, send_image=False)
+                else:
+                    msg2_obj = await send_msg2_other(update, msg2, key_mp, time_mp, send_image=True)
+                    await asyncio.sleep(0.5)
+                    msg3_obj = await send_msg3_other(update, msg3, key_st, time_st, send_image=True)
             
             context.chat_data['refresh_msg_ids'] = (msg2_obj.message_id, msg3_obj.message_id)
     except asyncio.CancelledError:
@@ -417,9 +445,23 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
         await asyncio.sleep(0.5)
         msg3_obj = await send_msg3_milo(update, msg3, key_st, time_st)
     else:
-        msg2_obj = await send_msg2_other(update, msg2, key_mp, time_mp)
-        await asyncio.sleep(0.5)
-        msg3_obj = await send_msg3_other(update, msg3, key_st, time_st)
+        # Determinar si ambas usarían la misma imagen default
+        use_default_mp = (time_mp is not None and time_mp > 90 and key_mp is None)
+        use_default_st = (time_st is not None and time_st > 90 and key_st is None)
+        if time_mp is not None and time_mp <= 90:
+            use_default_mp = False
+        if time_st is not None and time_st <= 90:
+            use_default_st = False
+        
+        if use_default_mp and use_default_st:
+            # Solo enviamos imagen en el mensaje 2, el mensaje 3 sin imagen
+            msg2_obj = await send_msg2_other(update, msg2, key_mp, time_mp, send_image=True)
+            await asyncio.sleep(0.5)
+            msg3_obj = await send_msg3_other(update, msg3, key_st, time_st, send_image=False)
+        else:
+            msg2_obj = await send_msg2_other(update, msg2, key_mp, time_mp, send_image=True)
+            await asyncio.sleep(0.5)
+            msg3_obj = await send_msg3_other(update, msg3, key_st, time_st, send_image=True)
     
     context.chat_data['refresh_msg_ids'] = (msg2_obj.message_id, msg3_obj.message_id)
     print(f"DEBUG: Mensajes 2 y 3 enviados. IDs: {msg2_obj.message_id}, {msg3_obj.message_id}")
