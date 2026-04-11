@@ -136,16 +136,9 @@ def build_temporary_messages(now: datetime, estacion_key: str):
     return msg2, msg3, current_station_key_mp, tiempo_restante_mp, current_station_key_st, tiempo_restante_st
 
 # ============================================================================
-# FUNCIÓN DE IMAGEN POR DEFECTO (con prioridad a tiempo <= 90)
+# FUNCIÓN DE IMAGEN POR DEFECTO
 # ============================================================================
 async def send_with_default_image(update: Update, msg: str, current_station_key: str, tiempo_restante: int, direction: str, send_image: bool = True):
-    """
-    Envía un mensaje con imagen si send_image es True, según reglas:
-    - Si tiempo_restante <= 90 -> ruta_trenoarriva.png
-    - Si current_station_key is None -> ruta_default.png
-    - Si no -> solo texto
-    Si send_image es False, envía solo texto.
-    """
     if not send_image:
         return await update.message.reply_text(msg, parse_mode='Markdown')
     
@@ -173,34 +166,32 @@ async def send_with_default_image(update: Update, msg: str, current_station_key:
         return await update.message.reply_text(msg, parse_mode='Markdown')
 
 # ============================================================================
-# FUNCIONES DE ENVÍO PARA MILO (GIF animado para Monte Po, PNG estático para Stesicoro)
+# FUNCIONES DE ENVÍO PARA MILO (con los nombres corregidos)
 # ============================================================================
 async def send_msg2_milo(update: Update, msg2: str, current_station_key_mp: str, tiempo_restante_mp: int):
-    """Para Milo: intenta enviar GIF animado (Monte Po) si cumple condiciones, sino imagen por defecto."""
+    """Para Milo: dirección Monte Po usa ruta_stesicoro_{estacion}.gif"""
     if current_station_key_mp and tiempo_restante_mp is not None and tiempo_restante_mp > 90:
         cache_buster = int(time_module.time())
-        gif_url = f"https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_montepo_{current_station_key_mp}.gif?v={cache_buster}"
+        gif_url = f"https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_stesicoro_{current_station_key_mp}.gif?v={cache_buster}"
         try:
-            print(f"DEBUG: Enviando GIF animado para Milo (Monte Po) hacia {current_station_key_mp}: {gif_url}")
+            print(f"DEBUG: Enviando GIF para Milo (Monte Po) usando ruta_stesicoro_{current_station_key_mp}.gif")
             return await update.message.reply_animation(animation=gif_url, caption=msg2, parse_mode='Markdown')
         except Exception as e:
             print(f"Error enviando GIF Milo Monte Po: {e}")
-            # Si falla el GIF, se usa imagen por defecto (con send_image=True)
             return await send_with_default_image(update, msg2, current_station_key_mp, tiempo_restante_mp, "Monte Po", send_image=True)
     else:
-        # Si no cumple condiciones para GIF, se usa imagen por defecto
         return await send_with_default_image(update, msg2, current_station_key_mp, tiempo_restante_mp, "Monte Po", send_image=True)
 
 async def send_msg3_milo(update: Update, msg3: str, current_station_key_st: str, tiempo_restante_st: int):
-    """Para Milo: intenta enviar PNG estático (Stesicoro) si cumple condiciones, sino imagen por defecto."""
+    """Para Milo: dirección Stesicoro usa ruta_montepo_{estacion}.gif"""
     if current_station_key_st and tiempo_restante_st is not None and tiempo_restante_st > 90:
         cache_buster = int(time_module.time())
-        png_url = f"https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_montepo_{current_station_key_st}_statico.png?v={cache_buster}"
+        gif_url = f"https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_montepo_{current_station_key_st}.gif?v={cache_buster}"
         try:
-            print(f"DEBUG: Enviando PNG estático para Milo (Stesicoro) desde {current_station_key_st}: {png_url}")
-            return await update.message.reply_photo(photo=png_url, caption=msg3, parse_mode='Markdown')
+            print(f"DEBUG: Enviando GIF para Milo (Stesicoro) usando ruta_montepo_{current_station_key_st}.gif")
+            return await update.message.reply_animation(animation=gif_url, caption=msg3, parse_mode='Markdown')
         except Exception as e:
-            print(f"Error enviando PNG Milo Stesicoro: {e}")
+            print(f"Error enviando GIF Milo Stesicoro: {e}")
             return await send_with_default_image(update, msg3, current_station_key_st, tiempo_restante_st, "Stesicoro", send_image=True)
     else:
         return await send_with_default_image(update, msg3, current_station_key_st, tiempo_restante_st, "Stesicoro", send_image=True)
@@ -240,22 +231,18 @@ async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, 
             msg2, msg3, key_mp, time_mp, key_st, time_st = build_temporary_messages(now, estacion_key)
             
             if estacion_key == "milo":
-                # Para Milo, las funciones ya deciden internamente si enviar imagen o GIF
                 msg2_obj = await send_msg2_milo(update, msg2, key_mp, time_mp)
                 await asyncio.sleep(0.5)
                 msg3_obj = await send_msg3_milo(update, msg3, key_st, time_st)
             else:
-                # Para otras estaciones, determinar si ambas usarían la misma imagen default
-                # Calcular si msg2 y msg3 usarían ruta_default (sin localización y tiempo>90)
+                # Determinar si ambos usarían la misma imagen default
                 use_default_mp = (time_mp is not None and time_mp > 90 and key_mp is None)
                 use_default_st = (time_st is not None and time_st > 90 and key_st is None)
-                # También considerar trenoarriva (tiempo <=90) -> entonces no es default
                 if time_mp is not None and time_mp <= 90:
                     use_default_mp = False
                 if time_st is not None and time_st <= 90:
                     use_default_st = False
                 
-                # Si ambos usarían la imagen default, solo enviamos imagen en el mensaje 2, y mensaje 3 sin imagen
                 if use_default_mp and use_default_st:
                     msg2_obj = await send_msg2_other(update, msg2, key_mp, time_mp, send_image=True)
                     await asyncio.sleep(0.5)
@@ -316,7 +303,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
             await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
         return
 
-    # Cabeceras Monte Po y Stesicoro
+    # Cabeceras Monte Po y Stesicoro (sin cambios)
     if estacion_key in ["montepo", "stesicoro"]:
         station = "Montepo" if estacion_key == "montepo" else "Stesicoro"
         closed, next_open, special_closing_msg = is_metro_closed(now, station)
@@ -445,7 +432,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
         await asyncio.sleep(0.5)
         msg3_obj = await send_msg3_milo(update, msg3, key_st, time_st)
     else:
-        # Determinar si ambas usarían la misma imagen default
+        # Determinar si ambos usarían la misma imagen default
         use_default_mp = (time_mp is not None and time_mp > 90 and key_mp is None)
         use_default_st = (time_st is not None and time_st > 90 and key_st is None)
         if time_mp is not None and time_mp <= 90:
@@ -454,7 +441,6 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
             use_default_st = False
         
         if use_default_mp and use_default_st:
-            # Solo enviamos imagen en el mensaje 2, el mensaje 3 sin imagen
             msg2_obj = await send_msg2_other(update, msg2, key_mp, time_mp, send_image=True)
             await asyncio.sleep(0.5)
             msg3_obj = await send_msg3_other(update, msg3, key_st, time_st, send_image=False)
@@ -570,7 +556,7 @@ async def handle_button(update, context):
 # COMANDO TEST GIF
 # ============================================================================
 async def cmd_testgif(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    gif_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_montepo_fontana.gif"
+    gif_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_stesicoro_fontana.gif"
     text_msg = (
         "🚆 Prossimi treni a Nesima\n\n"
         "🔺 Per Monte Po: Passa tra 3 minuti.\n"
