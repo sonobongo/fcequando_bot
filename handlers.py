@@ -150,6 +150,16 @@ async def send_treno_arrivo(update: Update, msg: str, direction: str):
     except Exception:
         return await update.message.reply_text(msg, parse_mode='Markdown')
 
+async def send_treno_arrivo_cabecera(update: Update, msg: str):
+    """Imagen especial para cuando el tren está a punto de salir de Monte Po o Stesicoro"""
+    img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_trenoarriva_cabeceras.png"
+    cache_buster = int(time_module.time())
+    img_url = f"{img_url}?v={cache_buster}"
+    try:
+        return await update.message.reply_photo(photo=img_url, caption=msg, parse_mode='Markdown')
+    except Exception:
+        return await update.message.reply_text(msg, parse_mode='Markdown')
+
 async def send_gif(update: Update, msg: str, gif_url: str):
     cache_buster = int(time_module.time())
     gif_url = f"{gif_url}?v={cache_buster}"
@@ -168,7 +178,7 @@ async def send_default(update: Update, msg: str):
         return await update.message.reply_text(msg, parse_mode='Markdown')
 
 # ============================================================================
-# ENVÍO DE MENSAJE 2 (hacia Monte Po)
+# ENVÍO DE MENSAJE 2 (hacia Monte Po) y 3 (hacia Stesicoro) - para intermedias
 # ============================================================================
 async def send_message_2(update: Update, msg: str, current_station_key: str, tiempo_restante: int, mins: int, estacion_key: str):
     if tiempo_restante is not None and (tiempo_restante <= 90 or mins <= 1):
@@ -179,9 +189,6 @@ async def send_message_2(update: Update, msg: str, current_station_key: str, tie
     else:
         return await send_default(update, msg)
 
-# ============================================================================
-# ENVÍO DE MENSAJE 3 (hacia Stesicoro)
-# ============================================================================
 async def send_message_3(update: Update, msg: str, current_station_key: str, tiempo_restante: int, mins: int, estacion_key: str):
     if tiempo_restante is not None and (tiempo_restante <= 90 or mins <= 1):
         return await send_treno_arrivo(update, msg, "Stesicoro")
@@ -195,7 +202,6 @@ async def send_message_3(update: Update, msg: str, current_station_key: str, tie
 # FUNCIÓN AUXILIAR PARA DETECTAR SI UN MENSAJE ES "DEFAULT"
 # ============================================================================
 def is_default_message(current_station_key, tiempo_restante, mins):
-    # Es default si: no hay llegada inminente (tiempo>90 y mins>1) y no hay estación actual
     if tiempo_restante is not None and (tiempo_restante <= 90 or mins <= 1):
         return False
     if current_station_key:
@@ -203,7 +209,7 @@ def is_default_message(current_station_key, tiempo_restante, mins):
     return True
 
 # ============================================================================
-# FUNCIÓN PRINCIPAL PARA ENVIAR AMBOS MENSAJES CON OPTIMIZACIÓN
+# FUNCIÓN PRINCIPAL PARA ENVIAR AMBOS MENSAJES (intermedias)
 # ============================================================================
 async def send_messages_2_and_3(update: Update, estacion_key: str, now: datetime, simulated: bool = False):
     msg2, msg3, key_mp, time_mp, key_st, time_st, mins_mp, mins_st = build_temporary_messages(now, estacion_key)
@@ -211,7 +217,6 @@ async def send_messages_2_and_3(update: Update, estacion_key: str, now: datetime
     default2 = is_default_message(key_mp, time_mp, mins_mp)
     default3 = is_default_message(key_st, time_st, mins_st)
     
-    # Si ambos son default, solo el mensaje 2 lleva imagen (ruta_default), el mensaje 3 solo texto
     if default2 and default3:
         msg2_obj = await send_message_2(update, msg2, key_mp, time_mp, mins_mp, estacion_key)
         await asyncio.sleep(0.5)
@@ -381,6 +386,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
         secs_rest = int(remaining.total_seconds() % 60)
         time_str_rest = format_time(mins_rest, secs_rest)
 
+        # Construir el mensaje principal (texto)
         if mins_rest <= 4:
             msg = f"🚇 Il treno è in binario. Partirà tra **{time_str_rest}**."
             if mins_rest <= 1:
@@ -409,11 +415,19 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
             elif "22:30" in last_msg:
                 last_msg = last_msg.replace("📌", "🕙")
             msg += f"\n\n{last_msg}"
-        img = get_station_image(estacion_key, now)
-        if img:
-            await update.message.reply_photo(photo=img, caption=msg, reply_markup=keyboard_main if return_to_main else keyboard_altri, parse_mode='Markdown')
+
+        # Decidir qué imagen enviar: si el tren sale en <=90 segundos (o minutos <=1), usar imagen especial de cabecera
+        total_seconds_rest = int(remaining.total_seconds())
+        if total_seconds_rest <= 90 or mins_rest <= 1:
+            # Enviar imagen de tren llegando a la cabecera
+            await send_treno_arrivo_cabecera(update, msg)
         else:
-            await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri, parse_mode='Markdown')
+            # Enviar foto normal de la estación
+            img = get_station_image(estacion_key, now)
+            if img:
+                await update.message.reply_photo(photo=img, caption=msg, reply_markup=keyboard_main if return_to_main else keyboard_altri, parse_mode='Markdown')
+            else:
+                await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri, parse_mode='Markdown')
         return
 
     # ========================================================================
