@@ -337,35 +337,17 @@ async def aggiornare_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     query = update.callback_query
     await query.answer()  # Responde al botón para que Telegram quite el "cargando"
     
-    # Obtenemos el chat_id y el mensaje original
     chat_id = query.message.chat_id
     message_id = query.message.message_id
     
-    # Eliminamos el mensaje que contiene el botón (para que no se acumulen)
+    # Eliminamos el mensaje que contiene el botón (la foto con el botón)
     try:
         await context.bot.delete_message(chat_id=chat_id, message_id=message_id)
     except Exception:
         pass
     
-    # Llamamos directamente a la función que refresca Milo (sin necesidad de simular comandos)
-    # Para eso, necesitamos un objeto "update" con un mensaje que tenga el chat_id.
-    # Creamos un objeto message falso que tenga el método reply_text para que send_station_response funcione.
-    class FakeMessage:
-        def __init__(self, chat_id, bot):
-            self.chat_id = chat_id
-            self.chat = type('Chat', (), {'id': chat_id})()
-            self.bot = bot
-        async def reply_text(self, text, **kwargs):
-            return await self.bot.send_message(chat_id=self.chat_id, text=text, **kwargs)
-        async def reply_photo(self, **kwargs):
-            # No necesitamos implementar realmente, porque send_station_response usará el método del update original
-            pass
-    
-    fake_message = FakeMessage(chat_id, context.bot)
-    fake_update = type('Update', (), {'message': fake_message, 'effective_chat': fake_message.chat, 'callback_query': query})()
-    
-    # Ejecutamos directamente la respuesta de Milo
-    await send_station_response(fake_update, context, "milo", return_to_main=False)
+    # Enviamos el comando /milo al chat para que el bot refresque Milo
+    await context.bot.send_message(chat_id=chat_id, text="/milo")
 
 # ============================================================================
 # RESPUESTA PRINCIPAL (foto de estación + msg2/msg3 + aviso de cierre)
