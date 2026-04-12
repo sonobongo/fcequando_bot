@@ -168,10 +168,10 @@ async def send_default(update: Update, msg: str):
         return await update.message.reply_text(msg, parse_mode='Markdown')
 
 # ============================================================================
-# ENVÍO DE MENSAJE 2 (hacia Monte Po)
+# ENVÍO DE MENSAJE 2 (hacia Monte Po) - GIF en cualquier estación
 # ============================================================================
 async def send_message_2(update: Update, msg: str, current_station_key: str, tiempo_restante: int, mins: int, estacion_key: str):
-    # Prioridad 1: llegada inminente (<=90 segundos O minutos <= 1)
+    # Prioridad 1: llegada inminente (<=90 segundos o minutos <=1)
     if tiempo_restante is not None and (tiempo_restante <= 90 or mins <= 1):
         return await send_treno_arrivo(update, msg, "Monte Po")
     # Prioridad 2: GIF si hay estación actual y no es Monte Po
@@ -183,15 +183,17 @@ async def send_message_2(update: Update, msg: str, current_station_key: str, tie
         return await send_default(update, msg)
 
 # ============================================================================
-# ENVÍO DE MENSAJE 3 (hacia Stesicoro) - SOLO GIF si la estación es Milo
+# ENVÍO DE MENSAJE 3 (hacia Stesicoro) - GIF en cualquier estación
 # ============================================================================
 async def send_message_3(update: Update, msg: str, current_station_key: str, tiempo_restante: int, mins: int, estacion_key: str):
+    # Prioridad 1: llegada inminente (<=90 segundos o minutos <=1)
     if tiempo_restante is not None and (tiempo_restante <= 90 or mins <= 1):
         return await send_treno_arrivo(update, msg, "Stesicoro")
-    # Solo Milo puede mostrar GIF en el mensaje 3
-    elif estacion_key == "milo" and current_station_key and current_station_key != "stesicoro":
+    # Prioridad 2: GIF si hay estación actual y no es Stesicoro
+    elif current_station_key and current_station_key != "stesicoro":
         gif_url = f"https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_montepo_{current_station_key}.gif"
         return await send_gif(update, msg, gif_url)
+    # Prioridad 3: imagen por defecto
     else:
         return await send_default(update, msg)
 
