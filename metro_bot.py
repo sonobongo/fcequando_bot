@@ -31,11 +31,9 @@ def main():
     flask_thread.start()
     logger.info("Flask server avviato sulla porta 8080")
 
-    # Configuración para enviar todos los mensajes sin notificación activa
     defaults = Defaults(disable_notification=True)
     app = Application.builder().token(TOKEN).defaults(defaults).build()
 
-    # Registrar comandos (sin /refrescar)
     commands = [
         ("start", start_wrapper), ("help", help_command_wrapper),
         ("montepo", cmd_montepo_wrapper), ("stesicoro", cmd_stesicoro_wrapper),
@@ -45,12 +43,12 @@ def main():
         ("borgo", cmd_borgo_wrapper), ("giuffrida", cmd_giuffrida_wrapper),
         ("italia", cmd_italia_wrapper), ("galatea", cmd_galatea_wrapper),
         ("giovanni", cmd_giovanni_wrapper), ("test", test_command_wrapper),
-        ("testfin", testfin_command_wrapper), ("testgif", cmd_testgif_wrapper)
+        ("testfin", testfin_command_wrapper), ("testgif", cmd_testgif_wrapper),
+        ("auto", auto_wrapper), ("stop", stop_wrapper)
     ]
     for cmd, handler in commands:
         app.add_handler(CommandHandler(cmd, handler))
 
-    # Teclados personalizados (ReplyKeyboardMarkup)
     button_texts = ["Monte Po", "Stesicoro", "Altri", "← Menu", "Fontana", "Nesima", "San Nullo",
                     "Cibali", "Milo", "Borgo", "Giuffrida", "Italia", "Galatea", "Giovanni XXIII"]
     app.add_handler(MessageHandler(filters.Text(button_texts), handle_button_wrapper))
