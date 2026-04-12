@@ -4,6 +4,8 @@ import time as timer
 from datetime import datetime, time, timedelta, date
 from typing import Tuple, Optional, List, Dict, Any
 import pytz
+from collections import defaultdict
+from statistics import mean
 
 CATANIA_TZ = pytz.timezone('Europe/Rome')
 
@@ -26,6 +28,58 @@ LAST_TRAIN_START_HOUR = CONFIG["last_train_message_start_hour"]
 WARNING_HOUR = CONFIG["closing_warning_hour"]
 SHORT_TIME_THRESHOLD = CONFIG["short_time_threshold"]
 NEXT_TRAIN_THRESHOLD = CONFIG["next_train_threshold"]
+
+# ============================================================================
+# CARGAR MEDICIONES REALES (mediciones.json)
+# ============================================================================
+MEDICIONES_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'mediciones.json')
+mediciones_por_tramo = defaultdict(list)  # clave: (origen, destino, direccion, dia_semana, hora_redondeada)
+
+def cargar_mediciones():
+    if not os.path.exists(MEDICIONES_FILE):
+        return
+    with open(MEDICIONES_FILE, 'r', encoding='utf-8') as f:
+        data = json.load(f)
+        for medicion in data.get('mediciones', []):
+            dia = medicion.get('dia_semana', '').lower()
+            hora_str = medicion.get('hora', '12:00')
+            # Redondeamos la hora a la hora exacta (para agrupar franjas de 1 hora)
+            hora_redondeada = int(hora_str.split(':')[0])
+            # Procesar trayectos de ida (direccion 'ida')
+            for t in medicion.get('trayectos_ida', []):
+                origen = t['origen'].lower()
+                destino = t['destino'].lower()
+                key = (origen, destino, 'ida', dia, hora_redondeada)
+                mediciones_por_tramo[key].append(t['tiempo_seg'])
+            # Procesar trayectos de vuelta (direccion 'vuelta')
+            for t in medicion.get('trayectos_vuelta', []):
+                origen = t['origen'].lower()
+                destino = t['destino'].lower()
+                key = (origen, destino, 'vuelta', dia, hora_redondeada)
+                mediciones_por_tramo[key].append(t['tiempo_seg'])
+
+cargar_mediciones()
+
+def get_measured_travel_time(origen: str, destino: str, direccion: str, now: datetime) -> Optional[float]:
+    """
+    Retorna el tiempo medio en segundos si hay mediciones para el mismo día de semana
+    y para la misma hora (rango ±1 hora). Si no, retorna None.
+    direccion: 'ida' (Monte Po -> Stesicoro) o 'vuelta' (Stesicoro -> Monte Po)
+    """
+    # Días de la semana en italiano (clave en mediciones)
+    weekdays_it = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo']
+    dia_actual = weekdays_it[now.weekday()].lower()
+    hora_actual = now.hour
+    
+    # Buscar mediciones que coincidan en día y hora (rango ±1 hora)
+    tiempos = []
+    for (o, d, dir_m, dia, hora), valores in mediciones_por_tramo.items():
+        if o == origen.lower() and d == destino.lower() and dir_m == direccion and dia == dia_actual:
+            if abs(hora - hora_actual) <= 1:  # misma hora o una hora antes/después
+                tiempos.extend(valores)
+    if tiempos:
+        return mean(tiempos)
+    return None
 
 # ============================================================================
 # TIEMPOS BASE ENTRE ESTACIONES (en segundos) - valores reales promediados
@@ -630,9 +684,14 @@ def get_total_seconds_from_montepo(station: str, now: datetime) -> int:
     total = 0
     peak = is_peak_hour(now)
     for (start, end, base_sec) in FORWARD_PEAK:
-        sec = base_sec
-        if not peak and (start, end) in EXTRA_TRAMOS_FORWARD:
-            sec -= 10
+        # Intentar obtener tiempo medido para este segmento (dirección ida)
+        measured = get_measured_travel_time(start, end, 'ida', now)
+        if measured is not None:
+            sec = measured
+        else:
+            sec = base_sec
+            if not peak and (start, end) in EXTRA_TRAMOS_FORWARD:
+                sec -= 10
         total += sec
         if end == station:
             break
@@ -641,7 +700,7 @@ def get_total_seconds_from_montepo(station: str, now: datetime) -> int:
         if is_station_closed(closed["station"], now):
             if stations_order.index(closed["station"]) < stations_order.index(station):
                 total -= closed["reduction_seconds"]
-    return max(0, total)
+    return max(0, int(total))
 
 def get_total_seconds_from_stesicoro(station: str, now: datetime) -> int:
     if now.tzinfo is None:
@@ -649,9 +708,14 @@ def get_total_seconds_from_stesicoro(station: str, now: datetime) -> int:
     total = 0
     peak = is_peak_hour(now)
     for (start, end, base_sec) in REVERSE_PEAK:
-        sec = base_sec
-        if not peak and (start, end) in EXTRA_TRAMOS_REVERSE:
-            sec -= 10
+        # Intentar obtener tiempo medido para este segmento (dirección vuelta)
+        measured = get_measured_travel_time(start, end, 'vuelta', now)
+        if measured is not None:
+            sec = measured
+        else:
+            sec = base_sec
+            if not peak and (start, end) in EXTRA_TRAMOS_REVERSE:
+                sec -= 10
         total += sec
         if end == station:
             break
@@ -660,7 +724,7 @@ def get_total_seconds_from_stesicoro(station: str, now: datetime) -> int:
         if is_station_closed(closed["station"], now):
             if stations_order_rev.index(closed["station"]) < stations_order_rev.index(station):
                 total -= closed["reduction_seconds"]
-    return max(0, total)
+    return max(0, int(total))
 
 def get_next_train_at_station(now: datetime, estacion_key: str) -> Tuple[Optional[Tuple], Optional[Tuple]]:
     if now.tzinfo is None:
