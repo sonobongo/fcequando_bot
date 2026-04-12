@@ -299,7 +299,7 @@ async def auto_update_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, e
     await update.message.reply_text("🔄 Aggiornamenti automatici terminati (20 cicli completati).")
 
 # ============================================================================
-# REFRESCO NORMAL (3 ciclos: 35,45,55 segundos) - ya no se usa para el botón
+# REFRESCO NORMAL (3 ciclos: 35,45,55 segundos)
 # ============================================================================
 async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str, chat_id: int, station_display_name: str, use_simulated: bool = False, simulated_now: datetime = None):
     tiempos_espera = [35, 45, 55]
@@ -331,31 +331,25 @@ async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, 
         context.chat_data.pop('cancel_refresh', None)
 
 # ============================================================================
-# CALLBACK PARA EL BOTÓN "AGGIORNARE" (solo Milo)
+# CALLBACK PARA EL BOTÓN INLINE "AGGIORNARE" (solo Milo)
 # ============================================================================
 async def aggiornare_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()  # Esto le dice a Telegram que el botón fue presionado
-    # Obtenemos el chat_id del mensaje original
+    await query.answer()  # Responde al botón para que Telegram quite el "cargando"
+    
+    # Obtenemos el chat_id y el mensaje original
     chat_id = query.message.chat_id
-    # Creamos un Update simulado para poder reutilizar cmd_milo_wrapper? No, mejor llamamos directamente a la función de Milo.
-    # Vamos a simular que recibimos un comando /milo en ese chat.
-    # Para eso, creamos un objeto Message falso y un Update falso, pero es más fácil enviar un mensaje con el comando? No, eso no ejecutaría el handler.
-    # Lo más limpio es llamar a send_station_response con los parámetros adecuados, pero necesitamos un update con un mensaje.
-    # Vamos a crear un objeto Update simulado con el chat_id.
-    fake_update = Update(
-        update_id=0,
-        message=type('Message', (), {
-            'chat_id': chat_id,
-            'reply_text': query.message.reply_text,
-            'message_id': query.message.message_id,
-            'effective_chat': type('Chat', (), {'id': chat_id})()
-        })()
-    )
-    # Pero esto es complicado. Mejor usamos context.bot.send_message y luego ejecutamos la lógica directamente.
-    # Sin embargo, la forma más fácil es reutilizar cmd_milo, pero cmd_milo espera un update de tipo mensaje.
-    # Voy a llamar a cmd_milo directamente pasándole un update falso que contenga el chat_id.
-    # Creo un objeto message con el método reply_text.
+    message_id = query.message.message_id
+    
+    # Eliminamos el mensaje que contiene el botón (para que no se acumulen)
+    try:
+        await context.bot.delete_message(chat_id=chat_id, message_id=message_id)
+    except Exception:
+        pass
+    
+    # Llamamos directamente a la función que refresca Milo (sin necesidad de simular comandos)
+    # Para eso, necesitamos un objeto "update" con un mensaje que tenga el chat_id.
+    # Creamos un objeto message falso que tenga el método reply_text para que send_station_response funcione.
     class FakeMessage:
         def __init__(self, chat_id, bot):
             self.chat_id = chat_id
@@ -364,11 +358,14 @@ async def aggiornare_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         async def reply_text(self, text, **kwargs):
             return await self.bot.send_message(chat_id=self.chat_id, text=text, **kwargs)
         async def reply_photo(self, **kwargs):
+            # No necesitamos implementar realmente, porque send_station_response usará el método del update original
             pass
+    
     fake_message = FakeMessage(chat_id, context.bot)
     fake_update = type('Update', (), {'message': fake_message, 'effective_chat': fake_message.chat, 'callback_query': query})()
-    # Llamamos a cmd_milo (la función original) con este update falso
-    await cmd_milo(fake_update, context)
+    
+    # Ejecutamos directamente la respuesta de Milo
+    await send_station_response(fake_update, context, "milo", return_to_main=False)
 
 # ============================================================================
 # RESPUESTA PRINCIPAL (foto de estación + msg2/msg3 + aviso de cierre)
@@ -520,26 +517,29 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
         last_msg_text = f"\n\n{last_msg}"
     permanent_caption = f"{test_indicator}🚇 Prossimi treni a {nombre}{last_msg_text}"
     img_station = get_station_image(estacion_key, now)
-    if img_station:
-        await update.message.reply_photo(photo=img_station, caption=permanent_caption, reply_markup=keyboard_main if return_to_main else keyboard_altri)
-    else:
-        await update.message.reply_text(permanent_caption, reply_markup=keyboard_main if return_to_main else keyboard_altri)
 
-    # Enviar mensajes 2 y 3
-    ids = await send_messages_2_and_3(update, estacion_key, now, simulated is not None)
-    context.chat_data['refresh_msg_ids'] = ids
-
-    # SI ES MILO: enviar botón inline "Aggiornare" inmediatamente
+    # Si es Milo, añadimos un teclado inline con el botón "Aggiornare"
     if estacion_key == "milo":
         keyboard_inline = InlineKeyboardMarkup([
-            [InlineKeyboardButton("Aggiornare", callback_data="aggiornare_milo")]
+            [InlineKeyboardButton("🔄 Aggiornare", callback_data="aggiornare_milo")]
         ])
-        await update.message.reply_text("🔄 Per un nuovo ciclo, premi il pulsante:", reply_markup=keyboard_inline)
+        if img_station:
+            await update.message.reply_photo(photo=img_station, caption=permanent_caption, reply_markup=keyboard_inline)
+        else:
+            await update.message.reply_text(permanent_caption, reply_markup=keyboard_inline)
+    else:
+        if img_station:
+            await update.message.reply_photo(photo=img_station, caption=permanent_caption, reply_markup=keyboard_main if return_to_main else keyboard_altri)
+        else:
+            await update.message.reply_text(permanent_caption, reply_markup=keyboard_main if return_to_main else keyboard_altri)
 
-    # Iniciar el refresco normal (3 ciclos con tiempos variables)
-    context.chat_data['refresh_active'] = True
-    task = asyncio.create_task(auto_refresh_loop(update, context, estacion_key, update.effective_chat.id, nombre, use_simulated=(simulated is not None), simulated_now=now if simulated else None))
-    context.chat_data['refresh_task'] = task
+    # Enviar mensajes 2 y 3 (solo para estaciones intermedias, incluyendo Milo)
+    if estacion_key != "montepo" and estacion_key != "stesicoro":
+        ids = await send_messages_2_and_3(update, estacion_key, now, simulated is not None)
+        context.chat_data['refresh_msg_ids'] = ids
+        context.chat_data['refresh_active'] = True
+        task = asyncio.create_task(auto_refresh_loop(update, context, estacion_key, update.effective_chat.id, nombre, use_simulated=(simulated is not None), simulated_now=now if simulated else None))
+        context.chat_data['refresh_task'] = task
 
 # ============================================================================
 # WRAPPERS Y COMANDOS (incluyendo /auto y /stop)
