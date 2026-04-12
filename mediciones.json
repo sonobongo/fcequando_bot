@@ -1,136 +1,28 @@
 {
   "mediciones": [
     {
-      "fecha": "2026-04-06",
-      "hora_inicio": "06:50",
-      "tipo": "mixto (inicio valle, luego punta)",
-      "direccion": "ida",
-      "tramos": [
-        {"desde": "Stesicoro", "hasta": "Giovanni", "segundos": 166},
-        {"desde": "Giovanni", "hasta": "Galatea", "segundos": 134},
-        {"desde": "Galatea", "hasta": "Italia", "segundos": 85},
-        {"desde": "Italia", "hasta": "Giuffrida", "segundos": 72, "parada": false},
-        {"desde": "Italia", "hasta": "Giuffrida", "segundos": 112, "parada": true},
-        {"desde": "Giuffrida", "hasta": "Borgo", "segundos": 85},
-        {"desde": "Borgo", "hasta": "Milo", "segundos": 106}
-      ]
-    },
-    {
-      "fecha": "2026-04-06",
-      "hora_inicio": "06:50",
-      "tipo": "mixto (inicio valle, luego punta)",
-      "direccion": "vuelta",
-      "tramos": [
-        {"desde": "Milo", "hasta": "Borgo", "segundos": 120},
-        {"desde": "Borgo", "hasta": "Giuffrida", "segundos": 79, "parada": false},
-        {"desde": "Borgo", "hasta": "Giuffrida", "segundos": 119, "parada": true},
-        {"desde": "Giuffrida", "hasta": "Italia", "segundos": 106},
-        {"desde": "Italia", "hasta": "Galatea", "segundos": 125},
-        {"desde": "Galatea", "hasta": "Giovanni", "segundos": 179},
-        {"desde": "Giovanni", "hasta": "Stesicoro", "segundos": 139}
-      ]
-    },
-    {
-      "fecha": "2026-04-07",
-      "hora_inicio": "07:35",
-      "tipo": "hora punta",
-      "direccion": "vuelta",
-      "tramos": [
-        {"desde": "Stesicoro", "hasta": "Giovanni", "segundos": 142.132},
-        {"desde": "Giovanni", "hasta": "Galatea", "segundos": 146.482},
-        {"desde": "Galatea", "hasta": "Italia", "segundos": 87.683},
-        {"desde": "Italia", "hasta": "Giuffrida", "segundos": 181.028, "parada": true},
-        {"desde": "Borgo", "hasta": "Milo", "segundos": 110.051},
-        {"desde": "Milo", "hasta": "Cibali", "segundos": 118.167},
-        {"desde": "Cibali", "hasta": "San Nullo", "segundos": 97.826},
-        {"desde": "San Nullo", "hasta": "Nesima", "segundos": 156.949}
-      ]
-    },
-    {
-      "fecha": "2026-04-07",
-      "hora_inicio": "07:35",
-      "tipo": "hora punta",
-      "direccion": "ida",
-      "tramos": [
-        {"desde": "Nesima", "hasta": "San Nullo", "segundos": 131.380},
-        {"desde": "San Nullo", "hasta": "Cibali", "segundos": 111.579},
-        {"desde": "Cibali", "hasta": "Milo", "segundos": 140.744},
-        {"desde": "Milo", "hasta": "Borgo", "segundos": 131.047},
-        {"desde": "Borgo", "hasta": "Italia", "segundos": 181.418, "parada": false},
-        {"desde": "Italia", "hasta": "Galatea", "segundos": 94.260},
-        {"desde": "Galatea", "hasta": "Giovanni", "segundos": 156.747},
-        {"desde": "Giovanni", "hasta": "Stesicoro", "segundos": 141.324}
-      ]
-    },
-    {
-      "fecha": "2026-04-08",
-      "hora_inicio": "11:40",
-      "tipo": "hora valle",
-      "direccion": "ida",
-      "tramos": [
-        {"desde": "Stesicoro", "hasta": "Giovanni", "segundos": 134},
-        {"desde": "Giovanni", "hasta": "Galatea", "segundos": 136},
-        {"desde": "Galatea", "hasta": "Italia", "segundos": 80}
-      ]
-    },
-    {
-      "fecha": "2026-04-08",
-      "hora_inicio": "12:00",
-      "tipo": "hora valle",
-      "direccion": "vuelta",
-      "tramos": [
-        {"desde": "Italia", "hasta": "Galatea", "segundos": 130},
-        {"desde": "Galatea", "hasta": "Giovanni", "segundos": 158.649},
-        {"desde": "Giovanni", "hasta": "Stesicoro", "segundos": 140.626}
-      ]
-    },
-    {
-      "fecha": "2026-04-09",
-      "hora_inicio": "10:30:15",
-      "tipo": "hora valle",
-      "direccion": "ida",
-      "tramos": [
-        {"desde": "Monte Po", "hasta": "Fontana", "segundos": 109.520},
-        {"desde": "Fontana", "hasta": "Nesima", "segundos": 111.791},
-        {"desde": "Nesima", "hasta": "San Nullo", "segundos": 133.369},
-        {"desde": "San Nullo", "hasta": "Cibali", "segundos": 105.778},
-        {"desde": "Cibali", "hasta": "Milo", "segundos": 124.377},
-        {"desde": "Milo", "hasta": "Borgo", "segundos": 130.600},
-        {"desde": "Borgo", "hasta": "Italia", "segundos": 182.359, "parada": false},
-        {"desde": "Italia", "hasta": "Galatea", "segundos": 93.405},
-        {"desde": "Galatea", "hasta": "Giovanni", "segundos": 166.262},
-        {"desde": "Giovanni", "hasta": "Stesicoro", "segundos": 138.499}
-      ]
-    },
-    {
-      "fecha": "2026-04-09",
-      "hora_inicio": "09:35",
-      "tipo": "hora valle",
-      "direccion": "vuelta",
-      "tramos": [
-        {"desde": "Stesicoro", "hasta": "Giovanni", "segundos": 144.154},
-        {"desde": "Giovanni", "hasta": "Galatea", "segundos": 151.790},
-        {"desde": "Galatea", "hasta": "Italia", "segundos": 92.717},
-        {"desde": "Italia", "hasta": "Borgo", "segundos": 175.578, "parada": false},
-        {"desde": "Borgo", "hasta": "Milo", "segundos": 105.766},
-        {"desde": "Milo", "hasta": "Cibali", "segundos": 106.869},
-        {"desde": "Cibali", "hasta": "San Nullo", "segundos": 101.547},
-        {"desde": "San Nullo", "hasta": "Nesima", "segundos": 212.967, "espera": 48},
-        {"desde": "Nesima", "hasta": "Fontana", "segundos": 103.352},
-        {"desde": "Fontana", "hasta": "Monte Po", "segundos": 93.253}
-      ]
-    },
-    {
-      "fecha": "2026-04-10",
-      "hora_inicio": "18:34",
-      "tipo": "hora valle (affollato, venerdì sera)",
-      "direccion": "vuelta",
-      "tramos": [
-        {"desde": "Milo", "hasta": "Borgo", "segundos": 110.228},
-        {"desde": "Borgo", "hasta": "Italia", "segundos": 159.073, "parada": false},
-        {"desde": "Italia", "hasta": "Galatea", "segundos": 96.177},
-        {"desde": "Galatea", "hasta": "Giovanni", "segundos": 147.971},
-        {"desde": "Giovanni", "hasta": "Stesicoro", "segundos": 116.549}
+      "id": "20260411_sabado_1145",
+      "fecha": "2026-04-11",
+      "dia_semana": "sabado",
+      "hora": "11:45",
+      "ocupacion": 0.5,
+      "trayectos_ida": [
+        { "origen": "Cibali", "destino": "San Nullo", "tiempo_seg": 100.447 },
+        { "origen": "San Nullo", "destino": "Nesima", "tiempo_seg": 169.552, "observacion": "espera puertas abiertas 66s (extra ~55s)" },
+        { "origen": "Nesima", "destino": "Fontana", "tiempo_seg": 95.996 },
+        { "origen": "Fontana", "destino": "Monte Po", "tiempo_seg": 92.733 }
+      ],
+      "trayectos_vuelta": [
+        { "origen": "Monte Po", "destino": "Fontana", "tiempo_seg": 95.105 },
+        { "origen": "Fontana", "destino": "Nesima", "tiempo_seg": 103.698 },
+        { "origen": "Nesima", "destino": "San Nullo", "tiempo_seg": 128.949 },
+        { "origen": "San Nullo", "destino": "Cibali", "tiempo_seg": 99.645 },
+        { "origen": "Cibali", "destino": "Milo", "tiempo_seg": 111.418 },
+        { "origen": "Milo", "destino": "Borgo", "tiempo_seg": 116.443 },
+        { "origen": "Borgo", "destino": "Italia", "tiempo_seg": 167.363, "observacion": "sin parada en Giuffrida (si hubiera +40s)" },
+        { "origen": "Italia", "destino": "Galatea", "tiempo_seg": 103.321 },
+        { "origen": "Galatea", "destino": "Giovanni XXIII", "tiempo_seg": 154.054 },
+        { "origen": "Giovanni XXIII", "destino": "Stesicoro", "tiempo_seg": 121.389 }
       ]
     }
   ]
