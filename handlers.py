@@ -1,8 +1,8 @@
 import asyncio
 import time as time_module
 from datetime import datetime, timedelta
-from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
-from telegram.ext import ContextTypes
+from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import ContextTypes, CallbackQueryHandler
 from horarios_logic import *
 from horarios_logic import CATANIA_TZ
 
@@ -22,12 +22,6 @@ keyboard_altri = ReplyKeyboardMarkup(
         ["Giovanni XXIII", "← Menu"]
     ],
     resize_keyboard=True, one_time_keyboard=False
-)
-
-# Teclado para el botón "Refrescare" (solo para Milo)
-keyboard_refresh = ReplyKeyboardMarkup(
-    [[KeyboardButton("🔄 Refrescare")]],
-    resize_keyboard=True, one_time_keyboard=True  # desaparece después de usarlo
 )
 
 BOTON_TO_KEY = {
@@ -284,7 +278,7 @@ async def auto_update_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, e
     await update.message.reply_text("🔄 Aggiornamenti automatici terminati (20 cicli completati).")
 
 # ============================================================================
-# REFRESCO NORMAL (3 ciclos: 35,45,55 segundos) - MODIFICADO PARA MILO
+# REFRESCO NORMAL (3 ciclos: 35,45,55 segundos) - MODIFICADO PARA MILO (mensaje inline)
 # ============================================================================
 async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str, chat_id: int, station_display_name: str, use_simulated: bool = False, simulated_now: datetime = None):
     tiempos_espera = [35, 45, 55]
@@ -314,12 +308,30 @@ async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, 
         context.chat_data['refresh_active'] = False
         context.chat_data.pop('refresh_task', None)
         context.chat_data.pop('cancel_refresh', None)
-        # Si es la estación Milo y no estamos en modo automático (/auto), mostramos el botón Refrescare
+        # Si es la estación Milo y no estamos en modo automático (/auto), enviamos un mensaje con botón inline
         if estacion_key == "milo" and not context.chat_data.get('auto_active', False):
+            keyboard = InlineKeyboardMarkup([
+                [InlineKeyboardButton("Aggiornare", callback_data="refresh_milo")]
+            ])
             await update.message.reply_text(
-                "🔄 Aggiornamenti automatici terminati.\nPremi il pulsante per un nuovo ciclo di aggiornamenti.",
-                reply_markup=keyboard_refresh
+                "🔄 Ciclo di aggiornamenti completato. Premi il pulsante per un nuovo ciclo.",
+                reply_markup=keyboard
             )
+
+# ============================================================================
+# CALLBACK PARA EL BOTÓN "Aggiornare"
+# ============================================================================
+async def refresh_milo_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()  # responde al callback para que desaparezca el reloj
+    # Llamamos a la función que reinicia Milo (cmd_milo_wrapper)
+    # Usamos cancel_refresh_and_run para limpiar estados previos
+    await cancel_refresh_and_run(update, context, cmd_milo, from_callback=True)
+    # Opcional: eliminar el mensaje del botón
+    try:
+        await query.message.delete()
+    except Exception:
+        pass
 
 # ============================================================================
 # RESPUESTA PRINCIPAL (foto de estación + msg2/msg3 + aviso de cierre)
@@ -485,29 +497,61 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
 # ============================================================================
 # WRAPPERS Y COMANDOS (incluyendo /auto y /stop)
 # ============================================================================
-async def cancel_refresh_and_run(update: Update, context: ContextTypes.DEFAULT_TYPE, coro, *args, **kwargs):
-    if context.chat_data.get('auto_active', False):
-        context.chat_data['auto_active'] = False
-        if 'auto_task' in context.chat_data:
-            task = context.chat_data['auto_task']
+async def cancel_refresh_and_run(update: Update, context: ContextTypes.DEFAULT_TYPE, coro, *args, from_callback=False, **kwargs):
+    # Si se llama desde un callback, update es de tipo CallbackQuery, necesitamos extraer el mensaje real
+    if from_callback:
+        real_update = update.callback_query
+        effective_chat = real_update.message.chat_id
+        # Detener tareas
+        if context.chat_data.get('auto_active', False):
+            context.chat_data['auto_active'] = False
+            if 'auto_task' in context.chat_data:
+                task = context.chat_data['auto_task']
+                if not task.done():
+                    task.cancel()
+                context.chat_data.pop('auto_task', None)
+            if 'auto_msg_ids' in context.chat_data:
+                for mid in context.chat_data['auto_msg_ids']:
+                    try:
+                        await context.bot.delete_message(chat_id=effective_chat, message_id=mid)
+                    except Exception:
+                        pass
+                context.chat_data.pop('auto_msg_ids', None)
+            context.chat_data.pop('auto_cycles_left', None)
+        if 'refresh_task' in context.chat_data:
+            task = context.chat_data['refresh_task']
             if not task.done():
                 task.cancel()
-            context.chat_data.pop('auto_task', None)
-        if 'auto_msg_ids' in context.chat_data:
-            for mid in context.chat_data['auto_msg_ids']:
-                try:
-                    await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=mid)
-                except Exception:
-                    pass
-            context.chat_data.pop('auto_msg_ids', None)
-        context.chat_data.pop('auto_cycles_left', None)
-    if 'refresh_task' in context.chat_data:
-        task = context.chat_data['refresh_task']
-        if not task.done():
-            task.cancel()
-        context.chat_data.pop('refresh_task', None)
-    context.chat_data['refresh_active'] = False
-    await coro(update, context, *args, **kwargs)
+            context.chat_data.pop('refresh_task', None)
+        context.chat_data['refresh_active'] = False
+        # Llamar a la función original con el update correcto (el callback query no tiene message.reply_text)
+        # Necesitamos simular un update de tipo mensaje. Usaremos el chat_id y enviaremos un nuevo mensaje.
+        # Pero cmd_milo espera un Update con message. Vamos a crear un objeto Update falso? Mejor: llamamos a la función directamente con el callback_query.message.
+        # Para simplificar, reutilizamos el callback_query.message para enviar el comando.
+        await coro(real_update.message, context, *args, **kwargs)
+    else:
+        if context.chat_data.get('auto_active', False):
+            context.chat_data['auto_active'] = False
+            if 'auto_task' in context.chat_data:
+                task = context.chat_data['auto_task']
+                if not task.done():
+                    task.cancel()
+                context.chat_data.pop('auto_task', None)
+            if 'auto_msg_ids' in context.chat_data:
+                for mid in context.chat_data['auto_msg_ids']:
+                    try:
+                        await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=mid)
+                    except Exception:
+                        pass
+                context.chat_data.pop('auto_msg_ids', None)
+            context.chat_data.pop('auto_cycles_left', None)
+        if 'refresh_task' in context.chat_data:
+            task = context.chat_data['refresh_task']
+            if not task.done():
+                task.cancel()
+            context.chat_data.pop('refresh_task', None)
+        context.chat_data['refresh_active'] = False
+        await coro(update, context, *args, **kwargs)
 
 async def start_wrapper(update, context): await cancel_refresh_and_run(update, context, start)
 async def help_command_wrapper(update, context): await cancel_refresh_and_run(update, context, help_command)
@@ -610,9 +654,6 @@ async def handle_button(update, context):
         await cmd_altri(update, context)
     elif text == "← Menu":
         await update.message.reply_text("🔙 Ritorno al menu principale.", reply_markup=keyboard_main)
-    elif text == "🔄 Refrescare":
-        # Al pulsar Refrescare, reiniciamos Milo
-        await cmd_milo_wrapper(update, context)
     elif text in BOTON_TO_KEY:
         est_key = BOTON_TO_KEY[text]
         context.chat_data['last_station'] = est_key
