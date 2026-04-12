@@ -65,7 +65,6 @@ def build_temporary_messages(now: datetime, estacion_key: str):
                 if seconds_passed < 0:
                     seconds_passed = 0
                 current_station = get_current_station_from_stesicoro(now, seconds_passed)
-                # Manejar especial para cabeceras
                 if current_station == "Monte Po":
                     current_station_key_mp = "montepo"
                     current_station_text = "Il treno è appena partito da Monte Po"
@@ -83,13 +82,11 @@ def build_temporary_messages(now: datetime, estacion_key: str):
                     current_station_text = current_station
                 else:
                     current_station_text = None
-                # Añadir línea solo si hay texto y no está vacío
-                if current_station_text and current_station_text != "":
+                if current_station_text:
                     if "appena partito" in current_station_text:
                         line += f"   [{current_station_text}]\n"
                     elif "non ancora partito" not in current_station_text:
                         line += f"   [il treno si trova attualmente a {current_station_text}]\n"
-                # Si no hay texto, no añadir nada (evitar [])
         msg2 += line
         if mins <= 1 and next_info:
             paso2, mins2, secs2 = next_info
@@ -124,7 +121,6 @@ def build_temporary_messages(now: datetime, estacion_key: str):
             if seconds_passed < 0:
                 seconds_passed = 0
             current_station = get_current_station_from_montepo(now, seconds_passed)
-            # Manejar especial para cabeceras
             if current_station == "Monte Po":
                 current_station_key_st = "montepo"
                 current_station_text = "Il treno è appena partito da Monte Po"
@@ -144,12 +140,11 @@ def build_temporary_messages(now: datetime, estacion_key: str):
                 current_station_text = None
         estaciones_localizacion2 = ["nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "giovanni"]
         if estacion_key in estaciones_localizacion2 and 2 <= mins <= 10:
-            if rest_seconds < total_seconds:
-                if current_station_text and current_station_text != "":
-                    if "appena partito" in current_station_text:
-                        line += f"   [{current_station_text}]\n"
-                    elif "non ancora partito" not in current_station_text:
-                        line += f"   [il treno si trova attualmente a {current_station_text}]\n"
+            if rest_seconds < total_seconds and current_station_text:
+                if "appena partito" in current_station_text:
+                    line += f"   [{current_station_text}]\n"
+                elif "non ancora partito" not in current_station_text:
+                    line += f"   [il treno si trova attualmente a {current_station_text}]\n"
         msg3 = line
         if mins <= 1 and next_info:
             paso2, mins2, secs2 = next_info
@@ -304,12 +299,12 @@ async def auto_update_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, e
     await update.message.reply_text("🔄 Aggiornamenti automatici terminati (20 cicli completati).")
 
 # ============================================================================
-# REFRESCO NORMAL (3 ciclos: 35,45,55 segundos) - MODIFICADO: botón inmediato para Milo
+# REFRESCO NORMAL (3 ciclos: 35,45,55 segundos) - ya no se usa para el botón
 # ============================================================================
 async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str, chat_id: int, station_display_name: str, use_simulated: bool = False, simulated_now: datetime = None):
     tiempos_espera = [35, 45, 55]
     try:
-        for idx, espera in enumerate(tiempos_espera):
+        for espera in tiempos_espera:
             await asyncio.sleep(espera)
             if context.chat_data.get('cancel_refresh', False):
                 break
@@ -340,9 +335,40 @@ async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, 
 # ============================================================================
 async def aggiornare_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()  # responder la pulsación
-    # Ejecutar el comando /milo para reiniciar Milo
-    await cmd_milo_wrapper(update, context)
+    await query.answer()  # Esto le dice a Telegram que el botón fue presionado
+    # Obtenemos el chat_id del mensaje original
+    chat_id = query.message.chat_id
+    # Creamos un Update simulado para poder reutilizar cmd_milo_wrapper? No, mejor llamamos directamente a la función de Milo.
+    # Vamos a simular que recibimos un comando /milo en ese chat.
+    # Para eso, creamos un objeto Message falso y un Update falso, pero es más fácil enviar un mensaje con el comando? No, eso no ejecutaría el handler.
+    # Lo más limpio es llamar a send_station_response con los parámetros adecuados, pero necesitamos un update con un mensaje.
+    # Vamos a crear un objeto Update simulado con el chat_id.
+    fake_update = Update(
+        update_id=0,
+        message=type('Message', (), {
+            'chat_id': chat_id,
+            'reply_text': query.message.reply_text,
+            'message_id': query.message.message_id,
+            'effective_chat': type('Chat', (), {'id': chat_id})()
+        })()
+    )
+    # Pero esto es complicado. Mejor usamos context.bot.send_message y luego ejecutamos la lógica directamente.
+    # Sin embargo, la forma más fácil es reutilizar cmd_milo, pero cmd_milo espera un update de tipo mensaje.
+    # Voy a llamar a cmd_milo directamente pasándole un update falso que contenga el chat_id.
+    # Creo un objeto message con el método reply_text.
+    class FakeMessage:
+        def __init__(self, chat_id, bot):
+            self.chat_id = chat_id
+            self.chat = type('Chat', (), {'id': chat_id})()
+            self.bot = bot
+        async def reply_text(self, text, **kwargs):
+            return await self.bot.send_message(chat_id=self.chat_id, text=text, **kwargs)
+        async def reply_photo(self, **kwargs):
+            pass
+    fake_message = FakeMessage(chat_id, context.bot)
+    fake_update = type('Update', (), {'message': fake_message, 'effective_chat': fake_message.chat, 'callback_query': query})()
+    # Llamamos a cmd_milo (la función original) con este update falso
+    await cmd_milo(fake_update, context)
 
 # ============================================================================
 # RESPUESTA PRINCIPAL (foto de estación + msg2/msg3 + aviso de cierre)
