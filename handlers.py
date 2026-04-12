@@ -2,7 +2,7 @@ import asyncio
 import time as time_module
 from datetime import datetime, timedelta
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ContextTypes, CallbackQueryHandler
+from telegram.ext import ContextTypes
 from horarios_logic import *
 from horarios_logic import CATANIA_TZ
 
@@ -65,17 +65,31 @@ def build_temporary_messages(now: datetime, estacion_key: str):
                 if seconds_passed < 0:
                     seconds_passed = 0
                 current_station = get_current_station_from_stesicoro(now, seconds_passed)
-                if current_station not in ["non ancora partito da Stesicoro", "Il treno è appena partito da Stesicoro"]:
+                # Manejar especial para cabeceras
+                if current_station == "Monte Po":
+                    current_station_key_mp = "montepo"
+                    current_station_text = "Il treno è appena partito da Monte Po"
+                elif current_station == "Stesicoro":
+                    current_station_key_mp = "stesicoro"
+                    current_station_text = "Il treno è appena partito da Stesicoro"
+                elif current_station not in ["non ancora partito da Stesicoro", "Il treno è appena partito da Stesicoro"]:
                     for key, name in NOMBRE_MOSTRAR.items():
                         if name == current_station:
                             current_station_key_mp = key
                             break
+                    current_station_text = current_station
                 elif current_station == "Il treno è appena partito da Stesicoro":
                     current_station_key_mp = "stesicoro"
-                if "appena partito" in current_station:
-                    line += f"   [{current_station}]\n"
-                elif "non ancora partito" not in current_station:
-                    line += f"   [il treno si trova attualmente a {current_station}]\n"
+                    current_station_text = current_station
+                else:
+                    current_station_text = None
+                # Añadir línea solo si hay texto y no está vacío
+                if current_station_text and current_station_text != "":
+                    if "appena partito" in current_station_text:
+                        line += f"   [{current_station_text}]\n"
+                    elif "non ancora partito" not in current_station_text:
+                        line += f"   [il treno si trova attualmente a {current_station_text}]\n"
+                # Si no hay texto, no añadir nada (evitar [])
         msg2 += line
         if mins <= 1 and next_info:
             paso2, mins2, secs2 = next_info
@@ -110,20 +124,32 @@ def build_temporary_messages(now: datetime, estacion_key: str):
             if seconds_passed < 0:
                 seconds_passed = 0
             current_station = get_current_station_from_montepo(now, seconds_passed)
-            if current_station not in ["non ancora partito da Monte Po", "Il treno è appena partito da Monte Po"]:
+            # Manejar especial para cabeceras
+            if current_station == "Monte Po":
+                current_station_key_st = "montepo"
+                current_station_text = "Il treno è appena partito da Monte Po"
+            elif current_station == "Stesicoro":
+                current_station_key_st = "stesicoro"
+                current_station_text = "Il treno è appena partito da Stesicoro"
+            elif current_station not in ["non ancora partito da Monte Po", "Il treno è appena partito da Monte Po"]:
                 for key, name in NOMBRE_MOSTRAR.items():
                     if name == current_station:
                         current_station_key_st = key
                         break
+                current_station_text = current_station
             elif current_station == "Il treno è appena partito da Monte Po":
                 current_station_key_st = "montepo"
+                current_station_text = current_station
+            else:
+                current_station_text = None
         estaciones_localizacion2 = ["nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "giovanni"]
         if estacion_key in estaciones_localizacion2 and 2 <= mins <= 10:
             if rest_seconds < total_seconds:
-                if "appena partito" in current_station:
-                    line += f"   [{current_station}]\n"
-                elif "non ancora partito" not in current_station:
-                    line += f"   [il treno si trova attualmente a {current_station}]\n"
+                if current_station_text and current_station_text != "":
+                    if "appena partito" in current_station_text:
+                        line += f"   [{current_station_text}]\n"
+                    elif "non ancora partito" not in current_station_text:
+                        line += f"   [il treno si trova attualmente a {current_station_text}]\n"
         msg3 = line
         if mins <= 1 and next_info:
             paso2, mins2, secs2 = next_info
@@ -228,7 +254,7 @@ async def send_messages_2_and_3(update: Update, estacion_key: str, now: datetime
         return (msg2_obj.message_id, msg3_obj.message_id)
 
 # ============================================================================
-# BUCLE AUTO (30 segundos, 20 ciclos) - para /auto
+# BUCLE AUTO (30 segundos, 20 ciclos)
 # ============================================================================
 async def auto_update_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str, chat_id: int):
     if 'refresh_task' in context.chat_data:
@@ -278,12 +304,12 @@ async def auto_update_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, e
     await update.message.reply_text("🔄 Aggiornamenti automatici terminati (20 cicli completati).")
 
 # ============================================================================
-# REFRESCO NORMAL (3 ciclos: 35,45,55 segundos) - para estaciones normales y Milo
+# REFRESCO NORMAL (3 ciclos: 35,45,55 segundos) - MODIFICADO: botón inmediato para Milo
 # ============================================================================
 async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str, chat_id: int, station_display_name: str, use_simulated: bool = False, simulated_now: datetime = None):
     tiempos_espera = [35, 45, 55]
     try:
-        for espera in tiempos_espera:
+        for idx, espera in enumerate(tiempos_espera):
             await asyncio.sleep(espera)
             if context.chat_data.get('cancel_refresh', False):
                 break
@@ -308,34 +334,15 @@ async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, 
         context.chat_data['refresh_active'] = False
         context.chat_data.pop('refresh_task', None)
         context.chat_data.pop('cancel_refresh', None)
-        # Ya no enviamos ningún mensaje de "ciclo completado"
 
 # ============================================================================
-# FUNCIÓN PARA ENVIAR EL BOTÓN INLINE "Aggiornare" (solo para Milo)
-# ============================================================================
-async def send_aggiornare_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Envía un mensaje con un botón inline 'Aggiornare' para refrescar Milo manualmente"""
-    keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔄 Aggiornare", callback_data="aggiornare_milo")]])
-    await update.message.reply_text("", reply_markup=keyboard)
-
-# ============================================================================
-# CALLBACK PARA EL BOTÓN "Aggiornare"
+# CALLBACK PARA EL BOTÓN "AGGIORNARE" (solo Milo)
 # ============================================================================
 async def aggiornare_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()  # Responde al clic
-    # Reiniciamos Milo llamando a cmd_milo_wrapper (necesitamos obtener el chat_id)
-    chat_id = query.message.chat_id
-    # Simular un mensaje para poder usar el wrapper
-    class FakeMessage:
-        def __init__(self, chat_id):
-            self.chat_id = chat_id
-    fake_update = type('obj', (object,), {
-        'effective_chat': type('obj', (object,), {'id': chat_id})(),
-        'message': type('obj', (object,), {'reply_text': lambda *args, **kwargs: None})()
-    })
-    # Llamar al wrapper de Milo
-    await cmd_milo_wrapper(fake_update, context)
+    await query.answer()  # responder la pulsación
+    # Ejecutar el comando /milo para reiniciar Milo
+    await cmd_milo_wrapper(update, context)
 
 # ============================================================================
 # RESPUESTA PRINCIPAL (foto de estación + msg2/msg3 + aviso de cierre)
@@ -496,13 +503,14 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
     ids = await send_messages_2_and_3(update, estacion_key, now, simulated is not None)
     context.chat_data['refresh_msg_ids'] = ids
 
-    # Si es Milo, enviar el botón inline "Aggiornare" (sin texto adicional)
+    # SI ES MILO: enviar botón inline "Aggiornare" inmediatamente
     if estacion_key == "milo":
-        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔄 Aggiornare", callback_data="aggiornare_milo")]])
-        await update.message.reply_text("", reply_markup=keyboard)
+        keyboard_inline = InlineKeyboardMarkup([
+            [InlineKeyboardButton("Aggiornare", callback_data="aggiornare_milo")]
+        ])
+        await update.message.reply_text("🔄 Per un nuovo ciclo, premi il pulsante:", reply_markup=keyboard_inline)
 
-    # Iniciar el refresco normal (3 ciclos con tiempos variables) solo para estaciones que no son Milo?
-    # Para Milo también queremos refrescos automáticos? Por ahora sí, pero el botón permite reiniciar manualmente.
+    # Iniciar el refresco normal (3 ciclos con tiempos variables)
     context.chat_data['refresh_active'] = True
     task = asyncio.create_task(auto_refresh_loop(update, context, estacion_key, update.effective_chat.id, nombre, use_simulated=(simulated is not None), simulated_now=now if simulated else None))
     context.chat_data['refresh_task'] = task
@@ -779,6 +787,3 @@ async def cmd_stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("✅ Aggiornamenti automatici fermati. Il bot torna alla modalità normale.")
     else:
         await update.message.reply_text("⚠️ Nessun aggiornamento automatico in corso.")
-
-# Exportar la función callback para que metro_bot.py la pueda registrar
-# (ya está definida arriba)
