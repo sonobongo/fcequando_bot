@@ -24,6 +24,12 @@ keyboard_altri = ReplyKeyboardMarkup(
     resize_keyboard=True, one_time_keyboard=False
 )
 
+# Teclado para el botón "Refrescare" (solo para Milo)
+keyboard_refresh = ReplyKeyboardMarkup(
+    [[KeyboardButton("🔄 Refrescare")]],
+    resize_keyboard=True, one_time_keyboard=True  # desaparece después de usarlo
+)
+
 BOTON_TO_KEY = {
     "Monte Po": "montepo", "Stesicoro": "stesicoro", "Fontana": "fontana",
     "Nesima": "nesima", "San Nullo": "sannullo", "Cibali": "cibali",
@@ -151,7 +157,6 @@ async def send_treno_arrivo(update: Update, msg: str, direction: str):
         return await update.message.reply_text(msg, parse_mode='Markdown')
 
 async def send_treno_arrivo_cabecera(update: Update, msg: str):
-    """Imagen especial para cuando el tren está a punto de salir de Monte Po o Stesicoro"""
     img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_trenoarriva_cabeceras.png"
     cache_buster = int(time_module.time())
     img_url = f"{img_url}?v={cache_buster}"
@@ -178,7 +183,7 @@ async def send_default(update: Update, msg: str):
         return await update.message.reply_text(msg, parse_mode='Markdown')
 
 # ============================================================================
-# ENVÍO DE MENSAJE 2 (hacia Monte Po) y 3 (hacia Stesicoro) - para intermedias
+# ENVÍO DE MENSAJE 2 (hacia Monte Po) y 3 (hacia Stesicoro)
 # ============================================================================
 async def send_message_2(update: Update, msg: str, current_station_key: str, tiempo_restante: int, mins: int, estacion_key: str):
     if tiempo_restante is not None and (tiempo_restante <= 90 or mins <= 1):
@@ -279,12 +284,12 @@ async def auto_update_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, e
     await update.message.reply_text("🔄 Aggiornamenti automatici terminati (20 cicli completati).")
 
 # ============================================================================
-# REFRESCO NORMAL (3 ciclos: 35,45,55 segundos)
+# REFRESCO NORMAL (3 ciclos: 35,45,55 segundos) - MODIFICADO PARA MILO
 # ============================================================================
 async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str, chat_id: int, station_display_name: str, use_simulated: bool = False, simulated_now: datetime = None):
     tiempos_espera = [35, 45, 55]
     try:
-        for espera in tiempos_espera:
+        for idx, espera in enumerate(tiempos_espera):
             await asyncio.sleep(espera)
             if context.chat_data.get('cancel_refresh', False):
                 break
@@ -309,6 +314,12 @@ async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, 
         context.chat_data['refresh_active'] = False
         context.chat_data.pop('refresh_task', None)
         context.chat_data.pop('cancel_refresh', None)
+        # Si es la estación Milo y no estamos en modo automático (/auto), mostramos el botón Refrescare
+        if estacion_key == "milo" and not context.chat_data.get('auto_active', False):
+            await update.message.reply_text(
+                "🔄 Aggiornamenti automatici terminati.\nPremi il pulsante per un nuovo ciclo di aggiornamenti.",
+                reply_markup=keyboard_refresh
+            )
 
 # ============================================================================
 # RESPUESTA PRINCIPAL (foto de estación + msg2/msg3 + aviso de cierre)
@@ -386,7 +397,6 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
         secs_rest = int(remaining.total_seconds() % 60)
         time_str_rest = format_time(mins_rest, secs_rest)
 
-        # Construir el mensaje principal (texto)
         if mins_rest <= 4:
             msg = f"🚇 Il treno è in binario. Partirà tra **{time_str_rest}**."
             if mins_rest <= 1:
@@ -416,13 +426,10 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
                 last_msg = last_msg.replace("📌", "🕙")
             msg += f"\n\n{last_msg}"
 
-        # Decidir qué imagen enviar: si el tren sale en <=90 segundos (o minutos <=1), usar imagen especial de cabecera
         total_seconds_rest = int(remaining.total_seconds())
         if total_seconds_rest <= 90 or mins_rest <= 1:
-            # Enviar imagen de tren llegando a la cabecera
             await send_treno_arrivo_cabecera(update, msg)
         else:
-            # Enviar foto normal de la estación
             img = get_station_image(estacion_key, now)
             if img:
                 await update.message.reply_photo(photo=img, caption=msg, reply_markup=keyboard_main if return_to_main else keyboard_altri, parse_mode='Markdown')
@@ -603,6 +610,9 @@ async def handle_button(update, context):
         await cmd_altri(update, context)
     elif text == "← Menu":
         await update.message.reply_text("🔙 Ritorno al menu principale.", reply_markup=keyboard_main)
+    elif text == "🔄 Refrescare":
+        # Al pulsar Refrescare, reiniciamos Milo
+        await cmd_milo_wrapper(update, context)
     elif text in BOTON_TO_KEY:
         est_key = BOTON_TO_KEY[text]
         context.chat_data['last_station'] = est_key
