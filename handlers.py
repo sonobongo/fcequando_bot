@@ -5,6 +5,9 @@ from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import ContextTypes
 from horarios_logic import *
 
+# Importar la zona horaria desde horarios_logic
+from horarios_logic import CATANIA_TZ
+
 # ============================================================================
 # TECLADOS
 # ============================================================================
@@ -242,7 +245,12 @@ async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, 
                 except Exception as e:
                     print(f"Error borrando mensaje {msg_ids[1]}: {e}")
             # Calcular nuevos mensajes
-            now = simulated_now if (use_simulated and simulated_now) else datetime.now()
+            if use_simulated and simulated_now:
+                now = simulated_now
+                if now.tzinfo is None:
+                    now = CATANIA_TZ.localize(now)
+            else:
+                now = datetime.now(CATANIA_TZ)
             msg2, msg3, key_mp, time_mp, key_st, time_st = build_temporary_messages(now, estacion_key)
             
             # Determinar si ambos van a usar imagen default (sin GIF y sin tiempo <=90)
@@ -320,9 +328,12 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
     
     simulated = context.chat_data.get('test_time') if context.chat_data else None
     if simulated:
+        # Asegurar que simulated tiene zona horaria
+        if simulated.tzinfo is None:
+            simulated = CATANIA_TZ.localize(simulated)
         now = simulated
     else:
-        now = datetime.now()
+        now = datetime.now(CATANIA_TZ)
     test_indicator = "🧪 [TEST MODE] " if simulated else ""
 
     warning = get_closing_warning(now)
@@ -557,7 +568,7 @@ async def cmd_giovanni(update, context): await send_station_response(update, con
 async def cmd_altri(update, context): await update.message.reply_text("⬇️ Altre stazioni:", reply_markup=keyboard_altri)
 async def start(update, context):
     user = update.effective_user
-    now = datetime.now()
+    now = datetime.now(CATANIA_TZ)
     last_msg = get_last_train_message(now)
     if "01:00" in last_msg:
         last_msg = last_msg.replace("📌", "🕐")
@@ -653,6 +664,8 @@ async def test_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             await update.message.reply_text(f"Data non valida: {e}")
             return
+        # Aseguramos que la hora simulada tenga zona horaria
+        simulated = CATANIA_TZ.localize(simulated)
         context.chat_data['test_time'] = simulated
         await update.message.reply_text(
             f"🧪 **Modalità test attivata**\nOra simulata: {simulated.strftime('%d/%m/%Y %H:%M')}\nUsa i bottoni. Per uscire: `/testfin`",
@@ -686,6 +699,7 @@ async def test_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             await update.message.reply_text(f"Data non valida: {e}")
             return
+        simulated = CATANIA_TZ.localize(simulated)
         context.chat_data['test_time'] = simulated
         await send_station_response(update, context, station, return_to_main=False)
         return
