@@ -168,46 +168,60 @@ async def send_default(update: Update, msg: str):
         return await update.message.reply_text(msg, parse_mode='Markdown')
 
 # ============================================================================
-# ENVÍO DE MENSAJE 2 (hacia Monte Po) - GIF en cualquier estación
+# ENVÍO DE MENSAJE 2 (hacia Monte Po)
 # ============================================================================
 async def send_message_2(update: Update, msg: str, current_station_key: str, tiempo_restante: int, mins: int, estacion_key: str):
-    # Prioridad 1: llegada inminente (<=90 segundos o minutos <=1)
     if tiempo_restante is not None and (tiempo_restante <= 90 or mins <= 1):
         return await send_treno_arrivo(update, msg, "Monte Po")
-    # Prioridad 2: GIF si hay estación actual y no es Monte Po
     elif current_station_key and current_station_key != "montepo":
         gif_url = f"https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_stesicoro_{current_station_key}.gif"
         return await send_gif(update, msg, gif_url)
-    # Prioridad 3: imagen por defecto
     else:
         return await send_default(update, msg)
 
 # ============================================================================
-# ENVÍO DE MENSAJE 3 (hacia Stesicoro) - GIF en cualquier estación
+# ENVÍO DE MENSAJE 3 (hacia Stesicoro)
 # ============================================================================
 async def send_message_3(update: Update, msg: str, current_station_key: str, tiempo_restante: int, mins: int, estacion_key: str):
-    # Prioridad 1: llegada inminente (<=90 segundos o minutos <=1)
     if tiempo_restante is not None and (tiempo_restante <= 90 or mins <= 1):
         return await send_treno_arrivo(update, msg, "Stesicoro")
-    # Prioridad 2: GIF si hay estación actual y no es Stesicoro
     elif current_station_key and current_station_key != "stesicoro":
         gif_url = f"https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_montepo_{current_station_key}.gif"
         return await send_gif(update, msg, gif_url)
-    # Prioridad 3: imagen por defecto
     else:
         return await send_default(update, msg)
 
 # ============================================================================
-# FUNCIÓN PRINCIPAL PARA ENVIAR AMBOS MENSAJES
+# FUNCIÓN AUXILIAR PARA DETECTAR SI UN MENSAJE ES "DEFAULT"
+# ============================================================================
+def is_default_message(current_station_key, tiempo_restante, mins):
+    # Es default si: no hay llegada inminente (tiempo>90 y mins>1) y no hay estación actual
+    if tiempo_restante is not None and (tiempo_restante <= 90 or mins <= 1):
+        return False
+    if current_station_key:
+        return False
+    return True
+
+# ============================================================================
+# FUNCIÓN PRINCIPAL PARA ENVIAR AMBOS MENSAJES CON OPTIMIZACIÓN
 # ============================================================================
 async def send_messages_2_and_3(update: Update, estacion_key: str, now: datetime, simulated: bool = False):
     msg2, msg3, key_mp, time_mp, key_st, time_st, mins_mp, mins_st = build_temporary_messages(now, estacion_key)
     
-    msg2_obj = await send_message_2(update, msg2, key_mp, time_mp, mins_mp, estacion_key)
-    await asyncio.sleep(0.5)
-    msg3_obj = await send_message_3(update, msg3, key_st, time_st, mins_st, estacion_key)
+    default2 = is_default_message(key_mp, time_mp, mins_mp)
+    default3 = is_default_message(key_st, time_st, mins_st)
     
-    return (msg2_obj.message_id, msg3_obj.message_id)
+    # Si ambos son default, solo el mensaje 2 lleva imagen (ruta_default), el mensaje 3 solo texto
+    if default2 and default3:
+        msg2_obj = await send_message_2(update, msg2, key_mp, time_mp, mins_mp, estacion_key)
+        await asyncio.sleep(0.5)
+        msg3_obj = await update.message.reply_text(msg3, parse_mode='Markdown')
+        return (msg2_obj.message_id, msg3_obj.message_id)
+    else:
+        msg2_obj = await send_message_2(update, msg2, key_mp, time_mp, mins_mp, estacion_key)
+        await asyncio.sleep(0.5)
+        msg3_obj = await send_message_3(update, msg3, key_st, time_st, mins_st, estacion_key)
+        return (msg2_obj.message_id, msg3_obj.message_id)
 
 # ============================================================================
 # BUCLE AUTO (30 segundos, 20 ciclos)
