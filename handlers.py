@@ -248,7 +248,6 @@ async def send_messages_2_and_3(update: Update, estacion_key: str, now: datetime
     msg2_obj = await send_message_2(update, msg2, key_mp, time_mp, mins_mp, estacion_key)
     await asyncio.sleep(0.5)
     
-    # Añadir botón inline solo si es Milo
     if estacion_key == "milo":
         keyboard_inline = InlineKeyboardMarkup([
             [InlineKeyboardButton("🔄 Aggiornare", callback_data="aggiornare_milo")]
@@ -342,19 +341,22 @@ async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, 
         context.chat_data.pop('cancel_refresh', None)
 
 # ============================================================================
-# CALLBACK PARA EL BOTÓN INLINE "AGGIORNARE"
+# CALLBACK PARA EL BOTÓN INLINE "AGGIORNARE" (oculta el /milo)
 # ============================================================================
 async def aggiornare_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     chat_id = query.message.chat_id
-    # Enviamos el comando /milo al chat para que el bot lo procese
-    await context.bot.send_message(chat_id=chat_id, text="/milo")
-    # Opcional: borrar el mensaje del botón para que no se acumule (pero no es necesario)
-    # try:
-    #     await query.message.delete()
-    # except Exception:
-    #     pass
+    
+    # Enviamos el comando /milo
+    sent = await context.bot.send_message(chat_id=chat_id, text="/milo")
+    # Esperamos 1 segundo para que el bot lo procese
+    await asyncio.sleep(1)
+    # Borramos el mensaje para que no quede visible
+    try:
+        await context.bot.delete_message(chat_id=chat_id, message_id=sent.message_id)
+    except Exception:
+        pass
 
 # ============================================================================
 # RESPUESTA PRINCIPAL (foto de estación + msg2/msg3 + aviso de cierre)
@@ -513,7 +515,6 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
     else:
         await update.message.reply_text(permanent_caption, reply_markup=keyboard_main if return_to_main else keyboard_altri)
 
-    # Enviar mensajes 2 y 3 (para todas las estaciones intermedias)
     ids = await send_messages_2_and_3(update, estacion_key, now, simulated is not None)
     context.chat_data['refresh_msg_ids'] = ids
     context.chat_data['refresh_active'] = True
