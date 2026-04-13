@@ -36,7 +36,7 @@ BOTON_TO_KEY = {
     "Italia": "italia", "Galatea": "galatea", "Giovanni XXIII": "giovanni"
 }
 
-# Descripciones de estaciones para modo accesibilidad (texto plano, sin formato Markdown)
+# Descripciones de estaciones para modo accesibilidad (texto plano)
 DESCRIPCION_ESTACION = {
     "montepo": "· Stazione capolinea con ascensore e servizi igienici.",
     "stesicoro": "· Stazione centrale con ascensore e collegamento autobus.",
@@ -590,7 +590,7 @@ async def acc_send_station_info(update: Update, context: ContextTypes.DEFAULT_TY
     # Enviar foto sin caption (o con título)
     await update.message.reply_photo(photo=img_url, caption=f"Stazione {nombre}", parse_mode=None)
     
-    # Enviar la descripción como mensaje de texto plano (sin Markdown)
+    # Enviar la descripción como mensaje de texto plano
     await update.message.reply_text(descripcion, parse_mode=None)
     
     # Enviar mensajes 2, 3 y 4 (texto plano)
@@ -676,15 +676,15 @@ async def acc_station_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         await update.message.reply_text("⚠️ Per prima cosa attiva la modalità accessibilità con /accessibilita.")
         return
     
-    # Extraer el comando completo (ej: "/aMontepo" o "/aMontepo@miobot")
+    # Obtener el texto completo del comando (sin argumentos adicionales)
     full_command = update.message.text.split()[0]
-    # Eliminar cualquier mención de bot (ej: "@miobot")
+    # Eliminar cualquier mención de bot (ej. "@miobot")
     command = full_command.split('@')[0]
-    # Verificar que empieza con /a
+    # Verificar que comienza con /a
     if not command.startswith('/a'):
-        await update.message.reply_text("Comando non valido.")
+        await update.message.reply_text("Comando non valido. Usa /aMontepo, /aFontana, ecc.")
         return
-    # Extraer el nombre de la estación: quitar '/a' y convertir a minúsculas
+    # Extraer el nombre de la estación: quitar '/a' y pasar a minúsculas
     estacion_nombre = command[2:].lower()
     
     # Mapeo de nombres a claves internas
@@ -704,7 +704,7 @@ async def acc_station_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     }
     estacion_key = mapeo.get(estacion_nombre)
     if not estacion_key or estacion_key not in NOMBRE_MOSTRAR:
-        await update.message.reply_text("Stazione non valida.")
+        await update.message.reply_text(f"Stazione '{estacion_nombre}' non valida.")
         return
     
     await acc_send_station_info(update, context, estacion_key)
