@@ -36,20 +36,20 @@ BOTON_TO_KEY = {
     "Italia": "italia", "Galatea": "galatea", "Giovanni XXIII": "giovanni"
 }
 
-# Descripciones de estaciones para modo accesibilidad
+# Descripciones de estaciones para modo accesibilidad (en cursiva, con punto al inicio)
 DESCRIPCION_ESTACION = {
-    "montepo": "Stazione capolinea con ascensore e servizi igienici.",
-    "stesicoro": "Stazione centrale con ascensore e collegamento autobus.",
-    "fontana": "Stazione con parcheggio di scambio e ascensore.",
-    "nesima": "Stazione con ascensore e area di sosta.",
-    "sannullo": "Stazione con ascensore e vicinanza a servizi.",
-    "cibali": "Stazione accessibile con ascensore.",
-    "milo": "Informazioni sulla stazione Milo.\n\nLa stazione è dotata di pavimento podotattile, scale mobili e Ascensore.\n\nSul marciapiede 1, partono i treni in direzione Monte Po. Alla testa del treno si trovano le uscite per: Via Bronte e Viale Fleming.\n\nSul marciapiede 2 partono i treni in direzione Stesicoro. Alla testa del treno si trovano anche le uscite per: Via Bronte e Viale Fleming.\n\nAl centro della piattaforma si trovano gli ascensori con tastiere Braille, che raggiungono la strada.",
-    "borgo": "Informazioni sulla stazione Borgo.\n\nLa stazione è dotata di pavimento podotattile e scale mobili.\n\nSul marciapiede 1, partono i treni in direzione Monte Po. Alla testa del treno si trovano le uscite per: Via Empedocle e Via Etnea.\n\nSul marciapiede 2 partono i treni in direzione Stesicoro. Alla testa del treno si trovano le uscite per: I treni della FCE, Via Signorelli e Via Caronda.",
-    "giuffrida": "Informazioni sulla stazione Giuffrida.\n\nLa stazione è dotata di pavimento podotattile e scale mobili.\n\nSul marciapiede 1, partono i treni in direzione Monte Po. Alla testa del treno si trovano le uscite per: Via Guardia della Carvana e Piazza Abraham Lincoln.\n\nSul marciapiede 2 partono i treni in direzione Stesicoro. Alla testa del treno si trovano le uscite per: Via Caronda e Via Vincenzo Giuffrida.",
-    "italia": "Informazioni sulla stazione Italia.\n\nLa stazione è dotata di pavimento podotattile e scale mobili.\n\nSul marciapiede 1, partono i treni in direzione Monte Po. Alla testa del treno si trovano le uscite per: Via Firenza, Via Ramondetta e Via Oliveto Scammacca.\n\nSul marciapiede 2 partono i treni in direzione Stesicoro. Alla testa del treno si trovano le uscite per: Viale Vittorio Veneto e Corso Italia.",
-    "galatea": "Informazioni sulla stazione Galatea.\n\nLa stazione è dotata di pavimento podotattile e scale mobili.\n\nSul marciapiede 1, partono i treni in direzione Monte Po. Alla testa del treno si trovano le uscite per: Viale Jonio, Via Pasubio e via Palmanova.\n\nSul marciapiede 2 partono i treni in direzione Stesicoro. Alla testa del treno si trovano le uscite per: Piazza Galatea, Viale Africa e Via Messina.",
-    "giovanni": "Stazione con ascensore e ampio parcheggio."
+    "montepo": "· *Stazione capolinea con ascensore e servizi igienici.*",
+    "stesicoro": "· *Stazione centrale con ascensore e collegamento autobus.*",
+    "fontana": "· *Stazione con parcheggio di scambio e ascensore.*",
+    "nesima": "· *Stazione con ascensore e area di sosta.*",
+    "sannullo": "· *Stazione con ascensore e vicinanza a servizi.*",
+    "cibali": "· *Stazione accessibile con ascensore.*",
+    "milo": "· *Informazioni sulla stazione Milo.*\n\n· *La stazione è dotata di pavimento podotattile, scale mobili e Ascensore.*\n\n· *Sul marciapiede 1, partono i treni in direzione Monte Po. Alla testa del treno si trovano le uscite per: Via Bronte e Viale Fleming.*\n\n· *Sul marciapiede 2 partono i treni in direzione Stesicoro. Alla testa del treno si trovano anche le uscite per: Via Bronte e Viale Fleming.*\n\n· *Al centro della piattaforma si trovano gli ascensori con tastiere Braille, che raggiungono la strada.*",
+    "borgo": "· *Informazioni sulla stazione Borgo.*\n\n· *La stazione è dotata di pavimento podotattile e scale mobili.*\n\n· *Sul marciapiede 1, partono i treni in direzione Monte Po. Alla testa del treno si trovano le uscite per: Via Empedocle e Via Etnea.*\n\n· *Sul marciapiede 2 partono i treni in direzione Stesicoro. Alla testa del treno si trovano le uscite per: I treni della FCE, Via Signorelli e Via Caronda.*",
+    "giuffrida": "· *Informazioni sulla stazione Giuffrida.*\n\n· *La stazione è dotata di pavimento podotattile e scale mobili.*\n\n· *Sul marciapiede 1, partono i treni in direzione Monte Po. Alla testa del treno si trovano le uscite per: Via Guardia della Carvana e Piazza Abraham Lincoln.*\n\n· *Sul marciapiede 2 partono i treni in direzione Stesicoro. Alla testa del treno si trovano le uscite per: Via Caronda e Via Vincenzo Giuffrida.*",
+    "italia": "· *Informazioni sulla stazione Italia.*\n\n· *La stazione è dotata di pavimento podotattile e scale mobili.*\n\n· *Sul marciapiede 1, partono i treni in direzione Monte Po. Alla testa del treno si trovano le uscite per: Via Firenze, Via Ramondetta e Via Oliveto Scammacca.*\n\n· *Sul marciapiede 2 partono i treni in direzione Stesicoro. Alla testa del treno si trovano le uscite per: Viale Vittorio Veneto e Corso Italia.*",
+    "galatea": "· *Informazioni sulla stazione Galatea.*\n\n· *La stazione è dotata di pavimento podotattile e scale mobili.*\n\n· *Sul marciapiede 1, partono i treni in direzione Monte Po. Alla testa del treno si trovano le uscite per: Viale Jonio, Via Pasubio e via Palmanova.*\n\n· *Sul marciapiede 2 partono i treni in direzione Stesicoro. Alla testa del treno si trovano le uscite per: Piazza Galatea, Viale Africa e Via Messina.*",
+    "giovanni": "· *Stazione con ascensore e ampio parcheggio.*"
 }
 
 # ============================================================================
@@ -575,20 +575,20 @@ async def acc_send_station_info(update: Update, context: ContextTypes.DEFAULT_TY
     msg3_clean = clean_text(msg3)
     
     nombre = NOMBRE_MOSTRAR.get(estacion_key, estacion_key.capitalize())
-    descripcion = DESCRIPCION_ESTACION.get(estacion_key, "Stazione accessibile.")
+    descripcion = DESCRIPCION_ESTACION.get(estacion_key, "· *Stazione accessibile.*")
     
-    # Construir URL de la imagen para modo accesibilidad (ej: st_aMontepo.png)
-    # Eliminamos espacios y caracteres especiales del nombre
-    nombre_imagen = nombre.replace(" ", "").replace("XXIII", "XXIII")  # mantiene "GiovanniXXIII"
-    # Para "San Nullo" -> "SanNullo", para "Giovanni XXIII" -> "GiovanniXXIII"
+    # Construir URL de la imagen para modo accesibilidad
+    nombre_imagen = nombre.replace(" ", "").replace("XXIII", "XXIII")
     if nombre_imagen == "SanNullo":
         nombre_imagen = "SanNullo"
+    elif nombre_imagen == "GiovanniXXIII":
+        nombre_imagen = "GiovanniXXIII"
     img_url = f"https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/st_a{nombre_imagen}.png"
     cache_buster = int(time_module.time())
     img_url = f"{img_url}?v={cache_buster}"
     
-    # Enviar foto con descripción como caption
-    await update.message.reply_photo(photo=img_url, caption=descripcion, parse_mode=None)
+    # Enviar foto con descripción en cursiva y con punto al inicio
+    await update.message.reply_photo(photo=img_url, caption=descripcion, parse_mode='Markdown')
     
     # Enviar mensajes 2, 3 y 4 (texto plano)
     msg2_obj = await update.message.reply_text(msg2_clean, parse_mode=None)
@@ -598,10 +598,11 @@ async def acc_send_station_info(update: Update, context: ContextTypes.DEFAULT_TY
     ])
     msg3_obj = await update.message.reply_text(msg3_clean, parse_mode=None, reply_markup=keyboard_inline)
     
+    # Lista de comandos con el orden corregido
     lista_comandos = (
         "Scegli la stazione che desideri consultare:\n"
-        "/aMontepo, /aStesicoro, /aFontana, /aNesima, /aSanNullo, /aCibali, /aMilo, "
-        "/aBorgo, /aGiuffrida, /aItalia, /aGalatea, /aGiovanni"
+        "/aMontepo, /aFontana, /aNesima, /aSanNullo, /aCibali, /aMilo, "
+        "/aBorgo, /aGiuffrida, /aItalia, /aGalatea, /aGiovanni, /aStesicoro"
     )
     msg4_obj = await update.message.reply_text(lista_comandos, parse_mode=None)
     
@@ -642,8 +643,8 @@ async def acc_aggiornare_callback(update: Update, context: ContextTypes.DEFAULT_
     
     lista_comandos = (
         "Scegli la stazione che desideri consultare:\n"
-        "/aMontepo, /aStesicoro, /aFontana, /aNesima, /aSanNullo, /aCibali, /aMilo, "
-        "/aBorgo, /aGiuffrida, /aItalia, /aGalatea, /aGiovanni"
+        "/aMontepo, /aFontana, /aNesima, /aSanNullo, /aCibali, /aMilo, "
+        "/aBorgo, /aGiuffrida, /aItalia, /aGalatea, /aGiovanni, /aStesicoro"
     )
     msg4_obj = await query.message.reply_text(lista_comandos, parse_mode=None)
     
@@ -672,12 +673,15 @@ async def acc_station_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     if not context.chat_data.get('accessibility_mode', False):
         await update.message.reply_text("⚠️ Per prima cosa attiva la modalità accessibilità con /accesibilidad.")
         return
-    command = update.message.text.split()[0][1:]
-    estacion_key = command[1:].lower()
+    command = update.message.text.split()[0][1:]  # ejemplo: "/aMontepo" -> "aMontepo"
+    estacion_key = command[1:].lower()  # elimina la 'a' inicial -> "montepo"
+    # Ajuste para nombres especiales
     if estacion_key == "sannullo":
         estacion_key = "sannullo"
     elif estacion_key == "giovanni":
         estacion_key = "giovanni"
+    elif estacion_key == "stesicoro":
+        estacion_key = "stesicoro"
     if estacion_key not in NOMBRE_MOSTRAR:
         await update.message.reply_text("Stazione non valida.")
         return
@@ -784,7 +788,7 @@ async def start(update, context):
     await update.message.reply_text(
         f"Ciao {user.first_name}! 👋\n\n"
         "Quando arriva la metropolitana di Catania?\n"
-        "Premi usa i comandi /accesibilita per aprire il modo accessibile per tutti.\n\n"
+        "Premi o usa i comandi /accesibilita per aprire il modo accessibile per tutti.\n\n"
         f"{last_msg}",
         reply_markup=keyboard_main
     )
