@@ -24,6 +24,12 @@ keyboard_altri = ReplyKeyboardMarkup(
     resize_keyboard=True, one_time_keyboard=False
 )
 
+# Teclado de un solo uso para refrescar Milo (aparecerá después de la foto)
+keyboard_refresh_milo = ReplyKeyboardMarkup(
+    [[KeyboardButton("🔄 Aggiornare Milo")]],
+    resize_keyboard=True, one_time_keyboard=True
+)
+
 BOTON_TO_KEY = {
     "Monte Po": "montepo", "Stesicoro": "stesicoro", "Fontana": "fontana",
     "Nesima": "nesima", "San Nullo": "sannullo", "Cibali": "cibali",
@@ -248,15 +254,8 @@ async def send_messages_2_and_3(update: Update, estacion_key: str, now: datetime
     msg2_obj = await send_message_2(update, msg2, key_mp, time_mp, mins_mp, estacion_key)
     await asyncio.sleep(0.5)
     
-    # Preparar botón inline solo para Milo
-    if estacion_key == "milo":
-        keyboard_inline = InlineKeyboardMarkup([
-            [InlineKeyboardButton("🔄 Aggiornare", callback_data="aggiornare_milo")]
-        ])
-    else:
-        keyboard_inline = None
-    
-    msg3_obj = await send_message_3(update, msg3, key_st, time_st, mins_st, estacion_key, reply_markup=keyboard_inline)
+    # No enviamos botón inline, usaremos teclado aparte para Milo
+    msg3_obj = await send_message_3(update, msg3, key_st, time_st, mins_st, estacion_key, reply_markup=None)
     
     return (msg2_obj.message_id, msg3_obj.message_id)
 
@@ -341,47 +340,6 @@ async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, 
         context.chat_data['refresh_active'] = False
         context.chat_data.pop('refresh_task', None)
         context.chat_data.pop('cancel_refresh', None)
-
-# ============================================================================
-# CALLBACK PARA EL BOTÓN INLINE "AGGIORNARE" (solo Milo)
-# ============================================================================
-async def aggiornare_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    chat_id = query.message.chat_id
-    
-    # Borrar el mensaje 3 (el que contiene el botón)
-    try:
-        await context.bot.delete_message(chat_id=chat_id, message_id=query.message.message_id)
-    except Exception:
-        pass
-    
-    # Borrar también los mensajes 2 y 3 anteriores (guardados en refresh_msg_ids)
-    msg_ids = context.chat_data.get('refresh_msg_ids')
-    if msg_ids:
-        for mid in msg_ids:
-            try:
-                await context.bot.delete_message(chat_id=chat_id, message_id=mid)
-            except Exception:
-                pass
-        context.chat_data.pop('refresh_msg_ids', None)
-    
-    # Detener cualquier tarea de refresco en curso
-    if 'refresh_task' in context.chat_data:
-        task = context.chat_data['refresh_task']
-        if not task.done():
-            task.cancel()
-        context.chat_data.pop('refresh_task', None)
-    context.chat_data['refresh_active'] = False
-    
-    # Enviar el comando /milo y borrarlo inmediatamente para que no se vea
-    sent_msg = await context.bot.send_message(chat_id=chat_id, text="/milo")
-    # Borrar ese mensaje después de un breve instante (para que el bot lo procese pero no quede en el chat)
-    await asyncio.sleep(0.2)
-    try:
-        await context.bot.delete_message(chat_id=chat_id, message_id=sent_msg.message_id)
-    except Exception:
-        pass
 
 # ============================================================================
 # RESPUESTA PRINCIPAL (foto de estación + msg2/msg3 + aviso de cierre)
@@ -546,6 +504,10 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
     context.chat_data['refresh_active'] = True
     task = asyncio.create_task(auto_refresh_loop(update, context, estacion_key, update.effective_chat.id, nombre, use_simulated=(simulated is not None), simulated_now=now if simulated else None))
     context.chat_data['refresh_task'] = task
+    
+    # Si es Milo, mostrar el botón de refresco (ReplyKeyboardMarkup)
+    if estacion_key == "milo":
+        await update.message.reply_text("🔄 Per aggiornare i dati, premi il pulsante:", reply_markup=keyboard_refresh_milo)
 
 # ============================================================================
 # WRAPPERS Y COMANDOS (incluyendo /auto y /stop)
@@ -675,6 +637,9 @@ async def handle_button(update, context):
         await cmd_altri(update, context)
     elif text == "← Menu":
         await update.message.reply_text("🔙 Ritorno al menu principale.", reply_markup=keyboard_main)
+    elif text == "🔄 Aggiornare Milo":
+        # Al pulsar el botón de refresco, ejecutamos /milo
+        await cmd_milo(update, context)
     elif text in BOTON_TO_KEY:
         est_key = BOTON_TO_KEY[text]
         context.chat_data['last_station'] = est_key
