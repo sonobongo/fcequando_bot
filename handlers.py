@@ -36,20 +36,20 @@ BOTON_TO_KEY = {
     "Italia": "italia", "Galatea": "galatea", "Giovanni XXIII": "giovanni"
 }
 
-# Descripciones de estaciones para modo accesibilidad (con formato Markdown para cursiva)
+# Descripciones de estaciones para modo accesibilidad (texto plano, sin formato Markdown)
 DESCRIPCION_ESTACION = {
-    "montepo": "· *Stazione capolinea con ascensore e servizi igienici.*",
-    "stesicoro": "· *Stazione centrale con ascensore e collegamento autobus.*",
-    "fontana": "· *Stazione con parcheggio di scambio e ascensore.*",
-    "nesima": "· *Stazione con ascensore e area di sosta.*",
-    "sannullo": "· *Stazione con ascensore e vicinanza a servizi.*",
-    "cibali": "· *Stazione accessibile con ascensore.*",
-    "milo": "· *Informazioni sulla stazione Milo.*\n\n· *La stazione è dotata di pavimento podotattile, scale mobili e Ascensore.*\n\n· *Sul marciapiede 1, partono i treni in direzione Monte Po. Alla testa del treno si trovano le uscite per: Via Bronte e Viale Fleming.*\n\n· *Sul marciapiede 2 partono i treni in direzione Stesicoro. Alla testa del treno si trovano anche le uscite per: Via Bronte e Viale Fleming.*\n\n· *Al centro della piattaforma si trovano gli ascensori con tastiere Braille, che raggiungono la strada.*",
-    "borgo": "· *Informazioni sulla stazione Borgo.*\n\n· *La stazione è dotata di pavimento podotattile e scale mobili.*\n\n· *Sul marciapiede 1, partono i treni in direzione Monte Po. Alla testa del treno si trovano le uscite per: Via Empedocle e Via Etnea.*\n\n· *Sul marciapiede 2 partono i treni in direzione Stesicoro. Alla testa del treno si trovano le uscite per: I treni della FCE, Via Signorelli e Via Caronda.*",
-    "giuffrida": "· *Informazioni sulla stazione Giuffrida.*\n\n· *La stazione è dotata di pavimento podotattile e scale mobili.*\n\n· *Sul marciapiede 1, partono i treni in direzione Monte Po. Alla testa del treno si trovano le uscite per: Via Guardia della Carvana e Piazza Abraham Lincoln.*\n\n· *Sul marciapiede 2 partono i treni in direzione Stesicoro. Alla testa del treno si trovano le uscite per: Via Caronda e Via Vincenzo Giuffrida.*",
-    "italia": "· *Informazioni sulla stazione Italia.*\n\n· *La stazione è dotata di pavimento podotattile e scale mobili.*\n\n· *Sul marciapiede 1, partono i treni in direzione Monte Po. Alla testa del treno si trovano le uscite per: Via Firenze, Via Ramondetta e Via Oliveto Scammacca.*\n\n· *Sul marciapiede 2 partono i treni in direzione Stesicoro. Alla testa del treno si trovano le uscite per: Viale Vittorio Veneto e Corso Italia.*",
-    "galatea": "· *Informazioni sulla stazione Galatea.*\n\n· *La stazione è dotata di pavimento podotattile e scale mobili.*\n\n· *Sul marciapiede 1, partono i treni in direzione Monte Po. Alla testa del treno si trovano le uscite per: Viale Jonio, Via Pasubio e via Palmanova.*\n\n· *Sul marciapiede 2 partono i treni in direzione Stesicoro. Alla testa del treno si trovano le uscite per: Piazza Galatea, Viale Africa e Via Messina.*",
-    "giovanni": "· *Stazione con ascensore e ampio parcheggio.*"
+    "montepo": "· Stazione capolinea con ascensore e servizi igienici.",
+    "stesicoro": "· Stazione centrale con ascensore e collegamento autobus.",
+    "fontana": "· La stazione è dotata di pavimento podotattile, scale mobili e Ascensore.\n· Sul marciapiede 1, partono i treni in direzione Monte Po. Alla testa del treno si trova l'uscita per: Via Felice Fontana.\n· Sul marciapiede 2 partono i treni in direzione Stesicoro. Alla testa del treno si trovano le uscite per: Via Felice Fontana e l'Ospedale Garibaldi-Nesima.\n· Al centro della piattaforma si trovano gli ascensori con tastiere Braille, che raggiungono la strada.",
+    "nesima": "· La stazione è dotata di pavimento podotattile, scale mobili e Ascensore.\n· Sul marciapiede 1, partono i treni in direzione Monte Po. Alla testa del treno si trovano le uscite per: Viale Lorenzo Bolano e Via Filippo Eredia.\n· Sul marciapiede 2 partono i treni in direzione Stesicoro. Alla testa del treno si trova l'uscita per: Viale Lorenzo Bolano.\n· Al centro della piattaforma si trovano gli ascensori con tastiere Braille, che raggiungono la strada.",
+    "sannullo": "· La stazione è dotata di pavimento podotattile, scale mobili e Ascensore.\n· Sul marciapiede 1, partono i treni in direzione Monte Po. Alla testa del treno si trovano le uscite per: Viale Antoniotto Usodimare e Via Sebastiano Catania.\n· Sul marciapiede 2 partono i treni in direzione Stesicoro. Alla testa del treno si trovano anche le uscite per: Viale Antoniotto Usodimare e Via Sebastiano Catania.\n· Al centro della piattaforma si trovano gli ascensori con tastiere Braille, che raggiungono la strada.",
+    "cibali": "· La stazione è dotata di pavimento podotattile, scale mobili e Ascensore.\n· Sul marciapiede 1, partono i treni in direzione Monte Po. Alla testa del treno si trovano le uscite per: Via Bergamo, Via Galermo e lo stadio di Calcio, Angelo Massimino.\n· Sul marciapiede 2 partono i treni in direzione Stesicoro. Alla testa del treno si trovano anche le uscite per: Via Bergamo, Via Galermo e lo stadio di Calcio.\n· Al centro della piattaforma si trovano gli ascensori con tastiere Braille, che raggiungono la strada.",
+    "milo": "· La stazione è dotata di pavimento podotattile, scale mobili e Ascensore.\n· Sul marciapiede 1, partono i treni in direzione Monte Po. Alla testa del treno si trovano le uscite per: Via Bronte e Viale Fleming.\n· Sul marciapiede 2 partono i treni in direzione Stesicoro. Alla testa del treno si trovano anche le uscite per: Via Bronte e Viale Fleming.\n· Al centro della piattaforma si trovano gli ascensori con tastiere Braille, che raggiungono la strada.",
+    "borgo": "· La stazione è dotata di pavimento podotattile e scale mobili.\n· Sul marciapiede 1, partono i treni in direzione Monte Po. Alla testa del treno si trovano le uscite per: Via Empedocle e Via Etnea.\n· Sul marciapiede 2 partono i treni in direzione Stesicoro. Alla testa del treno si trovano le uscite per: I treni della FCE, Via Signorelli e Via Caronda.",
+    "giuffrida": "· La stazione è dotata di pavimento podotattile e scale mobili.\n· Sul marciapiede 1, partono i treni in direzione Monte Po. Alla testa del treno si trovano le uscite per: Via Guardia della Carvana e Piazza Abraham Lincoln.\n· Sul marciapiede 2 partono i treni in direzione Stesicoro. Alla testa del treno si trovano le uscite per: Via Caronda e Via Vincenzo Giuffrida.",
+    "italia": "· La stazione è dotata di pavimento podotattile e scale mobili.\n· Sul marciapiede 1, partono i treni in direzione Monte Po. Alla testa del treno si trovano le uscite per: Via Firenze, Via Ramondetta e Via Oliveto Scammacca.\n· Sul marciapiede 2 partono i treni in direzione Stesicoro. Alla testa del treno si trovano le uscite per: Viale Vittorio Veneto e Corso Italia.",
+    "galatea": "· La stazione è dotata di pavimento podotattile e scale mobili.\n· Sul marciapiede 1, partono i treni in direzione Monte Po. Alla testa del treno si trovano le uscite per: Viale Jonio, Via Pasubio e via Palmanova.\n· Sul marciapiede 2 partono i treni in direzione Stesicoro.\n· Alla testa del treno si trovano le uscite per: Piazza Galatea, Viale Africa e Via Messina.",
+    "giovanni": "· La stazione è dotata di pavimento podotattile, scale mobili e Ascensore.\n· Sul marciapiede 1, partono i treni in direzione Monte Po. Alla testa del treno si trova l'uscita per: Piazza Giovanni XXIII e Viale Africa.\n· Sul marciapiede 2 partono i treni in direzione Stesicoro. Alla testa del treno si trovano le uscite per: Via Archimede, Viale della Libertà e Stazione di Trenitalia Catania Centrale.\n· Al centro della piattaforma si trovano gli ascensori con tastiere Braille, che raggiungono la strada."
 }
 
 # ============================================================================
@@ -575,7 +575,7 @@ async def acc_send_station_info(update: Update, context: ContextTypes.DEFAULT_TY
     msg3_clean = clean_text(msg3)
     
     nombre = NOMBRE_MOSTRAR.get(estacion_key, estacion_key.capitalize())
-    descripcion = DESCRIPCION_ESTACION.get(estacion_key, "· *Stazione accessibile.*")
+    descripcion = DESCRIPCION_ESTACION.get(estacion_key, "· Stazione accessibile.")
     
     # Construir URL de la imagen para modo accesibilidad
     nombre_imagen = nombre.replace(" ", "").replace("XXIII", "XXIII")
@@ -590,8 +590,8 @@ async def acc_send_station_info(update: Update, context: ContextTypes.DEFAULT_TY
     # Enviar foto sin caption (o con título)
     await update.message.reply_photo(photo=img_url, caption=f"Stazione {nombre}", parse_mode=None)
     
-    # Enviar la descripción como mensaje de texto aparte (con cursiva)
-    await update.message.reply_text(descripcion, parse_mode='Markdown')
+    # Enviar la descripción como mensaje de texto plano (sin Markdown)
+    await update.message.reply_text(descripcion, parse_mode=None)
     
     # Enviar mensajes 2, 3 y 4 (texto plano)
     msg2_obj = await update.message.reply_text(msg2_clean, parse_mode=None)
@@ -677,17 +677,17 @@ async def acc_station_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         return
     
     # Extraer el comando completo (ej: "/aMontepo" o "/aMontepo@miobot")
-    command = update.message.text.split()[0]
-    # Eliminar la barra y cualquier mención de bot (ej: "@miobot")
-    command_clean = command.split('@')[0]  # elimina @nombre_bot
-    # Eliminar la barra y la 'a' inicial
-    if command_clean.startswith('/a'):
-        estacion_nombre = command_clean[2:].lower()  # "/aMontepo" -> "montepo"
-    else:
+    full_command = update.message.text.split()[0]
+    # Eliminar cualquier mención de bot (ej: "@miobot")
+    command = full_command.split('@')[0]
+    # Verificar que empieza con /a
+    if not command.startswith('/a'):
         await update.message.reply_text("Comando non valido.")
         return
+    # Extraer el nombre de la estación: quitar '/a' y convertir a minúsculas
+    estacion_nombre = command[2:].lower()
     
-    # Mapear nombres especiales (algunos ya vienen en minúsculas)
+    # Mapeo de nombres a claves internas
     mapeo = {
         "montepo": "montepo",
         "stesicoro": "stesicoro",
