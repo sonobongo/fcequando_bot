@@ -52,7 +52,7 @@ def main():
 
     # Comandi del modo accesibilidad
     acc_commands = [
-        ("accesibilidad", acc_wrapper), ("accesibilita", acc_wrapper),
+        ("accessibilita", acc_wrapper), ("accesibilidad", acc_wrapper),
         ("aMontepo", acc_station_wrapper), ("aStesicoro", acc_station_wrapper),
         ("aFontana", acc_station_wrapper), ("aNesima", acc_station_wrapper),
         ("aSanNullo", acc_station_wrapper), ("aCibali", acc_station_wrapper),
