@@ -24,7 +24,6 @@ keyboard_altri = ReplyKeyboardMarkup(
     resize_keyboard=True, one_time_keyboard=False
 )
 
-# Teclado para modo accesibilidad (solo un botón de salida)
 keyboard_exit_accessibility = ReplyKeyboardMarkup(
     [[KeyboardButton("USCIRE DAL MODO ACCESSIBILITÀ")]],
     resize_keyboard=True, one_time_keyboard=False
@@ -37,7 +36,6 @@ BOTON_TO_KEY = {
     "Italia": "italia", "Galatea": "galatea", "Giovanni XXIII": "giovanni"
 }
 
-# Descripciones para el modo accesibilidad (texto en cursiva)
 DESCRIPCION_ESTACION = {
     "montepo": "Stazione capolinea con ascensore e servizi igienici.",
     "stesicoro": "Stazione centrale con ascensore e collegamento autobus.",
@@ -46,171 +44,12 @@ DESCRIPCION_ESTACION = {
     "sannullo": "Stazione con ascensore e vicinanza a servizi.",
     "cibali": "Stazione accessibile con ascensore.",
     "milo": "Stazione con ascensore e parcheggio.",
-    "borgo": "Stazione con ascensore e fermate autobus.",
-    "giuffrida": "Stazione con ascensore (lavori in corso fino al 19/04/2026).",
-    "italia": "Stazione con ascensore e area commerciale.",
-    "galatea": "Stazione con ascensore e vicinanza al mare.",
+    "borgo": "Informazioni sulla stazione Borgo.\n\nLa stazione è dotata di pavimento podotattile e scale mobili.\n\nSul marciapiede 1, partono i treni in direzione Monte Po. Alla testa del treno si trovano le uscite per: Via Empedocle e Via Etnea.\n\nSul marciapiede 2 partono i treni in direzione Stesicoro. Alla testa del treno si trovano le uscite per: I treni della FCE, Via Signorelli e Via Caronda.",
+    "giuffrida": "Informazioni sulla stazione Giuffrida.\n\nLa stazione è dotata di pavimento podotattile e scale mobili.\n\nSul marciapiede 1, partono i treni in direzione Monte Po. Alla testa del treno si trovano le uscite per: Via Guardia della Carvana e Piazza Abraham Lincoln.\n\nSul marciapiede 2 partono i treni in direzione Stesicoro. Alla testa del treno si trovano le uscite per: Via Caronda e Via Vincenzo Giuffrida.",
+    "italia": "Informazioni sulla stazione Italia.\n\nLa stazione è dotata di pavimento podotattile e scale mobili.\n\nSul marciapiede 1, partono i treni in direzione Monte Po. Alla testa del treno si trovano le uscite per: Via Firenza, Via Ramondetta e Via Oliveto Scammacca.\n\nSul marciapiede 2 partono i treni in direzione Stesicoro. Alla testa del treno si trovano le uscite per: Viale Vittorio Veneto e Corso Italia.",
+    "galatea": "Informazioni sulla stazione Galatea.\n\nLa stazione è dotata di pavimento podotattile e scale mobili.\n\nSul marciapiede 1, partono i treni in direzione Monte Po. Alla testa del treno si trovano le uscite per: Viale Jonio, Via Pasubio e via Palmanova.\n\nSul marciapiede 2 partono i treni in direzione Stesicoro. Alla testa del treno si trovano le uscite per: Piazza Galatea, Viale Africa e Via Messina.",
     "giovanni": "Stazione con ascensore e ampio parcheggio."
 }
-
-# ============================================================================
-# FUNCIONES AUXILIARES PARA MODO ACCESIBILIDAD
-# ============================================================================
-def clean_text(text: str) -> str:
-    """Sustituye emojis comunes por · y elimina formato Markdown."""
-    replacements = {
-        "🔺": "·", "🔻": "·", "🚇": "·", "🕐": "·", "🕙": "·", "📌": "·",
-        "**": "", "*": "", "__": "", "`": ""
-    }
-    for old, new in replacements.items():
-        text = text.replace(old, new)
-    # Eliminar dobles espacios
-    return ' '.join(text.split())
-
-async def acc_send_station_info(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str):
-    """Envía la información de una estación en modo accesibilidad (texto plano, sin imágenes, sin autorefresco)."""
-    # Obtener hora actual
-    simulated = context.chat_data.get('test_time')
-    if simulated:
-        if simulated.tzinfo is None:
-            simulated = CATANIA_TZ.localize(simulated)
-        now = simulated
-    else:
-        now = datetime.now(CATANIA_TZ)
-    
-    # Construir mensajes usando build_temporary_messages (ya nos da los textos)
-    msg2, msg3, key_mp, time_mp, key_st, time_st, mins_mp, mins_st = build_temporary_messages(now, estacion_key)
-    
-    # Limpiar emojis y formato
-    msg2_clean = clean_text(msg2)
-    msg3_clean = clean_text(msg3)
-    
-    # Mensaje 1: descripción de la estación
-    nombre = NOMBRE_MOSTRAR.get(estacion_key, estacion_key.capitalize())
-    descripcion = DESCRIPCION_ESTACION.get(estacion_key, "Stazione accessibile.")
-    msg1 = f"· Prossimi treni a {nombre}: {descripcion}"
-    
-    # Enviar mensaje 1 (sin teclado)
-    await update.message.reply_text(msg1, parse_mode=None)
-    
-    # Enviar mensaje 2
-    await update.message.reply_text(msg2_clean, parse_mode=None)
-    
-    # Crear botón inline para actualizar (solo los mensajes 2 y 3)
-    keyboard_inline = InlineKeyboardMarkup([
-        [InlineKeyboardButton("· Aggiornare", callback_data=f"acc_aggiornare_{estacion_key}")]
-    ])
-    # Enviar mensaje 3 con el botón
-    msg3_obj = await update.message.reply_text(msg3_clean, parse_mode=None, reply_markup=keyboard_inline)
-    
-    # Guardar los IDs de los mensajes 2 y 3 para poder borrarlos al actualizar
-    # Necesitamos también el ID del mensaje 2. Lo enviamos y guardamos.
-    msg2_obj = await update.message.reply_text(msg2_clean, parse_mode=None)
-    context.chat_data['acc_msg_ids'] = (msg2_obj.message_id, msg3_obj.message_id)
-    context.chat_data['acc_last_station'] = estacion_key
-    
-    # Mensaje 4: lista de comandos de todas las estaciones (texto plano)
-    lista_comandos = (
-        "Scegli la stazione che desideri consultare:\n"
-        "/aMontepo, /aStesicoro, /aFontana, /aNesima, /aSanNullo, /aCibali, /aMilo, "
-        "/aBorgo, /aGiuffrida, /aItalia, /aGalatea, /aGiovanni"
-    )
-    await update.message.reply_text(lista_comandos, parse_mode=None)
-
-async def acc_aggiornare_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Callback para el botón de actualización en modo accesibilidad."""
-    query = update.callback_query
-    await query.answer()
-    estacion_key = query.data.split("_")[2]  # formato "acc_aggiornare_fontana"
-    
-    # Obtener IDs de mensajes anteriores
-    msg_ids = context.chat_data.get('acc_msg_ids')
-    if msg_ids:
-        for mid in msg_ids:
-            try:
-                await context.bot.delete_message(chat_id=query.message.chat_id, message_id=mid)
-            except Exception:
-                pass
-        context.chat_data.pop('acc_msg_ids', None)
-    
-    # Obtener hora actual
-    simulated = context.chat_data.get('test_time')
-    if simulated:
-        if simulated.tzinfo is None:
-            simulated = CATANIA_TZ.localize(simulated)
-        now = simulated
-    else:
-        now = datetime.now(CATANIA_TZ)
-    
-    # Reconstruir mensajes 2 y 3
-    msg2, msg3, _, _, _, _, _, _ = build_temporary_messages(now, estacion_key)
-    msg2_clean = clean_text(msg2)
-    msg3_clean = clean_text(msg3)
-    
-    # Enviar nuevos mensajes (el mensaje 2 sin botón, el 3 con botón)
-    msg2_obj = await query.message.reply_text(msg2_clean, parse_mode=None)
-    keyboard_inline = InlineKeyboardMarkup([
-        [InlineKeyboardButton("· Aggiornare", callback_data=f"acc_aggiornare_{estacion_key}")]
-    ])
-    msg3_obj = await query.message.reply_text(msg3_clean, parse_mode=None, reply_markup=keyboard_inline)
-    
-    # Guardar los nuevos IDs
-    context.chat_data['acc_msg_ids'] = (msg2_obj.message_id, msg3_obj.message_id)
-
-async def cmd_accesibilidad(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Activa el modo accesibilidad: cambia el teclado y envía la bienvenida."""
-    context.chat_data['accessibility_mode'] = True
-    # Teclado con un solo botón para salir
-    await update.message.reply_text(
-        "♿ Modalità accessibilità attivata.\n\n"
-        "Puoi consultare le stazioni usando i comandi:\n"
-        "/aMontepo, /aStesicoro, /aFontana, /aNesima, /aSanNullo, /aCibali, /aMilo, "
-        "/aBorgo, /aGiuffrida, /aItalia, /aGalatea, /aGiovanni\n\n"
-        "Per uscire, premi il pulsante qui sotto.",
-        reply_markup=keyboard_exit_accessibility
-    )
-    # También enviamos la lista de comandos por si acaso
-    lista = (
-        "Scegli la stazione che desideri consultare:\n"
-        "/aMontepo, /aStesicoro, /aFontana, /aNesima, /aSanNullo, /aCibali, /aMilo, "
-        "/aBorgo, /aGiuffrida, /aItalia, /aGalatea, /aGiovanni"
-    )
-    await update.message.reply_text(lista, parse_mode=None)
-
-async def cmd_exit_accessibility(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Desactiva el modo accesibilidad y restaura el teclado normal."""
-    context.chat_data['accessibility_mode'] = False
-    # Limpiar datos de accesibilidad
-    context.chat_data.pop('acc_msg_ids', None)
-    context.chat_data.pop('acc_last_station', None)
-    # Restaurar teclado principal
-    await update.message.reply_text(
-        "✅ Modalità accessibilità disattivata. Puoi tornare a usare i pulsanti normali.",
-        reply_markup=keyboard_main
-    )
-
-async def acc_station_wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Wrapper para comandos /aEstacion. Verifica que el modo accesibilidad esté activo."""
-    if not context.chat_data.get('accessibility_mode', False):
-        await update.message.reply_text("⚠️ Per prima cosa attiva la modalità accessibilità con /accesibilidad.")
-        return
-    # Extraer el nombre de la estación del comando (eliminar la 'a' inicial)
-    command = update.message.text.split()[0][1:]  # ejemplo: "/aFontana" -> "aFontana"
-    estacion_key = command[1:].lower()  # elimina la 'a' inicial -> "fontana"
-    # Mapear nombres especiales
-    if estacion_key == "sannullo":
-        estacion_key = "sannullo"
-    elif estacion_key == "giovanni":
-        estacion_key = "giovanni"
-    # Asegurar que la estación existe
-    if estacion_key not in NOMBRE_MOSTRAR:
-        await update.message.reply_text("Stazione non valida.")
-        return
-    await acc_send_station_info(update, context, estacion_key)
-
-# ============================================================================
-# FUNCIONES DEL MODO NORMAL (sin cambios, excepto la integración del botón de salida en handle_button)
-# ============================================================================
 
 # ============================================================================
 # CONSTRUCCIÓN DE MENSAJES TEMPORALES (msg2 y msg3)
@@ -429,7 +268,6 @@ async def send_messages_2_and_3(update: Update, estacion_key: str, now: datetime
     msg2_obj = await send_message_2(update, msg2, key_mp, time_mp, mins_mp, estacion_key)
     await asyncio.sleep(0.5)
     
-    # Añadir botón solo si es estación intermedia (no cabecera) y show_button True
     if estacion_key not in ["montepo", "stesicoro"] and show_button:
         keyboard_inline = InlineKeyboardMarkup([
             [InlineKeyboardButton("🔄 Aggiornare", callback_data=f"aggiornare_{estacion_key}")]
@@ -485,7 +323,6 @@ async def refresh_station(update: Update, context: ContextTypes.DEFAULT_TYPE, es
             task.cancel()
         context.chat_data.pop('refresh_task', None)
     context.chat_data['refresh_active'] = False
-    
     return_to_main = context.chat_data.get('last_return_to_main', True)
     await send_station_response(update, context, estacion_key, return_to_main)
 
@@ -712,6 +549,129 @@ async def auto_update_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, e
     await update.message.reply_text("🔄 Aggiornamenti automatici terminati (20 cicli completati).")
 
 # ============================================================================
+# FUNCIONES PARA EL MODO ACCESIBILIDAD
+# ============================================================================
+def clean_text(text: str) -> str:
+    replacements = {
+        "🔺": "·", "🔻": "·", "🚇": "·", "🕐": "·", "🕙": "·", "📌": "·",
+        "**": "", "*": "", "__": "", "`": ""
+    }
+    for old, new in replacements.items():
+        text = text.replace(old, new)
+    return ' '.join(text.split())
+
+async def acc_send_station_info(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str):
+    simulated = context.chat_data.get('test_time')
+    if simulated:
+        if simulated.tzinfo is None:
+            simulated = CATANIA_TZ.localize(simulated)
+        now = simulated
+    else:
+        now = datetime.now(CATANIA_TZ)
+    
+    msg2, msg3, _, _, _, _, _, _ = build_temporary_messages(now, estacion_key)
+    msg2_clean = clean_text(msg2)
+    msg3_clean = clean_text(msg3)
+    
+    nombre = NOMBRE_MOSTRAR.get(estacion_key, estacion_key.capitalize())
+    descripcion = DESCRIPCION_ESTACION.get(estacion_key, "Stazione accessibile.")
+    msg1 = f"· Prossimi treni a {nombre}: {descripcion}"
+    
+    await update.message.reply_text(msg1, parse_mode=None)
+    
+    msg2_obj = await update.message.reply_text(msg2_clean, parse_mode=None)
+    
+    keyboard_inline = InlineKeyboardMarkup([
+        [InlineKeyboardButton("· Aggiornare", callback_data=f"acc_aggiornare_{estacion_key}")]
+    ])
+    msg3_obj = await update.message.reply_text(msg3_clean, parse_mode=None, reply_markup=keyboard_inline)
+    
+    lista_comandos = (
+        "Scegli la stazione che desideri consultare:\n"
+        "/aMontepo, /aStesicoro, /aFontana, /aNesima, /aSanNullo, /aCibali, /aMilo, "
+        "/aBorgo, /aGiuffrida, /aItalia, /aGalatea, /aGiovanni"
+    )
+    msg4_obj = await update.message.reply_text(lista_comandos, parse_mode=None)
+    
+    context.chat_data['acc_msg_ids'] = (msg2_obj.message_id, msg3_obj.message_id, msg4_obj.message_id)
+    context.chat_data['acc_last_station'] = estacion_key
+
+async def acc_aggiornare_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    estacion_key = query.data.split("_")[2]
+    
+    msg_ids = context.chat_data.get('acc_msg_ids')
+    if msg_ids:
+        for mid in msg_ids:
+            try:
+                await context.bot.delete_message(chat_id=query.message.chat_id, message_id=mid)
+            except Exception:
+                pass
+        context.chat_data.pop('acc_msg_ids', None)
+    
+    simulated = context.chat_data.get('test_time')
+    if simulated:
+        if simulated.tzinfo is None:
+            simulated = CATANIA_TZ.localize(simulated)
+        now = simulated
+    else:
+        now = datetime.now(CATANIA_TZ)
+    
+    msg2, msg3, _, _, _, _, _, _ = build_temporary_messages(now, estacion_key)
+    msg2_clean = clean_text(msg2)
+    msg3_clean = clean_text(msg3)
+    
+    msg2_obj = await query.message.reply_text(msg2_clean, parse_mode=None)
+    keyboard_inline = InlineKeyboardMarkup([
+        [InlineKeyboardButton("· Aggiornare", callback_data=f"acc_aggiornare_{estacion_key}")]
+    ])
+    msg3_obj = await query.message.reply_text(msg3_clean, parse_mode=None, reply_markup=keyboard_inline)
+    
+    lista_comandos = (
+        "Scegli la stazione che desideri consultare:\n"
+        "/aMontepo, /aStesicoro, /aFontana, /aNesima, /aSanNullo, /aCibali, /aMilo, "
+        "/aBorgo, /aGiuffrida, /aItalia, /aGalatea, /aGiovanni"
+    )
+    msg4_obj = await query.message.reply_text(lista_comandos, parse_mode=None)
+    
+    context.chat_data['acc_msg_ids'] = (msg2_obj.message_id, msg3_obj.message_id, msg4_obj.message_id)
+
+async def cmd_accesibilidad(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.chat_data['accessibility_mode'] = True
+    await update.message.reply_text(
+        "♿ Modalità accessibilità attivata.\n\n"
+        "Scegli la stazione che desideri consultare:\n"
+        "/aMontepo, /aFontana, /aNesima, /aSanNullo, /aCibali, /aMilo, /aBorgo, /aGiuffrida, /aItalia, /aGalatea, /aGiovanni, /aStesicoro\n\n"
+        "Per uscire, premi il pulsante qui sotto.",
+        reply_markup=keyboard_exit_accessibility
+    )
+
+async def cmd_exit_accessibility(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.chat_data['accessibility_mode'] = False
+    context.chat_data.pop('acc_msg_ids', None)
+    context.chat_data.pop('acc_last_station', None)
+    await update.message.reply_text(
+        "✅ Modalità accessibilità disattivata. Puoi tornare a usare i pulsanti normali.",
+        reply_markup=keyboard_main
+    )
+
+async def acc_station_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.chat_data.get('accessibility_mode', False):
+        await update.message.reply_text("⚠️ Per prima cosa attiva la modalità accessibilità con /accesibilidad.")
+        return
+    command = update.message.text.split()[0][1:]
+    estacion_key = command[1:].lower()
+    if estacion_key == "sannullo":
+        estacion_key = "sannullo"
+    elif estacion_key == "giovanni":
+        estacion_key = "giovanni"
+    if estacion_key not in NOMBRE_MOSTRAR:
+        await update.message.reply_text("Stazione non valida.")
+        return
+    await acc_send_station_info(update, context, estacion_key)
+
+# ============================================================================
 # WRAPPERS Y COMANDOS (modo normal y accesibilidad)
 # ============================================================================
 async def cancel_refresh_and_run(update: Update, context: ContextTypes.DEFAULT_TYPE, coro, *args, **kwargs):
@@ -759,10 +719,8 @@ async def test_command_wrapper(update, context): await cancel_refresh_and_run(up
 async def testfin_command_wrapper(update, context): await cancel_refresh_and_run(update, context, testfin_command)
 async def auto_wrapper(update, context): await cancel_refresh_and_run(update, context, cmd_auto)
 async def stop_wrapper(update, context): await cancel_refresh_and_run(update, context, cmd_stop)
-
 async def acc_wrapper(update, context): await cancel_refresh_and_run(update, context, cmd_accesibilidad)
 async def acc_station_wrapper(update, context): await cancel_refresh_and_run(update, context, acc_station_command)
-async def acc_aggiornare_wrapper(update, context): await acc_aggiornare_callback(update, context)
 
 # Funciones originales (modo normal)
 async def cmd_montepo(update, context):
@@ -813,8 +771,8 @@ async def start(update, context):
         last_msg = last_msg.replace("📌", "🕙")
     await update.message.reply_text(
         f"Ciao {user.first_name}! 👋\n\n"
-        "Posso dirti quando passa il prossimo treno della metropolitana di Catania.\n"
-        "Premi usa i comandi /accesibilita per aprire il modo accesibile per tutti.\n\n"
+        "Quando arriva la metropolitana di Catania?\n"
+        "Premi usa i comandi /accesibilita per aprire il modo accessibile per tutti.\n\n"
         f"{last_msg}",
         reply_markup=keyboard_main
     )
@@ -856,22 +814,6 @@ async def handle_button(update, context):
         await send_station_response(update, context, est_key, return_to_main)
     else:
         await update.message.reply_text("Scelta non valida. Usa i pulsanti.", reply_markup=keyboard_main)
-
-async def acc_station_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Función auxiliar para manejar los comandos /aEstacion."""
-    if not context.chat_data.get('accessibility_mode', False):
-        await update.message.reply_text("⚠️ Per prima cosa attiva la modalità accessibilità con /accesibilidad.")
-        return
-    command = update.message.text.split()[0][1:]  # "/aFontana" -> "aFontana"
-    estacion_key = command[1:].lower()
-    if estacion_key == "sannullo":
-        estacion_key = "sannullo"
-    elif estacion_key == "giovanni":
-        estacion_key = "giovanni"
-    if estacion_key not in NOMBRE_MOSTRAR:
-        await update.message.reply_text("Stazione non valida.")
-        return
-    await acc_send_station_info(update, context, estacion_key)
 
 async def cmd_testgif(update: Update, context: ContextTypes.DEFAULT_TYPE):
     gif_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_stesicoro_fontana.gif"
