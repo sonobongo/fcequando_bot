@@ -1,7 +1,7 @@
 import asyncio
 import time as time_module
 from datetime import datetime, timedelta
-from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove
+from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from horarios_logic import *
 from horarios_logic import CATANIA_TZ
@@ -24,32 +24,11 @@ keyboard_altri = ReplyKeyboardMarkup(
     resize_keyboard=True, one_time_keyboard=False
 )
 
-keyboard_exit_accessibility = ReplyKeyboardMarkup(
-    [[KeyboardButton("USCIRE DAL MODO ACCESSIBILITÀ")]],
-    resize_keyboard=True, one_time_keyboard=False
-)
-
 BOTON_TO_KEY = {
     "Monte Po": "montepo", "Stesicoro": "stesicoro", "Fontana": "fontana",
     "Nesima": "nesima", "San Nullo": "sannullo", "Cibali": "cibali",
     "Milo": "milo", "Borgo": "borgo", "Giuffrida": "giuffrida",
     "Italia": "italia", "Galatea": "galatea", "Giovanni XXIII": "giovanni"
-}
-
-# Descripciones de estaciones para modo accesibilidad (texto plano)
-DESCRIPCION_ESTACION = {
-    "montepo": "· Stazione capolinea con ascensore e servizi igienici.",
-    "stesicoro": "· Stazione centrale con ascensore e collegamento autobus.",
-    "fontana": "· La stazione è dotata di pavimento podotattile, scale mobili e Ascensore.\n· Sul marciapiede 1, partono i treni in direzione Monte Po. Alla testa del treno si trova l'uscita per: Via Felice Fontana.\n· Sul marciapiede 2 partono i treni in direzione Stesicoro. Alla testa del treno si trovano le uscite per: Via Felice Fontana e l'Ospedale Garibaldi-Nesima.\n· Al centro della piattaforma si trovano gli ascensori con tastiere Braille, che raggiungono la strada.",
-    "nesima": "· La stazione è dotata di pavimento podotattile, scale mobili e Ascensore.\n· Sul marciapiede 1, partono i treni in direzione Monte Po. Alla testa del treno si trovano le uscite per: Viale Lorenzo Bolano e Via Filippo Eredia.\n· Sul marciapiede 2 partono i treni in direzione Stesicoro. Alla testa del treno si trova l'uscita per: Viale Lorenzo Bolano.\n· Al centro della piattaforma si trovano gli ascensori con tastiere Braille, che raggiungono la strada.",
-    "sannullo": "· La stazione è dotata di pavimento podotattile, scale mobili e Ascensore.\n· Sul marciapiede 1, partono i treni in direzione Monte Po. Alla testa del treno si trovano le uscite per: Viale Antoniotto Usodimare e Via Sebastiano Catania.\n· Sul marciapiede 2 partono i treni in direzione Stesicoro. Alla testa del treno si trovano anche le uscite per: Viale Antoniotto Usodimare e Via Sebastiano Catania.\n· Al centro della piattaforma si trovano gli ascensori con tastiere Braille, che raggiungono la strada.",
-    "cibali": "· La stazione è dotata di pavimento podotattile, scale mobili e Ascensore.\n· Sul marciapiede 1, partono i treni in direzione Monte Po. Alla testa del treno si trovano le uscite per: Via Bergamo, Via Galermo e lo stadio di Calcio, Angelo Massimino.\n· Sul marciapiede 2 partono i treni in direzione Stesicoro. Alla testa del treno si trovano anche le uscite per: Via Bergamo, Via Galermo e lo stadio di Calcio.\n· Al centro della piattaforma si trovano gli ascensori con tastiere Braille, che raggiungono la strada.",
-    "milo": "· La stazione è dotata di pavimento podotattile, scale mobili e Ascensore.\n· Sul marciapiede 1, partono i treni in direzione Monte Po. Alla testa del treno si trovano le uscite per: Via Bronte e Viale Fleming.\n· Sul marciapiede 2 partono i treni in direzione Stesicoro. Alla testa del treno si trovano anche le uscite per: Via Bronte e Viale Fleming.\n· Al centro della piattaforma si trovano gli ascensori con tastiere Braille, che raggiungono la strada.",
-    "borgo": "· La stazione è dotata di pavimento podotattile e scale mobili.\n· Sul marciapiede 1, partono i treni in direzione Monte Po. Alla testa del treno si trovano le uscite per: Via Empedocle e Via Etnea.\n· Sul marciapiede 2 partono i treni in direzione Stesicoro. Alla testa del treno si trovano le uscite per: I treni della FCE, Via Signorelli e Via Caronda.",
-    "giuffrida": "· La stazione è dotata di pavimento podotattile e scale mobili.\n· Sul marciapiede 1, partono i treni in direzione Monte Po. Alla testa del treno si trovano le uscite per: Via Guardia della Carvana e Piazza Abraham Lincoln.\n· Sul marciapiede 2 partono i treni in direzione Stesicoro. Alla testa del treno si trovano le uscite per: Via Caronda e Via Vincenzo Giuffrida.",
-    "italia": "· La stazione è dotata di pavimento podotattile e scale mobili.\n· Sul marciapiede 1, partono i treni in direzione Monte Po. Alla testa del treno si trovano le uscite per: Via Firenze, Via Ramondetta e Via Oliveto Scammacca.\n· Sul marciapiede 2 partono i treni in direzione Stesicoro. Alla testa del treno si trovano le uscite per: Viale Vittorio Veneto e Corso Italia.",
-    "galatea": "· La stazione è dotata di pavimento podotattile e scale mobili.\n· Sul marciapiede 1, partono i treni in direzione Monte Po. Alla testa del treno si trovano le uscite per: Viale Jonio, Via Pasubio e via Palmanova.\n· Sul marciapiede 2 partono i treni in direzione Stesicoro.\n· Alla testa del treno si trovano le uscite per: Piazza Galatea, Viale Africa e Via Messina.",
-    "giovanni": "· La stazione è dotata di pavimento podotattile, scale mobili e Ascensore.\n· Sul marciapiede 1, partono i treni in direzione Monte Po. Alla testa del treno si trova l'uscita per: Piazza Giovanni XXIII e Viale Africa.\n· Sul marciapiede 2 partono i treni in direzione Stesicoro. Alla testa del treno si trovano le uscite per: Via Archimede, Viale della Libertà e Stazione di Trenitalia Catania Centrale.\n· Al centro della piattaforma si trovano gli ascensori con tastiere Braille, che raggiungono la strada."
 }
 
 # ============================================================================
@@ -181,7 +160,7 @@ def build_temporary_messages(now: datetime, estacion_key: str):
     return msg2, msg3, current_station_key_mp, tiempo_restante_mp, current_station_key_st, tiempo_restante_st, mins_mp, mins_st
 
 # ============================================================================
-# FUNCIONES DE ENVÍO CON IMAGEN (modo normal)
+# FUNCIONES DE ENVÍO CON IMAGEN
 # ============================================================================
 async def send_treno_arrivo(update: Update, msg: str, direction: str):
     img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_trenoarriva.png"
@@ -219,7 +198,7 @@ async def send_default(update: Update, msg: str):
         return await update.message.reply_text(msg, parse_mode='Markdown')
 
 # ============================================================================
-# ENVÍO DE MENSAJE 2 (hacia Monte Po) y 3 (hacia Stesicoro) - modo normal
+# ENVÍO DE MENSAJE 2 (hacia Monte Po) y 3 (hacia Stesicoro)
 # ============================================================================
 async def send_message_2(update: Update, msg: str, current_station_key: str, tiempo_restante: int, mins: int, estacion_key: str):
     if tiempo_restante is not None and (tiempo_restante <= 90 or mins <= 1):
@@ -261,7 +240,7 @@ def is_default_message(current_station_key, tiempo_restante, mins):
     return True
 
 # ============================================================================
-# FUNCIÓN PRINCIPAL PARA ENVIAR AMBOS MENSAJES (modo normal)
+# FUNCIÓN PRINCIPAL PARA ENVIAR AMBOS MENSAJES (intermedias)
 # ============================================================================
 async def send_messages_2_and_3(update: Update, estacion_key: str, now: datetime, simulated: bool = False, show_button: bool = False):
     msg2, msg3, key_mp, time_mp, key_st, time_st, mins_mp, mins_st = build_temporary_messages(now, estacion_key)
@@ -269,16 +248,14 @@ async def send_messages_2_and_3(update: Update, estacion_key: str, now: datetime
     msg2_obj = await send_message_2(update, msg2, key_mp, time_mp, mins_mp, estacion_key)
     await asyncio.sleep(0.5)
     
-    # Mostrar botón solo para estaciones intermedias y cuando show_button sea True
+    # Añadir botón solo si es estación intermedia (no cabecera) y show_button True
     if estacion_key not in ["montepo", "stesicoro"] and show_button:
         keyboard_inline = InlineKeyboardMarkup([
             [InlineKeyboardButton("🔄 Aggiornare", callback_data=f"aggiornare_{estacion_key}")]
         ])
         msg3_obj = await send_message_3(update, msg3, key_st, time_st, mins_st, estacion_key, reply_markup=keyboard_inline)
-        print(f"DEBUG: Botón 'Aggiornare' enviado para {estacion_key}")
     else:
         msg3_obj = await send_message_3(update, msg3, key_st, time_st, mins_st, estacion_key, reply_markup=None)
-        print(f"DEBUG: Botón NO enviado para {estacion_key} (show_button={show_button})")
     
     return (msg2_obj.message_id, msg3_obj.message_id)
 
@@ -286,12 +263,12 @@ async def send_messages_2_and_3(update: Update, estacion_key: str, now: datetime
 # REFRESCO NORMAL (2 ciclos de 30 segundos, con botón en las actualizaciones)
 # ============================================================================
 async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str, chat_id: int, station_display_name: str, use_simulated: bool = False, simulated_now: datetime = None):
-    print(f"DEBUG auto_refresh_loop: iniciada para {estacion_key}")
+    # Solo 2 ciclos de 30 segundos
     for ciclo in range(2):
         await asyncio.sleep(30)
-        print(f"DEBUG auto_refresh_loop: ciclo {ciclo+1} para {estacion_key}")
         if context.chat_data.get('cancel_refresh', False):
             break
+        # Borrar mensajes anteriores
         msg_ids = context.chat_data.get('refresh_msg_ids')
         if msg_ids:
             for mid in msg_ids:
@@ -305,20 +282,21 @@ async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, 
                 now = CATANIA_TZ.localize(now)
         else:
             now = datetime.now(CATANIA_TZ)
+        # Enviar nuevos mensajes CON botón (show_button=True) en cada ciclo
         new_ids = await send_messages_2_and_3(update, estacion_key, now, use_simulated, show_button=True)
         context.chat_data['refresh_msg_ids'] = new_ids
+    
+    # Al terminar los 2 ciclos, limpiar estado
     context.chat_data['refresh_active'] = False
     context.chat_data.pop('refresh_task', None)
     context.chat_data.pop('cancel_refresh', None)
-    print(f"DEBUG auto_refresh_loop: finalizada para {estacion_key}")
 
 # ============================================================================
-# FUNCIÓN PARA REFRESCAR SOLO MENSAJES 2 y 3 (sin foto ni reinicio completo)
+# FUNCIÓN PARA REFRESCAR SOLO LOS MENSAJES 2 y 3 (sin foto, con botón y reinicio del ciclo)
 # ============================================================================
-async def refresh_messages_only(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str):
+async def refresh_station(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str):
     chat_id = update.effective_chat.id
-    print(f"DEBUG refresh_messages_only: refrescando {estacion_key}")
-    # Borrar mensajes actuales 2 y 3
+    # Borrar mensajes 2 y 3 actuales
     msg_ids = context.chat_data.get('refresh_msg_ids')
     if msg_ids:
         for mid in msg_ids:
@@ -327,7 +305,8 @@ async def refresh_messages_only(update: Update, context: ContextTypes.DEFAULT_TY
             except Exception:
                 pass
         context.chat_data.pop('refresh_msg_ids', None)
-    # Detener la tarea de refresco actual
+    
+    # Detener tarea de refresco actual
     if 'refresh_task' in context.chat_data:
         task = context.chat_data['refresh_task']
         if not task.done():
@@ -348,27 +327,32 @@ async def refresh_messages_only(update: Update, context: ContextTypes.DEFAULT_TY
     new_ids = await send_messages_2_and_3(update, estacion_key, now, simulated is not None, show_button=True)
     context.chat_data['refresh_msg_ids'] = new_ids
     
-    # Reiniciar el bucle de refresco automático (2 ciclos) con show_button=True
+    # Reiniciar el bucle de refresco automático (2 ciclos, con botón)
     context.chat_data['refresh_active'] = True
     task = asyncio.create_task(auto_refresh_loop(update, context, estacion_key, chat_id, "", use_simulated=(simulated is not None), simulated_now=now if simulated else None))
     context.chat_data['refresh_task'] = task
 
 # ============================================================================
-# CALLBACK PARA EL BOTÓN INLINE "AGGIORNARE" (modo normal) - solo refresca msg2 y msg3
+# CALLBACK PARA EL BOTÓN INLINE "AGGIORNARE" (refresca sin foto, con botón)
 # ============================================================================
 async def aggiornare_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     estacion_key = query.data.split("_")[1]
+    
+    # Crear un fake_update con el mensaje real para poder llamar a refresh_station
     fake_update = type('Update', (), {'message': query.message, 'effective_chat': query.message.chat, 'callback_query': query})()
-    await refresh_messages_only(fake_update, context, estacion_key)
+    
+    await refresh_station(fake_update, context, estacion_key)
 
 # ============================================================================
-# RESPUESTA PRINCIPAL (foto de estación + msg2/msg3 + aviso de cierre) - modo normal
+# RESPUESTA PRINCIPAL (foto de estación + msg2/msg3 + aviso de cierre)
 # ============================================================================
 async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str, return_to_main: bool = True):
+    # Guardar el valor de return_to_main para usarlo en refrescos posteriores
     context.chat_data['last_return_to_main'] = return_to_main
     
+    # Detener cualquier bucle automático
     if context.chat_data.get('auto_active', False):
         context.chat_data['auto_active'] = False
         if 'auto_task' in context.chat_data:
@@ -400,7 +384,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
         now = datetime.now(CATANIA_TZ)
     test_indicator = "🧪 [TEST MODE] " if simulated else ""
 
-    # CABECERAS: Monte Po o Stesicoro
+    # === CABECERAS: Monte Po o Stesicoro ===
     if estacion_key in ["montepo", "stesicoro"]:
         station = "Montepo" if estacion_key == "montepo" else "Stesicoro"
         closed, next_open, special_closing_msg = is_metro_closed(now, station)
@@ -481,7 +465,9 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
                 await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri, parse_mode='Markdown')
         return
 
+    # ========================================================================
     # ESTACIONES INTERMEDIAS
+    # ========================================================================
     closed, next_open, special_closing_msg = is_metro_closed(now, "Montepo")
     if closed:
         if next_open.date() > now.date():
@@ -514,6 +500,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
     permanent_caption = f"{test_indicator}🚇 Prossimi treni a {nombre}{last_msg_text}"
     img_station = get_station_image(estacion_key, now)
 
+    # Enviar foto de la estación con el teclado adecuado
     if img_station:
         await update.message.reply_photo(photo=img_station, caption=permanent_caption, reply_markup=keyboard_main if return_to_main else keyboard_altri)
     else:
@@ -577,167 +564,7 @@ async def auto_update_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, e
     await update.message.reply_text("🔄 Aggiornamenti automatici terminati (20 cicli completati).")
 
 # ============================================================================
-# FUNCIONES PARA EL MODO ACCESIBILIDAD
-# ============================================================================
-def clean_text(text: str) -> str:
-    replacements = {
-        "🔺": "·", "🔻": "·", "🚇": "·", "🕐": "·", "🕙": "·", "📌": "·",
-        "**": "", "*": "", "__": "", "`": ""
-    }
-    for old, new in replacements.items():
-        text = text.replace(old, new)
-    return ' '.join(text.split())
-
-async def acc_send_station_info(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str):
-    simulated = context.chat_data.get('test_time')
-    if simulated:
-        if simulated.tzinfo is None:
-            simulated = CATANIA_TZ.localize(simulated)
-        now = simulated
-    else:
-        now = datetime.now(CATANIA_TZ)
-    
-    msg2, msg3, _, _, _, _, _, _ = build_temporary_messages(now, estacion_key)
-    msg2_clean = clean_text(msg2)
-    msg3_clean = clean_text(msg3)
-    
-    nombre = NOMBRE_MOSTRAR.get(estacion_key, estacion_key.capitalize())
-    descripcion = DESCRIPCION_ESTACION.get(estacion_key, "· Stazione accessibile.")
-    
-    # Construir URL de la imagen para modo accesibilidad
-    nombre_imagen = nombre.replace(" ", "").replace("XXIII", "XXIII")
-    if nombre_imagen == "SanNullo":
-        nombre_imagen = "SanNullo"
-    elif nombre_imagen == "GiovanniXXIII":
-        nombre_imagen = "GiovanniXXIII"
-    img_url = f"https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/st_a{nombre_imagen}.png"
-    cache_buster = int(time_module.time())
-    img_url = f"{img_url}?v={cache_buster}"
-    
-    # Enviar foto sin caption (o con título)
-    await update.message.reply_photo(photo=img_url, caption=f"Stazione {nombre}", parse_mode=None)
-    
-    # Enviar la descripción como mensaje de texto plano
-    await update.message.reply_text(descripcion, parse_mode=None)
-    
-    # Enviar mensajes 2, 3 y 4 (texto plano)
-    msg2_obj = await update.message.reply_text(msg2_clean, parse_mode=None)
-    
-    keyboard_inline = InlineKeyboardMarkup([
-        [InlineKeyboardButton("· Aggiornare", callback_data=f"acc_aggiornare_{estacion_key}")]
-    ])
-    msg3_obj = await update.message.reply_text(msg3_clean, parse_mode=None, reply_markup=keyboard_inline)
-    
-    lista_comandos = (
-        "Scegli la stazione che desideri consultare:\n"
-        "/aMontepo, /aFontana, /aNesima, /aSanNullo, /aCibali, /aMilo, "
-        "/aBorgo, /aGiuffrida, /aItalia, /aGalatea, /aGiovanni, /aStesicoro"
-    )
-    msg4_obj = await update.message.reply_text(lista_comandos, parse_mode=None)
-    
-    context.chat_data['acc_msg_ids'] = (msg2_obj.message_id, msg3_obj.message_id, msg4_obj.message_id)
-    context.chat_data['acc_last_station'] = estacion_key
-
-async def acc_aggiornare_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    estacion_key = query.data.split("_")[2]
-    
-    msg_ids = context.chat_data.get('acc_msg_ids')
-    if msg_ids:
-        for mid in msg_ids:
-            try:
-                await context.bot.delete_message(chat_id=query.message.chat_id, message_id=mid)
-            except Exception:
-                pass
-        context.chat_data.pop('acc_msg_ids', None)
-    
-    simulated = context.chat_data.get('test_time')
-    if simulated:
-        if simulated.tzinfo is None:
-            simulated = CATANIA_TZ.localize(simulated)
-        now = simulated
-    else:
-        now = datetime.now(CATANIA_TZ)
-    
-    msg2, msg3, _, _, _, _, _, _ = build_temporary_messages(now, estacion_key)
-    msg2_clean = clean_text(msg2)
-    msg3_clean = clean_text(msg3)
-    
-    msg2_obj = await query.message.reply_text(msg2_clean, parse_mode=None)
-    keyboard_inline = InlineKeyboardMarkup([
-        [InlineKeyboardButton("· Aggiornare", callback_data=f"acc_aggiornare_{estacion_key}")]
-    ])
-    msg3_obj = await query.message.reply_text(msg3_clean, parse_mode=None, reply_markup=keyboard_inline)
-    
-    lista_comandos = (
-        "Scegli la stazione che desideri consultare:\n"
-        "/aMontepo, /aFontana, /aNesima, /aSanNullo, /aCibali, /aMilo, "
-        "/aBorgo, /aGiuffrida, /aItalia, /aGalatea, /aGiovanni, /aStesicoro"
-    )
-    msg4_obj = await query.message.reply_text(lista_comandos, parse_mode=None)
-    
-    context.chat_data['acc_msg_ids'] = (msg2_obj.message_id, msg3_obj.message_id, msg4_obj.message_id)
-
-async def cmd_accesibilidad(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.chat_data['accessibility_mode'] = True
-    await update.message.reply_text(
-        "♿ Modalità accessibilità attivata.\n\n"
-        "Scegli la stazione che desideri consultare:\n"
-        "/aMontepo, /aFontana, /aNesima, /aSanNullo, /aCibali, /aMilo, /aBorgo, /aGiuffrida, /aItalia, /aGalatea, /aGiovanni, /aStesicoro\n\n"
-        "Per uscire, premi il pulsante qui sotto.",
-        reply_markup=keyboard_exit_accessibility
-    )
-
-async def cmd_exit_accessibility(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.chat_data['accessibility_mode'] = False
-    context.chat_data.pop('acc_msg_ids', None)
-    context.chat_data.pop('acc_last_station', None)
-    await update.message.reply_text(
-        "✅ Modalità accessibilità disattivata. Puoi tornare a usare i pulsanti normali.",
-        reply_markup=keyboard_main
-    )
-
-async def acc_station_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not context.chat_data.get('accessibility_mode', False):
-        await update.message.reply_text("⚠️ Per prima cosa attiva la modalità accessibilità con /accessibilita.")
-        return
-    
-    # Obtener el texto completo del comando (sin argumentos adicionales)
-    full_command = update.message.text.split()[0]
-    # Eliminar cualquier mención de bot (ej. "@miobot")
-    command = full_command.split('@')[0]
-    # Verificar que comienza con /a
-    if not command.startswith('/a'):
-        await update.message.reply_text("Comando non valido. Usa /aMontepo, /aFontana, ecc.")
-        return
-    # Extraer el nombre de la estación: quitar '/a' y pasar a minúsculas
-    estacion_nombre = command[2:].lower()
-    
-    # Mapeo de nombres a claves internas
-    mapeo = {
-        "montepo": "montepo",
-        "stesicoro": "stesicoro",
-        "fontana": "fontana",
-        "nesima": "nesima",
-        "sannullo": "sannullo",
-        "cibali": "cibali",
-        "milo": "milo",
-        "borgo": "borgo",
-        "giuffrida": "giuffrida",
-        "italia": "italia",
-        "galatea": "galatea",
-        "giovanni": "giovanni"
-    }
-    estacion_key = mapeo.get(estacion_nombre)
-    if not estacion_key or estacion_key not in NOMBRE_MOSTRAR:
-        await update.message.reply_text(f"Stazione '{estacion_nombre}' non valida.")
-        return
-    
-    await acc_send_station_info(update, context, estacion_key)
-
-# ============================================================================
-# WRAPPERS Y COMANDOS (modo normal y accesibilidad)
+# WRAPPERS Y COMANDOS (incluyendo /auto y /stop)
 # ============================================================================
 async def cancel_refresh_and_run(update: Update, context: ContextTypes.DEFAULT_TYPE, coro, *args, **kwargs):
     if context.chat_data.get('auto_active', False):
@@ -784,10 +611,8 @@ async def test_command_wrapper(update, context): await cancel_refresh_and_run(up
 async def testfin_command_wrapper(update, context): await cancel_refresh_and_run(update, context, testfin_command)
 async def auto_wrapper(update, context): await cancel_refresh_and_run(update, context, cmd_auto)
 async def stop_wrapper(update, context): await cancel_refresh_and_run(update, context, cmd_stop)
-async def acc_wrapper(update, context): await cancel_refresh_and_run(update, context, cmd_accesibilidad)
-async def acc_station_wrapper(update, context): await cancel_refresh_and_run(update, context, acc_station_command)
 
-# Funciones originales (modo normal)
+# Funciones originales
 async def cmd_montepo(update, context):
     context.chat_data['last_station'] = "montepo"
     await send_station_response(update, context, "montepo", return_to_main=False)
@@ -836,8 +661,8 @@ async def start(update, context):
         last_msg = last_msg.replace("📌", "🕙")
     await update.message.reply_text(
         f"Ciao {user.first_name}! 👋\n\n"
-        "Quando arriva la metropolitana di Catania?\n"
-        "Premi o usa il comando /accessibilita ♿ per aprire il modo accessibile per tutti.\n\n"
+        "Posso dirti quando passa il prossimo treno della metropolitana di Catania.\n"
+        "Premi uno dei pulsanti qui sotto o usa i comandi /montepo, /stesicoro, /milo, /altri, /fontana, ecc.\n\n"
         f"{last_msg}",
         reply_markup=keyboard_main
     )
@@ -857,7 +682,6 @@ async def help_command(update, context):
         "/test DDMMYYYY HHMM X - Test con 3 cicli (M, S, ML)\n"
         "/testfin - Disattiva modalità test\n"
         "/testgif - Invia GIF di prova e lo cancella dopo 1 minuto\n\n"
-        "Modalità accessibilità: /accessibilita\n\n"
         "Oppure premi i pulsanti.",
         reply_markup=keyboard_main
     )
@@ -867,16 +691,15 @@ async def handle_button(update, context):
         await cmd_altri(update, context)
     elif text == "← Menu":
         await update.message.reply_text("🔙 Ritorno al menu principale.", reply_markup=keyboard_main)
-    elif text == "USCIRE DAL MODO ACCESSIBILITÀ":
-        await cmd_exit_accessibility(update, context)
     elif text in BOTON_TO_KEY:
         est_key = BOTON_TO_KEY[text]
         context.chat_data['last_station'] = est_key
-        # Si la estación pertenece al teclado de "Altri", volvemos al teclado principal (return_to_main=True)
+        # Guardamos el return_to_main según desde qué teclado se pulsa
+        # Si el texto está en keyboard_altri, entonces return_to_main=False, sino True
         if text in ["Fontana", "Nesima", "San Nullo", "Cibali", "Milo", "Borgo", "Giuffrida", "Italia", "Galatea", "Giovanni XXIII"]:
-            return_to_main = True  # Cambiado de False a True para cerrar el teclado de Altri
+            return_to_main = False
         else:
-            return_to_main = True  # Para Monte Po y Stesicoro también usamos el principal
+            return_to_main = True
         await send_station_response(update, context, est_key, return_to_main)
     else:
         await update.message.reply_text("Scelta non valida. Usa i pulsanti.", reply_markup=keyboard_main)
