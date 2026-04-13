@@ -1,7 +1,7 @@
 import asyncio
 import time as time_module
 from datetime import datetime, timedelta
-from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove
 from telegram.ext import ContextTypes
 from horarios_logic import *
 from horarios_logic import CATANIA_TZ
@@ -269,13 +269,16 @@ async def send_messages_2_and_3(update: Update, estacion_key: str, now: datetime
     msg2_obj = await send_message_2(update, msg2, key_mp, time_mp, mins_mp, estacion_key)
     await asyncio.sleep(0.5)
     
+    # Mostrar botón solo para estaciones intermedias y cuando show_button sea True
     if estacion_key not in ["montepo", "stesicoro"] and show_button:
         keyboard_inline = InlineKeyboardMarkup([
             [InlineKeyboardButton("🔄 Aggiornare", callback_data=f"aggiornare_{estacion_key}")]
         ])
         msg3_obj = await send_message_3(update, msg3, key_st, time_st, mins_st, estacion_key, reply_markup=keyboard_inline)
+        print(f"DEBUG: Botón 'Aggiornare' enviado para {estacion_key}")
     else:
         msg3_obj = await send_message_3(update, msg3, key_st, time_st, mins_st, estacion_key, reply_markup=None)
+        print(f"DEBUG: Botón NO enviado para {estacion_key} (show_button={show_button})")
     
     return (msg2_obj.message_id, msg3_obj.message_id)
 
@@ -283,8 +286,10 @@ async def send_messages_2_and_3(update: Update, estacion_key: str, now: datetime
 # REFRESCO NORMAL (2 ciclos de 30 segundos, con botón en las actualizaciones)
 # ============================================================================
 async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str, chat_id: int, station_display_name: str, use_simulated: bool = False, simulated_now: datetime = None):
+    print(f"DEBUG auto_refresh_loop: iniciada para {estacion_key}")
     for ciclo in range(2):
         await asyncio.sleep(30)
+        print(f"DEBUG auto_refresh_loop: ciclo {ciclo+1} para {estacion_key}")
         if context.chat_data.get('cancel_refresh', False):
             break
         msg_ids = context.chat_data.get('refresh_msg_ids')
@@ -305,12 +310,14 @@ async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, 
     context.chat_data['refresh_active'] = False
     context.chat_data.pop('refresh_task', None)
     context.chat_data.pop('cancel_refresh', None)
+    print(f"DEBUG auto_refresh_loop: finalizada para {estacion_key}")
 
 # ============================================================================
 # FUNCIÓN PARA REFRESCAR SOLO MENSAJES 2 y 3 (sin foto ni reinicio completo)
 # ============================================================================
 async def refresh_messages_only(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str):
     chat_id = update.effective_chat.id
+    print(f"DEBUG refresh_messages_only: refrescando {estacion_key}")
     # Borrar mensajes actuales 2 y 3
     msg_ids = context.chat_data.get('refresh_msg_ids')
     if msg_ids:
@@ -865,10 +872,11 @@ async def handle_button(update, context):
     elif text in BOTON_TO_KEY:
         est_key = BOTON_TO_KEY[text]
         context.chat_data['last_station'] = est_key
+        # Si la estación pertenece al teclado de "Altri", volvemos al teclado principal (return_to_main=True)
         if text in ["Fontana", "Nesima", "San Nullo", "Cibali", "Milo", "Borgo", "Giuffrida", "Italia", "Galatea", "Giovanni XXIII"]:
-            return_to_main = False
+            return_to_main = True  # Cambiado de False a True para cerrar el teclado de Altri
         else:
-            return_to_main = True
+            return_to_main = True  # Para Monte Po y Stesicoro también usamos el principal
         await send_station_response(update, context, est_key, return_to_main)
     else:
         await update.message.reply_text("Scelta non valida. Usa i pulsanti.", reply_markup=keyboard_main)
