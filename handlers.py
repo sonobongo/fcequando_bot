@@ -36,6 +36,7 @@ BOTON_TO_KEY = {
     "Italia": "italia", "Galatea": "galatea", "Giovanni XXIII": "giovanni"
 }
 
+# Descripciones de estaciones para modo accesibilidad
 DESCRIPCION_ESTACION = {
     "montepo": "Stazione capolinea con ascensore e servizi igienici.",
     "stesicoro": "Stazione centrale con ascensore e collegamento autobus.",
@@ -43,7 +44,7 @@ DESCRIPCION_ESTACION = {
     "nesima": "Stazione con ascensore e area di sosta.",
     "sannullo": "Stazione con ascensore e vicinanza a servizi.",
     "cibali": "Stazione accessibile con ascensore.",
-    "milo": "Stazione con ascensore e parcheggio.",
+    "milo": "Informazioni sulla stazione Milo.\n\nLa stazione è dotata di pavimento podotattile, scale mobili e Ascensore.\n\nSul marciapiede 1, partono i treni in direzione Monte Po. Alla testa del treno si trovano le uscite per: Via Bronte e Viale Fleming.\n\nSul marciapiede 2 partono i treni in direzione Stesicoro. Alla testa del treno si trovano anche le uscite per: Via Bronte e Viale Fleming.\n\nAl centro della piattaforma si trovano gli ascensori con tastiere Braille, che raggiungono la strada.",
     "borgo": "Informazioni sulla stazione Borgo.\n\nLa stazione è dotata di pavimento podotattile e scale mobili.\n\nSul marciapiede 1, partono i treni in direzione Monte Po. Alla testa del treno si trovano le uscite per: Via Empedocle e Via Etnea.\n\nSul marciapiede 2 partono i treni in direzione Stesicoro. Alla testa del treno si trovano le uscite per: I treni della FCE, Via Signorelli e Via Caronda.",
     "giuffrida": "Informazioni sulla stazione Giuffrida.\n\nLa stazione è dotata di pavimento podotattile e scale mobili.\n\nSul marciapiede 1, partono i treni in direzione Monte Po. Alla testa del treno si trovano le uscite per: Via Guardia della Carvana e Piazza Abraham Lincoln.\n\nSul marciapiede 2 partono i treni in direzione Stesicoro. Alla testa del treno si trovano le uscite per: Via Caronda e Via Vincenzo Giuffrida.",
     "italia": "Informazioni sulla stazione Italia.\n\nLa stazione è dotata di pavimento podotattile e scale mobili.\n\nSul marciapiede 1, partono i treni in direzione Monte Po. Alla testa del treno si trovano le uscite per: Via Firenza, Via Ramondetta e Via Oliveto Scammacca.\n\nSul marciapiede 2 partono i treni in direzione Stesicoro. Alla testa del treno si trovano le uscite per: Viale Vittorio Veneto e Corso Italia.",
@@ -575,10 +576,21 @@ async def acc_send_station_info(update: Update, context: ContextTypes.DEFAULT_TY
     
     nombre = NOMBRE_MOSTRAR.get(estacion_key, estacion_key.capitalize())
     descripcion = DESCRIPCION_ESTACION.get(estacion_key, "Stazione accessibile.")
-    msg1 = f"· Prossimi treni a {nombre}: {descripcion}"
     
-    await update.message.reply_text(msg1, parse_mode=None)
+    # Construir URL de la imagen para modo accesibilidad (ej: st_aMontepo.png)
+    # Eliminamos espacios y caracteres especiales del nombre
+    nombre_imagen = nombre.replace(" ", "").replace("XXIII", "XXIII")  # mantiene "GiovanniXXIII"
+    # Para "San Nullo" -> "SanNullo", para "Giovanni XXIII" -> "GiovanniXXIII"
+    if nombre_imagen == "SanNullo":
+        nombre_imagen = "SanNullo"
+    img_url = f"https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/st_a{nombre_imagen}.png"
+    cache_buster = int(time_module.time())
+    img_url = f"{img_url}?v={cache_buster}"
     
+    # Enviar foto con descripción como caption
+    await update.message.reply_photo(photo=img_url, caption=descripcion, parse_mode=None)
+    
+    # Enviar mensajes 2, 3 y 4 (texto plano)
     msg2_obj = await update.message.reply_text(msg2_clean, parse_mode=None)
     
     keyboard_inline = InlineKeyboardMarkup([
