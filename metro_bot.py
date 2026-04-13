@@ -34,7 +34,7 @@ def main():
     defaults = Defaults(disable_notification=True)
     app = Application.builder().token(TOKEN).defaults(defaults).build()
 
-    # Comandi principali (modo normale)
+    # Comandi principales (modo normal)
     commands = [
         ("start", start_wrapper), ("help", help_command_wrapper),
         ("montepo", cmd_montepo_wrapper), ("stesicoro", cmd_stesicoro_wrapper),
@@ -66,7 +66,7 @@ def main():
     # Teclados personalizados (ReplyKeyboardMarkup) para modo normal
     button_texts = ["Monte Po", "Stesicoro", "Altri", "← Menu", "Fontana", "Nesima", "San Nullo",
                     "Cibali", "Milo", "Borgo", "Giuffrida", "Italia", "Galatea", "Giovanni XXIII",
-                    "USCIRE DAL MODO ACCESSIBILITÀ"]   # Botón de salida del modo accesibilidad
+                    "USCIRE DAL MODO ACCESSIBILITÀ"]
     app.add_handler(MessageHandler(filters.Text(button_texts), handle_button_wrapper))
 
     # Manejadores para botones inline (modo normal y accesibilidad)
