@@ -342,7 +342,7 @@ async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, 
     context.chat_data.pop('cancel_refresh', None)
 
 # ============================================================================
-# CALLBACK PARA EL BOTÓN INLINE "AGGIORNARE" (usa fake_update para no interferir con el teclado)
+# CALLBACK PARA EL BOTÓN INLINE "AGGIORNARE" (corregido: usa return_to_main=True y no abre Altri)
 # ============================================================================
 async def aggiornare_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -366,8 +366,10 @@ async def aggiornare_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     fake_message = FakeMessage(chat_id, context.bot)
     fake_update = type('Update', (), {'message': fake_message, 'effective_chat': fake_message.chat, 'callback_query': query})()
     
-    # Llamar directamente a cmd_milo (que ejecuta send_station_response)
-    await cmd_milo(fake_update, context)
+    # Guardar la estación actual en chat_data
+    context.chat_data['last_station'] = "milo"
+    # Llamar a send_station_response con return_to_main=True para restaurar el teclado principal
+    await send_station_response(fake_update, context, "milo", return_to_main=True)
 
 # ============================================================================
 # RESPUESTA PRINCIPAL (foto de estación + msg2/msg3 + aviso de cierre)
