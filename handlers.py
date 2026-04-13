@@ -31,6 +31,32 @@ BOTON_TO_KEY = {
     "Italia": "italia", "Galatea": "galatea", "Giovanni XXIII": "giovanni"
 }
 
+# Mapeo de nombres de estación (clave) a la función cmd correspondiente
+async def cmd_fontana(update, context): await send_station_response(update, context, "fontana", return_to_main=False)
+async def cmd_nesima(update, context): await send_station_response(update, context, "nesima", return_to_main=False)
+async def cmd_sannullo(update, context): await send_station_response(update, context, "sannullo", return_to_main=False)
+async def cmd_cibali(update, context): await send_station_response(update, context, "cibali", return_to_main=False)
+async def cmd_milo(update, context): await send_station_response(update, context, "milo", return_to_main=False)
+async def cmd_borgo(update, context): await send_station_response(update, context, "borgo", return_to_main=False)
+async def cmd_giuffrida(update, context): await send_station_response(update, context, "giuffrida", return_to_main=False)
+async def cmd_italia(update, context): await send_station_response(update, context, "italia", return_to_main=False)
+async def cmd_galatea(update, context): await send_station_response(update, context, "galatea", return_to_main=False)
+async def cmd_giovanni(update, context): await send_station_response(update, context, "giovanni", return_to_main=False)
+
+# Diccionario para mapear el callback_data a la función correspondiente
+CALLBACK_TO_CMD = {
+    "aggiornare_fontana": cmd_fontana,
+    "aggiornare_nesima": cmd_nesima,
+    "aggiornare_sannullo": cmd_sannullo,
+    "aggiornare_cibali": cmd_cibali,
+    "aggiornare_milo": cmd_milo,
+    "aggiornare_borgo": cmd_borgo,
+    "aggiornare_giuffrida": cmd_giuffrida,
+    "aggiornare_italia": cmd_italia,
+    "aggiornare_galatea": cmd_galatea,
+    "aggiornare_giovanni": cmd_giovanni,
+}
+
 # ============================================================================
 # CONSTRUCCIÓN DE MENSAJES TEMPORALES (msg2 y msg3)
 # ============================================================================
@@ -248,10 +274,11 @@ async def send_messages_2_and_3(update: Update, estacion_key: str, now: datetime
     msg2_obj = await send_message_2(update, msg2, key_mp, time_mp, mins_mp, estacion_key)
     await asyncio.sleep(0.5)
     
-    # Solo añadir botón si es Milo y show_button es True
-    if estacion_key == "milo" and show_button:
+    # Solo añadir botón si la estación es intermedia (no cabecera) y show_button es True
+    if estacion_key not in ["montepo", "stesicoro"] and show_button:
+        callback_data = f"aggiornare_{estacion_key}"
         keyboard_inline = InlineKeyboardMarkup([
-            [InlineKeyboardButton("🔄 Aggiornare", callback_data="aggiornare_milo")]
+            [InlineKeyboardButton("🔄 Aggiornare", callback_data=callback_data)]
         ])
         msg3_obj = await send_message_3(update, msg3, key_st, time_st, mins_st, estacion_key, reply_markup=keyboard_inline)
     else:
@@ -342,12 +369,20 @@ async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, 
     context.chat_data.pop('cancel_refresh', None)
 
 # ============================================================================
-# CALLBACK PARA EL BOTÓN INLINE "AGGIORNARE" (corregido: usa return_to_main=True y no abre Altri)
+# CALLBACK PARA LOS BOTONES INLINE "AGGIORNARE" (para todas las estaciones intermedias)
 # ============================================================================
 async def aggiornare_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    chat_id = query.message.chat_id
+    callback_data = query.data  # ej: "aggiornare_fontana"
+    # Extraer el nombre de la estación
+    estacion_key = callback_data.split("_")[1]  # "fontana", "nesima", etc.
+    
+    # Obtener la función correspondiente del diccionario
+    cmd_func = CALLBACK_TO_CMD.get(callback_data)
+    if not cmd_func:
+        await query.message.reply_text("Errore: stazione non riconosciuta.")
+        return
     
     # Crear un objeto Message falso con los métodos necesarios
     class FakeMessage:
@@ -363,13 +398,13 @@ async def aggiornare_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         async def reply_animation(self, animation, caption=None, parse_mode=None, reply_markup=None):
             return await self.bot.send_animation(chat_id=self.chat_id, animation=animation, caption=caption, parse_mode=parse_mode, reply_markup=reply_markup)
     
-    fake_message = FakeMessage(chat_id, context.bot)
+    fake_message = FakeMessage(query.message.chat_id, context.bot)
     fake_update = type('Update', (), {'message': fake_message, 'effective_chat': fake_message.chat, 'callback_query': query})()
     
     # Guardar la estación actual en chat_data
-    context.chat_data['last_station'] = "milo"
-    # Llamar a send_station_response con return_to_main=True para restaurar el teclado principal
-    await send_station_response(fake_update, context, "milo", return_to_main=True)
+    context.chat_data['last_station'] = estacion_key
+    # Llamar a la función correspondiente con return_to_main=True para restaurar el teclado principal
+    await cmd_func(fake_update, context)
 
 # ============================================================================
 # RESPUESTA PRINCIPAL (foto de estación + msg2/msg3 + aviso de cierre)
@@ -584,43 +619,13 @@ async def testfin_command_wrapper(update, context): await cancel_refresh_and_run
 async def auto_wrapper(update, context): await cancel_refresh_and_run(update, context, cmd_auto)
 async def stop_wrapper(update, context): await cancel_refresh_and_run(update, context, cmd_stop)
 
-# Funciones originales
+# Funciones originales (algunas ya definidas arriba, pero mantenemos las que faltan)
 async def cmd_montepo(update, context):
     context.chat_data['last_station'] = "montepo"
     await send_station_response(update, context, "montepo", return_to_main=False)
 async def cmd_stesicoro(update, context):
     context.chat_data['last_station'] = "stesicoro"
     await send_station_response(update, context, "stesicoro", return_to_main=False)
-async def cmd_milo(update, context):
-    context.chat_data['last_station'] = "milo"
-    await send_station_response(update, context, "milo", return_to_main=False)
-async def cmd_fontana(update, context):
-    context.chat_data['last_station'] = "fontana"
-    await send_station_response(update, context, "fontana", return_to_main=False)
-async def cmd_nesima(update, context):
-    context.chat_data['last_station'] = "nesima"
-    await send_station_response(update, context, "nesima", return_to_main=False)
-async def cmd_sannullo(update, context):
-    context.chat_data['last_station'] = "sannullo"
-    await send_station_response(update, context, "sannullo", return_to_main=False)
-async def cmd_cibali(update, context):
-    context.chat_data['last_station'] = "cibali"
-    await send_station_response(update, context, "cibali", return_to_main=False)
-async def cmd_borgo(update, context):
-    context.chat_data['last_station'] = "borgo"
-    await send_station_response(update, context, "borgo", return_to_main=False)
-async def cmd_giuffrida(update, context):
-    context.chat_data['last_station'] = "giuffrida"
-    await send_station_response(update, context, "giuffrida", return_to_main=False)
-async def cmd_italia(update, context):
-    context.chat_data['last_station'] = "italia"
-    await send_station_response(update, context, "italia", return_to_main=False)
-async def cmd_galatea(update, context):
-    context.chat_data['last_station'] = "galatea"
-    await send_station_response(update, context, "galatea", return_to_main=False)
-async def cmd_giovanni(update, context):
-    context.chat_data['last_station'] = "giovanni"
-    await send_station_response(update, context, "giovanni", return_to_main=False)
 async def cmd_altri(update, context):
     await update.message.reply_text("⬇️ Altre stazioni:", reply_markup=keyboard_altri)
 async def start(update, context):
