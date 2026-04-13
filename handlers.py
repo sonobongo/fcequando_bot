@@ -36,8 +36,7 @@ BOTON_TO_KEY = {
     "Italia": "italia", "Galatea": "galatea", "Giovanni XXIII": "giovanni"
 }
 
-# Descripciones de estaciones para modo accesibilidad (en cursiva, con punto al inicio)
-# Se usarán en un mensaje de texto aparte, con formato Markdown.
+# Descripciones de estaciones para modo accesibilidad (con formato Markdown para cursiva)
 DESCRIPCION_ESTACION = {
     "montepo": "· *Stazione capolinea con ascensore e servizi igienici.*",
     "stesicoro": "· *Stazione centrale con ascensore e collegamento autobus.*",
@@ -588,7 +587,7 @@ async def acc_send_station_info(update: Update, context: ContextTypes.DEFAULT_TY
     cache_buster = int(time_module.time())
     img_url = f"{img_url}?v={cache_buster}"
     
-    # Enviar foto sin caption (o con un texto genérico)
+    # Enviar foto sin caption (o con título)
     await update.message.reply_photo(photo=img_url, caption=f"Stazione {nombre}", parse_mode=None)
     
     # Enviar la descripción como mensaje de texto aparte (con cursiva)
@@ -674,46 +673,37 @@ async def cmd_exit_accessibility(update: Update, context: ContextTypes.DEFAULT_T
 
 async def acc_station_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.chat_data.get('accessibility_mode', False):
-        await update.message.reply_text("⚠️ Per prima cosa attiva la modalità accessibilità con /accesibilidad.")
+        await update.message.reply_text("⚠️ Per prima cosa attiva la modalità accessibilità con /accessibilita.")
         return
     
-    # Extraer el comando completo (ej: "/aMontepo")
+    # Extraer el comando completo (ej: "/aMontepo" o "/aMontepo@miobot")
     command = update.message.text.split()[0]
-    # Eliminar la barra y la 'a' inicial, luego convertir a minúsculas
-    # Ej: "/aMontepo" -> "Montepo" -> "montepo"
-    estacion_nombre = command[2:].lower()  # saltamos "/a"
-    
-    # Mapear nombres especiales
-    if estacion_nombre == "sannullo":
-        estacion_key = "sannullo"
-    elif estacion_nombre == "giovanni":
-        estacion_key = "giovanni"
-    elif estacion_nombre == "stesicoro":
-        estacion_key = "stesicoro"
-    elif estacion_nombre == "montepo":
-        estacion_key = "montepo"
-    elif estacion_nombre == "fontana":
-        estacion_key = "fontana"
-    elif estacion_nombre == "nesima":
-        estacion_key = "nesima"
-    elif estacion_nombre == "cibali":
-        estacion_key = "cibali"
-    elif estacion_nombre == "milo":
-        estacion_key = "milo"
-    elif estacion_nombre == "borgo":
-        estacion_key = "borgo"
-    elif estacion_nombre == "giuffrida":
-        estacion_key = "giuffrida"
-    elif estacion_nombre == "italia":
-        estacion_key = "italia"
-    elif estacion_nombre == "galatea":
-        estacion_key = "galatea"
+    # Eliminar la barra y cualquier mención de bot (ej: "@miobot")
+    command_clean = command.split('@')[0]  # elimina @nombre_bot
+    # Eliminar la barra y la 'a' inicial
+    if command_clean.startswith('/a'):
+        estacion_nombre = command_clean[2:].lower()  # "/aMontepo" -> "montepo"
     else:
-        await update.message.reply_text("Stazione non valida.")
+        await update.message.reply_text("Comando non valido.")
         return
     
-    # Verificar que la estación existe
-    if estacion_key not in NOMBRE_MOSTRAR:
+    # Mapear nombres especiales (algunos ya vienen en minúsculas)
+    mapeo = {
+        "montepo": "montepo",
+        "stesicoro": "stesicoro",
+        "fontana": "fontana",
+        "nesima": "nesima",
+        "sannullo": "sannullo",
+        "cibali": "cibali",
+        "milo": "milo",
+        "borgo": "borgo",
+        "giuffrida": "giuffrida",
+        "italia": "italia",
+        "galatea": "galatea",
+        "giovanni": "giovanni"
+    }
+    estacion_key = mapeo.get(estacion_nombre)
+    if not estacion_key or estacion_key not in NOMBRE_MOSTRAR:
         await update.message.reply_text("Stazione non valida.")
         return
     
@@ -820,7 +810,7 @@ async def start(update, context):
     await update.message.reply_text(
         f"Ciao {user.first_name}! 👋\n\n"
         "Quando arriva la metropolitana di Catania?\n"
-        "Premi o usa i comandi /accesibilita per aprire il modo accessibile per tutti.\n\n"
+        "Premi o usa il comando /accessibilita ♿ per aprire il modo accessibile per tutti.\n\n"
         f"{last_msg}",
         reply_markup=keyboard_main
     )
@@ -840,7 +830,7 @@ async def help_command(update, context):
         "/test DDMMYYYY HHMM X - Test con 3 cicli (M, S, ML)\n"
         "/testfin - Disattiva modalità test\n"
         "/testgif - Invia GIF di prova e lo cancella dopo 1 minuto\n\n"
-        "Modalità accessibilità: /accesibilidad\n\n"
+        "Modalità accessibilità: /accessibilita\n\n"
         "Oppure premi i pulsanti.",
         reply_markup=keyboard_main
     )
