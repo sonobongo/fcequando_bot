@@ -348,15 +348,25 @@ async def aggiornare_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     await query.answer()
     chat_id = query.message.chat_id
     
-    # Enviamos el comando /milo
-    sent = await context.bot.send_message(chat_id=chat_id, text="/milo")
-    # Esperamos 1 segundo para que el bot lo procese
-    await asyncio.sleep(1)
-    # Borramos el mensaje para que no quede visible
-    try:
-        await context.bot.delete_message(chat_id=chat_id, message_id=sent.message_id)
-    except Exception:
-        pass
+    # Crear un objeto Message falso con los métodos necesarios
+    class FakeMessage:
+        def __init__(self, chat_id, bot):
+            self.chat_id = chat_id
+            self.chat = type('Chat', (), {'id': chat_id})()
+            self.bot = bot
+            self.message_id = 0
+        async def reply_text(self, text, **kwargs):
+            return await self.bot.send_message(chat_id=self.chat_id, text=text, **kwargs)
+        async def reply_photo(self, photo, caption=None, parse_mode=None, reply_markup=None):
+            return await self.bot.send_photo(chat_id=self.chat_id, photo=photo, caption=caption, parse_mode=parse_mode, reply_markup=reply_markup)
+        async def reply_animation(self, animation, caption=None, parse_mode=None, reply_markup=None):
+            return await self.bot.send_animation(chat_id=self.chat_id, animation=animation, caption=caption, parse_mode=parse_mode, reply_markup=reply_markup)
+    
+    fake_message = FakeMessage(chat_id, context.bot)
+    fake_update = type('Update', (), {'message': fake_message, 'effective_chat': fake_message.chat, 'callback_query': query})()
+    
+    # Llamar directamente a cmd_milo
+    await cmd_milo(fake_update, context)
 
 # ============================================================================
 # RESPUESTA PRINCIPAL (foto de estación + msg2/msg3 + aviso de cierre)
