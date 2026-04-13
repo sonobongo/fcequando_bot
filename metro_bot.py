@@ -3,7 +3,7 @@ import logging
 import threading
 from flask import Flask
 from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, Defaults, CallbackQueryHandler
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, Defaults
 from horarios_logic import *
 from handlers import *
 
@@ -52,11 +52,9 @@ def main():
 
     # Teclados personalizados (ReplyKeyboardMarkup)
     button_texts = ["Monte Po", "Stesicoro", "Altri", "← Menu", "Fontana", "Nesima", "San Nullo",
-                    "Cibali", "Milo", "Borgo", "Giuffrida", "Italia", "Galatea", "Giovanni XXIII"]
+                    "Cibali", "Milo", "Borgo", "Giuffrida", "Italia", "Galatea", "Giovanni XXIII",
+                    "🔄 Aggiornare Milo"]   # Añadimos el texto del botón de refresco
     app.add_handler(MessageHandler(filters.Text(button_texts), handle_button_wrapper))
-
-    # Manejador para el botón inline "Aggiornare" (solo Milo)
-    app.add_handler(CallbackQueryHandler(aggiornare_callback, pattern="^aggiornare_milo$"))
 
     logger.info("Bot avviato.")
     print("Bot funzionante... In attesa di messaggi.")
