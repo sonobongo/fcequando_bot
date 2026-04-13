@@ -34,7 +34,7 @@ def main():
     defaults = Defaults(disable_notification=True)
     app = Application.builder().token(TOKEN).defaults(defaults).build()
 
-    # Comandi
+    # Comandi principali
     commands = [
         ("start", start_wrapper), ("help", help_command_wrapper),
         ("montepo", cmd_montepo_wrapper), ("stesicoro", cmd_stesicoro_wrapper),
@@ -50,7 +50,7 @@ def main():
     for cmd, handler in commands:
         app.add_handler(CommandHandler(cmd, handler))
 
-    # Botones de teclado normales
+    # Teclados personalizados (ReplyKeyboardMarkup)
     button_texts = ["Monte Po", "Stesicoro", "Altri", "← Menu", "Fontana", "Nesima", "San Nullo",
                     "Cibali", "Milo", "Borgo", "Giuffrida", "Italia", "Galatea", "Giovanni XXIII"]
     app.add_handler(MessageHandler(filters.Text(button_texts), handle_button_wrapper))
