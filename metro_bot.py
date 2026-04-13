@@ -34,7 +34,6 @@ def main():
     defaults = Defaults(disable_notification=True)
     app = Application.builder().token(TOKEN).defaults(defaults).build()
 
-    # Comandi principales (modo normal)
     commands = [
         ("start", start_wrapper), ("help", help_command_wrapper),
         ("montepo", cmd_montepo_wrapper), ("stesicoro", cmd_stesicoro_wrapper),
@@ -50,28 +49,11 @@ def main():
     for cmd, handler in commands:
         app.add_handler(CommandHandler(cmd, handler))
 
-    # Comandi del modo accesibilidad
-    acc_commands = [
-        ("accessibilita", acc_wrapper), ("accesibilidad", acc_wrapper),
-        ("aMontepo", acc_station_wrapper), ("aStesicoro", acc_station_wrapper),
-        ("aFontana", acc_station_wrapper), ("aNesima", acc_station_wrapper),
-        ("aSanNullo", acc_station_wrapper), ("aCibali", acc_station_wrapper),
-        ("aMilo", acc_station_wrapper), ("aBorgo", acc_station_wrapper),
-        ("aGiuffrida", acc_station_wrapper), ("aItalia", acc_station_wrapper),
-        ("aGalatea", acc_station_wrapper), ("aGiovanni", acc_station_wrapper)
-    ]
-    for cmd, handler in acc_commands:
-        app.add_handler(CommandHandler(cmd, handler))
-
-    # Teclados personalizados (ReplyKeyboardMarkup) para modo normal
     button_texts = ["Monte Po", "Stesicoro", "Altri", "← Menu", "Fontana", "Nesima", "San Nullo",
-                    "Cibali", "Milo", "Borgo", "Giuffrida", "Italia", "Galatea", "Giovanni XXIII",
-                    "USCIRE DAL MODO ACCESSIBILITÀ"]
+                    "Cibali", "Milo", "Borgo", "Giuffrida", "Italia", "Galatea", "Giovanni XXIII"]
     app.add_handler(MessageHandler(filters.Text(button_texts), handle_button_wrapper))
 
-    # Manejadores para botones inline (modo normal y accesibilidad)
     app.add_handler(CallbackQueryHandler(aggiornare_callback, pattern="^aggiornare_"))
-    app.add_handler(CallbackQueryHandler(acc_aggiornare_callback, pattern="^acc_aggiornare_"))
 
     logger.info("Bot avviato.")
     print("Bot funzionante... In attesa di messaggi.")
