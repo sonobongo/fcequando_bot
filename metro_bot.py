@@ -6,6 +6,10 @@ from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, Defaults, CallbackQueryHandler
 from horarios_logic import *
 from handlers import *
+from handlers_accesibilidad import (
+    cmd_accesibilidad, acc_station_command, acc_aggiornare_callback,
+    cmd_exit_accessibility, keyboard_exit_accessibility
+)
 
 flask_app = Flask(__name__)
 
@@ -34,6 +38,9 @@ def main():
     defaults = Defaults(disable_notification=True)
     app = Application.builder().token(TOKEN).defaults(defaults).build()
 
+    # ========================================================================
+    # COMANDOS DEL MODO NORMAL (originales)
+    # ========================================================================
     commands = [
         ("start", start_wrapper), ("help", help_command_wrapper),
         ("montepo", cmd_montepo_wrapper), ("stesicoro", cmd_stesicoro_wrapper),
@@ -49,15 +56,52 @@ def main():
     for cmd, handler in commands:
         app.add_handler(CommandHandler(cmd, handler))
 
+    # ========================================================================
+    # COMANDOS DEL MODO ACCESIBILIDAD
+    # ========================================================================
+    acc_commands = [
+        ("accessibilita", acc_wrapper), ("accesibilidad", acc_wrapper),
+        ("aMontepo", acc_station_wrapper), ("aStesicoro", acc_station_wrapper),
+        ("aFontana", acc_station_wrapper), ("aNesima", acc_station_wrapper),
+        ("aSanNullo", acc_station_wrapper), ("aCibali", acc_station_wrapper),
+        ("aMilo", acc_station_wrapper), ("aBorgo", acc_station_wrapper),
+        ("aGiuffrida", acc_station_wrapper), ("aItalia", acc_station_wrapper),
+        ("aGalatea", acc_station_wrapper), ("aGiovanni", acc_station_wrapper)
+    ]
+    for cmd, handler in acc_commands:
+        app.add_handler(CommandHandler(cmd, handler))
+
+    # ========================================================================
+    # MANEJADORES DE TECLADO (ReplyKeyboardMarkup) para modo normal
+    # ========================================================================
     button_texts = ["Monte Po", "Stesicoro", "Altri", "← Menu", "Fontana", "Nesima", "San Nullo",
-                    "Cibali", "Milo", "Borgo", "Giuffrida", "Italia", "Galatea", "Giovanni XXIII"]
+                    "Cibali", "Milo", "Borgo", "Giuffrida", "Italia", "Galatea", "Giovanni XXIII",
+                    "USCIRE DAL MODO ACCESSIBILITÀ"]  # El botón de salida del modo accesibilidad
     app.add_handler(MessageHandler(filters.Text(button_texts), handle_button_wrapper))
 
+    # ========================================================================
+    # CALLBACKS PARA BOTONES INLINE (modo normal y accesibilidad)
+    # ========================================================================
     app.add_handler(CallbackQueryHandler(aggiornare_callback, pattern="^aggiornare_"))
+    app.add_handler(CallbackQueryHandler(acc_aggiornare_callback, pattern="^acc_aggiornare_"))
+
+    # ========================================================================
+    # MANEJADOR PARA EL BOTÓN DE SALIDA DEL MODO ACCESIBILIDAD
+    # ========================================================================
+    app.add_handler(MessageHandler(filters.Text("USCIRE DAL MODO ACCESSIBILITÀ"), cmd_exit_accessibility))
 
     logger.info("Bot avviato.")
     print("Bot funzionante... In attesa di messaggi.")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
+
+# ========================================================================
+# WRAPPERS PARA LOS COMANDOS DE ACCESIBILIDAD
+# ========================================================================
+async def acc_wrapper(update, context):
+    await cmd_accesibilidad(update, context)
+
+async def acc_station_wrapper(update, context):
+    await acc_station_command(update, context)
 
 if __name__ == '__main__':
     main()
