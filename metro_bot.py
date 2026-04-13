@@ -55,8 +55,8 @@ def main():
                     "Cibali", "Milo", "Borgo", "Giuffrida", "Italia", "Galatea", "Giovanni XXIII"]
     app.add_handler(MessageHandler(filters.Text(button_texts), handle_button_wrapper))
 
-    # Manejador para el botón inline
-    app.add_handler(CallbackQueryHandler(aggiornare_callback, pattern="^aggiornare_milo$"))
+    # Manejador para el botón inline (cualquier estación intermedia)
+    app.add_handler(CallbackQueryHandler(aggiornare_callback, pattern="^aggiornare_"))
 
     logger.info("Bot avviato.")
     print("Bot funzionante... In attesa di messaggi.")
