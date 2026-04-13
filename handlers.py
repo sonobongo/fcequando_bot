@@ -1,65 +1,52 @@
-import asyncio
-import time as time_module
-from datetime import datetime, timedelta
-from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ContextTypes
-from horarios_logic import *
-from horarios_logic import CATANIA_TZ
+# ... (todo el código anterior igual hasta la función send_messages_2_and_3)
 
-# ... (todo el código anterior igual hasta la función refresh_station) ...
-
-# ============================================================================
-# FUNCIÓN PARA REFRESCAR SOLO LOS MENSAJES 2 y 3 (sin foto, con botón y reinicio del ciclo)
-# ============================================================================
-async def refresh_station(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str):
-    chat_id = update.effective_chat.id
-    # Borrar mensajes 2 y 3 actuales
-    msg_ids = context.chat_data.get('refresh_msg_ids')
-    if msg_ids:
-        for mid in msg_ids:
-            try:
-                await context.bot.delete_message(chat_id=chat_id, message_id=mid)
-            except Exception:
-                pass
-        context.chat_data.pop('refresh_msg_ids', None)
+async def send_messages_2_and_3(update: Update, estacion_key: str, now: datetime, simulated: bool = False, show_button: bool = False):
+    print(f"DEBUG send_messages_2_and_3: estacion={estacion_key}, show_button={show_button}")
+    msg2, msg3, key_mp, time_mp, key_st, time_st, mins_mp, mins_st = build_temporary_messages(now, estacion_key)
     
-    # Detener tarea de refresco actual
-    if 'refresh_task' in context.chat_data:
-        task = context.chat_data['refresh_task']
-        if not task.done():
-            task.cancel()
-        context.chat_data.pop('refresh_task', None)
-    context.chat_data['refresh_active'] = False
+    msg2_obj = await send_message_2(update, msg2, key_mp, time_mp, mins_mp, estacion_key)
+    await asyncio.sleep(0.5)
     
-    # Obtener hora actual
-    simulated = context.chat_data.get('test_time')
-    if simulated:
-        if simulated.tzinfo is None:
-            simulated = CATANIA_TZ.localize(simulated)
-        now = simulated
+    # Añadir botón solo si es estación intermedia y show_button True
+    if estacion_key not in ["montepo", "stesicoro"] and show_button:
+        print(f"DEBUG: Añadiendo botón para {estacion_key}")
+        keyboard_inline = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🔄 Aggiornare", callback_data=f"aggiornare_{estacion_key}")]
+        ])
+        msg3_obj = await send_message_3(update, msg3, key_st, time_st, mins_st, estacion_key, reply_markup=keyboard_inline)
     else:
-        now = datetime.now(CATANIA_TZ)
+        print(f"DEBUG: NO se añade botón para {estacion_key} (show_button={show_button})")
+        msg3_obj = await send_message_3(update, msg3, key_st, time_st, mins_st, estacion_key, reply_markup=None)
     
-    # Enviar nuevos mensajes 2 y 3 CON botón (show_button=True)
-    new_ids = await send_messages_2_and_3(update, estacion_key, now, simulated is not None, show_button=True)
-    context.chat_data['refresh_msg_ids'] = new_ids
-    
-    # Reiniciar el bucle de refresco automático (2 ciclos, con botón)
-    context.chat_data['refresh_active'] = True
-    task = asyncio.create_task(auto_refresh_loop(update, context, estacion_key, chat_id, "", use_simulated=(simulated is not None), simulated_now=now if simulated else None))
-    context.chat_data['refresh_task'] = task
+    return (msg2_obj.message_id, msg3_obj.message_id)
 
-# ============================================================================
-# CALLBACK PARA EL BOTÓN INLINE "AGGIORNARE" (refresca sin foto, con botón)
-# ============================================================================
-async def aggiornare_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    estacion_key = query.data.split("_")[1]
-    
-    # Crear un fake_update con el mensaje real para poder llamar a refresh_station
-    fake_update = type('Update', (), {'message': query.message, 'effective_chat': query.message.chat, 'callback_query': query})()
-    
-    await refresh_station(fake_update, context, estacion_key)
+# ... (resto del código)
 
-# ... (resto del código igual)
+async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str, chat_id: int, station_display_name: str, use_simulated: bool = False, simulated_now: datetime = None):
+    print(f"DEBUG auto_refresh_loop: iniciada para {estacion_key}")
+    for ciclo in range(2):
+        await asyncio.sleep(30)
+        print(f"DEBUG auto_refresh_loop: ciclo {ciclo+1} para {estacion_key}")
+        if context.chat_data.get('cancel_refresh', False):
+            break
+        msg_ids = context.chat_data.get('refresh_msg_ids')
+        if msg_ids:
+            for mid in msg_ids:
+                try:
+                    await context.bot.delete_message(chat_id=chat_id, message_id=mid)
+                except Exception:
+                    pass
+        if use_simulated and simulated_now:
+            now = simulated_now
+            if now.tzinfo is None:
+                now = CATANIA_TZ.localize(now)
+        else:
+            now = datetime.now(CATANIA_TZ)
+        new_ids = await send_messages_2_and_3(update, estacion_key, now, use_simulated, show_button=True)
+        context.chat_data['refresh_msg_ids'] = new_ids
+    context.chat_data['refresh_active'] = False
+    context.chat_data.pop('refresh_task', None)
+    context.chat_data.pop('cancel_refresh', None)
+    print(f"DEBUG auto_refresh_loop: finalizada para {estacion_key}")
+
+# ... (el resto igual)
