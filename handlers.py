@@ -260,56 +260,6 @@ async def send_messages_2_and_3(update: Update, estacion_key: str, now: datetime
     return (msg2_obj.message_id, msg3_obj.message_id)
 
 # ============================================================================
-# BUCLE AUTO (30 segundos, 20 ciclos) - solo para el comando /auto
-# ============================================================================
-async def auto_update_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str, chat_id: int):
-    if 'refresh_task' in context.chat_data:
-        task = context.chat_data['refresh_task']
-        if not task.done():
-            task.cancel()
-        context.chat_data.pop('refresh_task', None)
-    context.chat_data['refresh_active'] = False
-    if 'auto_msg_ids' in context.chat_data:
-        for mid in context.chat_data['auto_msg_ids']:
-            try:
-                await context.bot.delete_message(chat_id=chat_id, message_id=mid)
-            except Exception:
-                pass
-        context.chat_data.pop('auto_msg_ids', None)
-    simulated = context.chat_data.get('test_time')
-    if simulated:
-        if simulated.tzinfo is None:
-            simulated = CATANIA_TZ.localize(simulated)
-        now = simulated
-    else:
-        now = datetime.now(CATANIA_TZ)
-    ids = await send_messages_2_and_3(update, estacion_key, now, simulated is not None, show_button=False)
-    context.chat_data['auto_msg_ids'] = list(ids)
-    context.chat_data['auto_active'] = True
-    context.chat_data['auto_cycles_left'] = 19
-    for ciclo in range(19):
-        await asyncio.sleep(30)
-        if not context.chat_data.get('auto_active', False):
-            break
-        if 'auto_msg_ids' in context.chat_data:
-            for mid in context.chat_data['auto_msg_ids']:
-                try:
-                    await context.bot.delete_message(chat_id=chat_id, message_id=mid)
-                except Exception:
-                    pass
-        if simulated:
-            now = now + timedelta(seconds=30)
-        else:
-            now = datetime.now(CATANIA_TZ)
-        new_ids = await send_messages_2_and_3(update, estacion_key, now, simulated is not None, show_button=False)
-        context.chat_data['auto_msg_ids'] = list(new_ids)
-        context.chat_data['auto_cycles_left'] -= 1
-    context.chat_data['auto_active'] = False
-    context.chat_data.pop('auto_msg_ids', None)
-    context.chat_data.pop('auto_cycles_left', None)
-    await update.message.reply_text("🔄 Aggiornamenti automatici terminati (20 cicli completati).")
-
-# ============================================================================
 # REFRESCO NORMAL (2 ciclos de 30 segundos, con botón en las actualizaciones)
 # ============================================================================
 async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str, chat_id: int, station_display_name: str, use_simulated: bool = False, simulated_now: datetime = None):
@@ -342,16 +292,19 @@ async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, 
     context.chat_data.pop('cancel_refresh', None)
 
 # ============================================================================
-# CALLBACK PARA EL BOTÓN INLINE "AGGIORNARE" (para todas las estaciones intermedias)
+# FUNCIÓN PARA REFRESCAR SOLO LOS MENSAJES 2 y 3 (sin foto ni teclado)
 # ============================================================================
-async def aggiornare_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    chat_id = query.message.chat_id
-    # Extraer el nombre de la estación del callback_data (ej: "aggiornare_fontana")
-    estacion_key = query.data.split("_")[1]  # "aggiornare_fontana" -> "fontana"
-    
-    # Detener cualquier tarea de refresco en curso para esta conversación
+async def refresh_messages(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str):
+    chat_id = update.effective_chat.id
+    # Borrar mensajes actuales 2 y 3
+    msg_ids = context.chat_data.get('refresh_msg_ids')
+    if msg_ids:
+        for mid in msg_ids:
+            try:
+                await context.bot.delete_message(chat_id=chat_id, message_id=mid)
+            except Exception:
+                pass
+    # Detener la tarea de refresco actual
     if 'refresh_task' in context.chat_data:
         task = context.chat_data['refresh_task']
         if not task.done():
@@ -359,27 +312,39 @@ async def aggiornare_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         context.chat_data.pop('refresh_task', None)
     context.chat_data['refresh_active'] = False
     
-    # Crear un objeto Message falso con los métodos necesarios
-    class FakeMessage:
-        def __init__(self, chat_id, bot):
-            self.chat_id = chat_id
-            self.chat = type('Chat', (), {'id': chat_id})()
-            self.bot = bot
-            self.message_id = 0
-        async def reply_text(self, text, **kwargs):
-            return await self.bot.send_message(chat_id=self.chat_id, text=text, **kwargs)
-        async def reply_photo(self, photo, caption=None, parse_mode=None, reply_markup=None):
-            return await self.bot.send_photo(chat_id=self.chat_id, photo=photo, caption=caption, parse_mode=parse_mode, reply_markup=reply_markup)
-        async def reply_animation(self, animation, caption=None, parse_mode=None, reply_markup=None):
-            return await self.bot.send_animation(chat_id=self.chat_id, animation=animation, caption=caption, parse_mode=parse_mode, reply_markup=reply_markup)
+    # Obtener hora actual
+    simulated = context.chat_data.get('test_time')
+    if simulated:
+        if simulated.tzinfo is None:
+            simulated = CATANIA_TZ.localize(simulated)
+        now = simulated
+    else:
+        now = datetime.now(CATANIA_TZ)
     
-    fake_message = FakeMessage(chat_id, context.bot)
-    fake_update = type('Update', (), {'message': fake_message, 'effective_chat': fake_message.chat, 'callback_query': query})()
+    # Enviar nuevos mensajes 2 y 3 CON botón (show_button=True)
+    new_ids = await send_messages_2_and_3(update, estacion_key, now, simulated is not None, show_button=True)
+    context.chat_data['refresh_msg_ids'] = new_ids
     
-    # Guardar la estación actual en chat_data
-    context.chat_data['last_station'] = estacion_key
-    # Llamar a send_station_response con return_to_main=True para restaurar el teclado principal
-    await send_station_response(fake_update, context, estacion_key, return_to_main=True)
+    # Reiniciar el bucle de refresco automático (2 ciclos)
+    context.chat_data['refresh_active'] = True
+    task = asyncio.create_task(auto_refresh_loop(update, context, estacion_key, chat_id, "", use_simulated=(simulated is not None), simulated_now=now if simulated else None))
+    context.chat_data['refresh_task'] = task
+
+# ============================================================================
+# CALLBACK PARA EL BOTÓN INLINE "AGGIORNARE" (refresca sin cambiar teclado)
+# ============================================================================
+async def aggiornare_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    # Extraer la estación del callback_data (ej: "aggiornare_fontana" -> "fontana")
+    estacion_key = query.data.split("_")[1]
+    
+    # Usar el mensaje real del callback para enviar las respuestas
+    # Creamos un fake_update que tenga el mensaje real
+    fake_update = type('Update', (), {'message': query.message, 'effective_chat': query.message.chat, 'callback_query': query})()
+    
+    # Refrescar solo los mensajes 2 y 3
+    await refresh_messages(fake_update, context, estacion_key)
 
 # ============================================================================
 # RESPUESTA PRINCIPAL (foto de estación + msg2/msg3 + aviso de cierre)
@@ -533,13 +498,13 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
     permanent_caption = f"{test_indicator}🚇 Prossimi treni a {nombre}{last_msg_text}"
     img_station = get_station_image(estacion_key, now)
 
-    # Enviar foto de la estación con el teclado adecuado (principal o de Altri)
+    # Enviar foto de la estación con el teclado adecuado (sin botón inline aquí)
     if img_station:
         await update.message.reply_photo(photo=img_station, caption=permanent_caption, reply_markup=keyboard_main if return_to_main else keyboard_altri)
     else:
         await update.message.reply_text(permanent_caption, reply_markup=keyboard_main if return_to_main else keyboard_altri)
 
-    # Enviar mensajes 2 y 3 (sin botón en el envío inicial)
+    # Enviar mensajes 2 y 3 iniciales SIN botón (show_button=False)
     ids = await send_messages_2_and_3(update, estacion_key, now, simulated is not None, show_button=False)
     context.chat_data['refresh_msg_ids'] = ids
     context.chat_data['refresh_active'] = True
@@ -547,10 +512,59 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
     context.chat_data['refresh_task'] = task
 
 # ============================================================================
+# BUCLE AUTO (30 segundos, 20 ciclos) - solo para el comando /auto
+# ============================================================================
+async def auto_update_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str, chat_id: int):
+    if 'refresh_task' in context.chat_data:
+        task = context.chat_data['refresh_task']
+        if not task.done():
+            task.cancel()
+        context.chat_data.pop('refresh_task', None)
+    context.chat_data['refresh_active'] = False
+    if 'auto_msg_ids' in context.chat_data:
+        for mid in context.chat_data['auto_msg_ids']:
+            try:
+                await context.bot.delete_message(chat_id=chat_id, message_id=mid)
+            except Exception:
+                pass
+        context.chat_data.pop('auto_msg_ids', None)
+    simulated = context.chat_data.get('test_time')
+    if simulated:
+        if simulated.tzinfo is None:
+            simulated = CATANIA_TZ.localize(simulated)
+        now = simulated
+    else:
+        now = datetime.now(CATANIA_TZ)
+    ids = await send_messages_2_and_3(update, estacion_key, now, simulated is not None, show_button=False)
+    context.chat_data['auto_msg_ids'] = list(ids)
+    context.chat_data['auto_active'] = True
+    context.chat_data['auto_cycles_left'] = 19
+    for ciclo in range(19):
+        await asyncio.sleep(30)
+        if not context.chat_data.get('auto_active', False):
+            break
+        if 'auto_msg_ids' in context.chat_data:
+            for mid in context.chat_data['auto_msg_ids']:
+                try:
+                    await context.bot.delete_message(chat_id=chat_id, message_id=mid)
+                except Exception:
+                    pass
+        if simulated:
+            now = now + timedelta(seconds=30)
+        else:
+            now = datetime.now(CATANIA_TZ)
+        new_ids = await send_messages_2_and_3(update, estacion_key, now, simulated is not None, show_button=False)
+        context.chat_data['auto_msg_ids'] = list(new_ids)
+        context.chat_data['auto_cycles_left'] -= 1
+    context.chat_data['auto_active'] = False
+    context.chat_data.pop('auto_msg_ids', None)
+    context.chat_data.pop('auto_cycles_left', None)
+    await update.message.reply_text("🔄 Aggiornamenti automatici terminati (20 cicli completati).")
+
+# ============================================================================
 # WRAPPERS Y COMANDOS (incluyendo /auto y /stop)
 # ============================================================================
 async def cancel_refresh_and_run(update: Update, context: ContextTypes.DEFAULT_TYPE, coro, *args, **kwargs):
-    # Detener cualquier bucle automático (tanto normal como /auto)
     if context.chat_data.get('auto_active', False):
         context.chat_data['auto_active'] = False
         if 'auto_task' in context.chat_data:
