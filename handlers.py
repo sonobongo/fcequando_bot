@@ -245,7 +245,6 @@ def is_default_message(current_station_key, tiempo_restante, mins):
 async def send_messages_2_and_3(update: Update, estacion_key: str, now: datetime, simulated: bool = False):
     msg2, msg3, key_mp, time_mp, key_st, time_st, mins_mp, mins_st = build_temporary_messages(now, estacion_key)
     
-    # Enviar msg2 siempre
     msg2_obj = await send_message_2(update, msg2, key_mp, time_mp, mins_mp, estacion_key)
     await asyncio.sleep(0.5)
     
@@ -257,7 +256,6 @@ async def send_messages_2_and_3(update: Update, estacion_key: str, now: datetime
     else:
         keyboard_inline = None
     
-    # Enviar msg3 con el botón si procede
     msg3_obj = await send_message_3(update, msg3, key_st, time_st, mins_st, estacion_key, reply_markup=keyboard_inline)
     
     return (msg2_obj.message_id, msg3_obj.message_id)
@@ -351,16 +349,39 @@ async def aggiornare_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     query = update.callback_query
     await query.answer()
     chat_id = query.message.chat_id
-    message_id = query.message.message_id
     
     # Borrar el mensaje 3 (el que contiene el botón)
     try:
-        await context.bot.delete_message(chat_id=chat_id, message_id=message_id)
+        await context.bot.delete_message(chat_id=chat_id, message_id=query.message.message_id)
     except Exception:
         pass
     
-    # Enviar el comando /milo para refrescar completamente Milo
-    await context.bot.send_message(chat_id=chat_id, text="/milo")
+    # Borrar también los mensajes 2 y 3 anteriores (guardados en refresh_msg_ids)
+    msg_ids = context.chat_data.get('refresh_msg_ids')
+    if msg_ids:
+        for mid in msg_ids:
+            try:
+                await context.bot.delete_message(chat_id=chat_id, message_id=mid)
+            except Exception:
+                pass
+        context.chat_data.pop('refresh_msg_ids', None)
+    
+    # Detener cualquier tarea de refresco en curso
+    if 'refresh_task' in context.chat_data:
+        task = context.chat_data['refresh_task']
+        if not task.done():
+            task.cancel()
+        context.chat_data.pop('refresh_task', None)
+    context.chat_data['refresh_active'] = False
+    
+    # Enviar el comando /milo y borrarlo inmediatamente para que no se vea
+    sent_msg = await context.bot.send_message(chat_id=chat_id, text="/milo")
+    # Borrar ese mensaje después de un breve instante (para que el bot lo procese pero no quede en el chat)
+    await asyncio.sleep(0.2)
+    try:
+        await context.bot.delete_message(chat_id=chat_id, message_id=sent_msg.message_id)
+    except Exception:
+        pass
 
 # ============================================================================
 # RESPUESTA PRINCIPAL (foto de estación + msg2/msg3 + aviso de cierre)
@@ -424,7 +445,6 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
 
         next_dep, minutes, seconds, has_trains = get_next_departure(station, now)
         if not has_trains:
-            # Determinar la hora de cierre para mostrar mensaje adecuado
             close_h, close_m = get_closing_time(now, station)
             msg = f"🚇 Non ci sono più treni oggi. Il servizio termina alle {close_h:02d}:{close_m:02d}."
             img = get_station_image(estacion_key, now)
@@ -483,7 +503,6 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
     # ========================================================================
     # ESTACIONES INTERMEDIAS
     # ========================================================================
-    # Verificar si el metro está cerrado en general (afecta a todas las estaciones)
     closed, next_open, special_closing_msg = is_metro_closed(now, "Montepo")
     if closed:
         if next_open.date() > now.date():
@@ -516,7 +535,6 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
     permanent_caption = f"{test_indicator}🚇 Prossimi treni a {nombre}{last_msg_text}"
     img_station = get_station_image(estacion_key, now)
 
-    # Enviar la foto de la estación (si existe)
     if img_station:
         await update.message.reply_photo(photo=img_station, caption=permanent_caption, reply_markup=keyboard_main if return_to_main else keyboard_altri)
     else:
