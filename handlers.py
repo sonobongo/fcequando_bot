@@ -37,6 +37,7 @@ BOTON_TO_KEY = {
 }
 
 # Descripciones de estaciones para modo accesibilidad (en cursiva, con punto al inicio)
+# Se usarán en un mensaje de texto aparte, con formato Markdown.
 DESCRIPCION_ESTACION = {
     "montepo": "· *Stazione capolinea con ascensore e servizi igienici.*",
     "stesicoro": "· *Stazione centrale con ascensore e collegamento autobus.*",
@@ -587,8 +588,11 @@ async def acc_send_station_info(update: Update, context: ContextTypes.DEFAULT_TY
     cache_buster = int(time_module.time())
     img_url = f"{img_url}?v={cache_buster}"
     
-    # Enviar foto con descripción en cursiva y con punto al inicio
-    await update.message.reply_photo(photo=img_url, caption=descripcion, parse_mode='Markdown')
+    # Enviar foto sin caption (o con un texto genérico)
+    await update.message.reply_photo(photo=img_url, caption=f"Stazione {nombre}", parse_mode=None)
+    
+    # Enviar la descripción como mensaje de texto aparte (con cursiva)
+    await update.message.reply_text(descripcion, parse_mode='Markdown')
     
     # Enviar mensajes 2, 3 y 4 (texto plano)
     msg2_obj = await update.message.reply_text(msg2_clean, parse_mode=None)
@@ -598,7 +602,6 @@ async def acc_send_station_info(update: Update, context: ContextTypes.DEFAULT_TY
     ])
     msg3_obj = await update.message.reply_text(msg3_clean, parse_mode=None, reply_markup=keyboard_inline)
     
-    # Lista de comandos con el orden corregido
     lista_comandos = (
         "Scegli la stazione che desideri consultare:\n"
         "/aMontepo, /aFontana, /aNesima, /aSanNullo, /aCibali, /aMilo, "
@@ -673,18 +676,47 @@ async def acc_station_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     if not context.chat_data.get('accessibility_mode', False):
         await update.message.reply_text("⚠️ Per prima cosa attiva la modalità accessibilità con /accesibilidad.")
         return
-    command = update.message.text.split()[0][1:]  # ejemplo: "/aMontepo" -> "aMontepo"
-    estacion_key = command[1:].lower()  # elimina la 'a' inicial -> "montepo"
-    # Ajuste para nombres especiales
-    if estacion_key == "sannullo":
+    
+    # Extraer el comando completo (ej: "/aMontepo")
+    command = update.message.text.split()[0]
+    # Eliminar la barra y la 'a' inicial, luego convertir a minúsculas
+    # Ej: "/aMontepo" -> "Montepo" -> "montepo"
+    estacion_nombre = command[2:].lower()  # saltamos "/a"
+    
+    # Mapear nombres especiales
+    if estacion_nombre == "sannullo":
         estacion_key = "sannullo"
-    elif estacion_key == "giovanni":
+    elif estacion_nombre == "giovanni":
         estacion_key = "giovanni"
-    elif estacion_key == "stesicoro":
+    elif estacion_nombre == "stesicoro":
         estacion_key = "stesicoro"
+    elif estacion_nombre == "montepo":
+        estacion_key = "montepo"
+    elif estacion_nombre == "fontana":
+        estacion_key = "fontana"
+    elif estacion_nombre == "nesima":
+        estacion_key = "nesima"
+    elif estacion_nombre == "cibali":
+        estacion_key = "cibali"
+    elif estacion_nombre == "milo":
+        estacion_key = "milo"
+    elif estacion_nombre == "borgo":
+        estacion_key = "borgo"
+    elif estacion_nombre == "giuffrida":
+        estacion_key = "giuffrida"
+    elif estacion_nombre == "italia":
+        estacion_key = "italia"
+    elif estacion_nombre == "galatea":
+        estacion_key = "galatea"
+    else:
+        await update.message.reply_text("Stazione non valida.")
+        return
+    
+    # Verificar que la estación existe
     if estacion_key not in NOMBRE_MOSTRAR:
         await update.message.reply_text("Stazione non valida.")
         return
+    
     await acc_send_station_info(update, context, estacion_key)
 
 # ============================================================================
