@@ -211,7 +211,13 @@ async def send_message_2(update: Update, msg: str, current_station_key: str, tie
 
 async def send_message_3(update: Update, msg: str, current_station_key: str, tiempo_restante: int, mins: int, estacion_key: str, reply_markup=None):
     if tiempo_restante is not None and (tiempo_restante <= 90 or mins <= 1):
-        return await update.message.reply_photo(photo=send_treno_arrivo(update, msg, "Stesicoro").img_url, caption=msg, parse_mode='Markdown', reply_markup=reply_markup)
+        img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_trenoarriva.png"
+        cache_buster = int(time_module.time())
+        img_url = f"{img_url}?v={cache_buster}"
+        try:
+            return await update.message.reply_photo(photo=img_url, caption=msg, parse_mode='Markdown', reply_markup=reply_markup)
+        except Exception:
+            return await update.message.reply_text(msg, parse_mode='Markdown', reply_markup=reply_markup)
     elif current_station_key and current_station_key != "stesicoro":
         gif_url = f"https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_montepo_{current_station_key}.gif"
         cache_buster = int(time_module.time())
@@ -239,14 +245,11 @@ def is_default_message(current_station_key, tiempo_restante, mins):
 async def send_messages_2_and_3(update: Update, estacion_key: str, now: datetime, simulated: bool = False):
     msg2, msg3, key_mp, time_mp, key_st, time_st, mins_mp, mins_st = build_temporary_messages(now, estacion_key)
     
-    default2 = is_default_message(key_mp, time_mp, mins_mp)
-    default3 = is_default_message(key_st, time_st, mins_st)
-    
-    # Enviar msg2
+    # Enviar msg2 siempre
     msg2_obj = await send_message_2(update, msg2, key_mp, time_mp, mins_mp, estacion_key)
     await asyncio.sleep(0.5)
     
-    # Preparar botón inline para msg3 solo si es Milo
+    # Preparar botón inline solo para Milo
     if estacion_key == "milo":
         keyboard_inline = InlineKeyboardMarkup([
             [InlineKeyboardButton("🔄 Aggiornare", callback_data="aggiornare_milo")]
@@ -254,12 +257,8 @@ async def send_messages_2_and_3(update: Update, estacion_key: str, now: datetime
     else:
         keyboard_inline = None
     
-    # Enviar msg3 (con el botón si es Milo)
-    if default2 and default3:
-        # En el caso de ambos default, msg3 se envía como texto plano
-        msg3_obj = await update.message.reply_text(msg3, parse_mode='Markdown', reply_markup=keyboard_inline)
-    else:
-        msg3_obj = await send_message_3(update, msg3, key_st, time_st, mins_st, estacion_key, reply_markup=keyboard_inline)
+    # Enviar msg3 con el botón si procede
+    msg3_obj = await send_message_3(update, msg3, key_st, time_st, mins_st, estacion_key, reply_markup=keyboard_inline)
     
     return (msg2_obj.message_id, msg3_obj.message_id)
 
@@ -350,34 +349,18 @@ async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, 
 # ============================================================================
 async def aggiornare_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()  # Responde al botón para que Telegram quite el "cargando"
-    
+    await query.answer()
     chat_id = query.message.chat_id
     message_id = query.message.message_id
     
-    # Eliminamos el mensaje que contiene el botón (el mensaje 3)
+    # Borrar el mensaje 3 (el que contiene el botón)
     try:
         await context.bot.delete_message(chat_id=chat_id, message_id=message_id)
     except Exception:
         pass
     
-    # Creamos un objeto Update falso para poder llamar a la función de Milo
-    class FakeMessage:
-        def __init__(self, chat_id, bot):
-            self.chat_id = chat_id
-            self.chat = type('Chat', (), {'id': chat_id})()
-            self.bot = bot
-        async def reply_text(self, text, **kwargs):
-            return await self.bot.send_message(chat_id=self.chat_id, text=text, **kwargs)
-        async def reply_photo(self, **kwargs):
-            # No necesitamos implementar realmente porque send_station_response usará el método del update original
-            pass
-    
-    fake_message = FakeMessage(chat_id, context.bot)
-    fake_update = type('Update', (), {'message': fake_message, 'effective_chat': fake_message.chat, 'callback_query': query})()
-    
-    # Llamamos directamente a la función que refresca Milo
-    await send_station_response(fake_update, context, "milo", return_to_main=False)
+    # Enviar el comando /milo para refrescar completamente Milo
+    await context.bot.send_message(chat_id=chat_id, text="/milo")
 
 # ============================================================================
 # RESPUESTA PRINCIPAL (foto de estación + msg2/msg3 + aviso de cierre)
@@ -441,7 +424,9 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
 
         next_dep, minutes, seconds, has_trains = get_next_departure(station, now)
         if not has_trains:
-            msg = f"🚇 Non ci sono più treni oggi. Il servizio riprenderà domani mattina."
+            # Determinar la hora de cierre para mostrar mensaje adecuado
+            close_h, close_m = get_closing_time(now, station)
+            msg = f"🚇 Non ci sono più treni oggi. Il servizio termina alle {close_h:02d}:{close_m:02d}."
             img = get_station_image(estacion_key, now)
             if img:
                 await update.message.reply_photo(photo=img, caption=msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
@@ -498,6 +483,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
     # ========================================================================
     # ESTACIONES INTERMEDIAS
     # ========================================================================
+    # Verificar si el metro está cerrado en general (afecta a todas las estaciones)
     closed, next_open, special_closing_msg = is_metro_closed(now, "Montepo")
     if closed:
         if next_open.date() > now.date():
@@ -529,14 +515,14 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
         last_msg_text = f"\n\n{last_msg}"
     permanent_caption = f"{test_indicator}🚇 Prossimi treni a {nombre}{last_msg_text}"
     img_station = get_station_image(estacion_key, now)
-    
-    # Enviamos la foto de la estación (sin botón, el botón irá en msg3)
+
+    # Enviar la foto de la estación (si existe)
     if img_station:
         await update.message.reply_photo(photo=img_station, caption=permanent_caption, reply_markup=keyboard_main if return_to_main else keyboard_altri)
     else:
         await update.message.reply_text(permanent_caption, reply_markup=keyboard_main if return_to_main else keyboard_altri)
 
-    # Enviar mensajes 2 y 3 (el botón para Milo irá en msg3)
+    # Enviar mensajes 2 y 3 (para todas las estaciones intermedias)
     ids = await send_messages_2_and_3(update, estacion_key, now, simulated is not None)
     context.chat_data['refresh_msg_ids'] = ids
     context.chat_data['refresh_active'] = True
