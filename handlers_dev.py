@@ -293,7 +293,6 @@ async def send_messages_2_and_3(update: Update, estacion_key: str, now: datetime
     msg2_obj = await send_message_2(update, msg2, key_mp, time_mp, mins_mp, estacion_key)
     await asyncio.sleep(0.5)
     
-    # Mostrar botón solo para estaciones intermedias y si show_button es True
     if estacion_key not in ["montepo", "stesicoro"] and show_button:
         keyboard_inline = InlineKeyboardMarkup([
             [InlineKeyboardButton("🔄 Aggiornare", callback_data=f"aggiornare_{estacion_key}")]
@@ -314,17 +313,18 @@ async def send_messages_2_and_3(update: Update, estacion_key: str, now: datetime
 # ============================================================================
 async def refresh_messages_only(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str):
     chat_id = update.effective_chat.id
-    # Borrar mensajes actuales 2 y 3
-    msg_ids = context.chat_data.get('refresh_msg_ids')
-    if msg_ids:
-        for mid in msg_ids:
+    
+    # 1. Borrar mensajes antiguos 2 y 3 (si existen)
+    old_ids = context.chat_data.get('refresh_msg_ids')
+    if old_ids:
+        for mid in old_ids:
             try:
                 await context.bot.delete_message(chat_id=chat_id, message_id=mid)
             except Exception:
                 pass
         context.chat_data.pop('refresh_msg_ids', None)
     
-    # Obtener hora actual
+    # 2. Obtener hora actual
     simulated = context.chat_data.get('test_time')
     if simulated:
         if simulated.tzinfo is None:
@@ -333,9 +333,13 @@ async def refresh_messages_only(update: Update, context: ContextTypes.DEFAULT_TY
     else:
         now = datetime.now(CATANIA_TZ)
     
-    # Enviar nuevos mensajes 2 y 3 CON botón (show_button=True)
+    # 3. Enviar nuevos mensajes 2 y 3 (con botón)
     new_ids = await send_messages_2_and_3(update, estacion_key, now, simulated is not None, show_button=True)
-    context.chat_data['refresh_msg_ids'] = new_ids if new_ids else None
+    if new_ids:
+        context.chat_data['refresh_msg_ids'] = new_ids
+    else:
+        # Si no se enviaron nuevos mensajes, no guardamos nada
+        pass
 
 # ============================================================================
 # CALLBACK PARA EL BOTÓN "AGGIORNARE"
@@ -344,13 +348,9 @@ async def aggiornare_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     query = update.callback_query
     await query.answer()
     estacion_key = query.data.split("_")[1]
+    # Usamos el mensaje original del callback para enviar las respuestas
     fake_update = type('Update', (), {'message': query.message, 'effective_chat': query.message.chat, 'callback_query': query})()
     await refresh_messages_only(fake_update, context, estacion_key)
-    query = update.callback_query
-    await query.answer()
-    estacion_key = query.data.split("_")[1]
-    # Llamamos a la función que refresca solo los mensajes 2 y 3
-    await refresh_messages_only(update, context, estacion_key)
 
 # ============================================================================
 # RESPUESTA PRINCIPAL (foto + msg2/msg3)
@@ -508,7 +508,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
     
     img_station = get_station_image(estacion_key, now)
 
-    # Cerrar teclado anterior sin enviar mensaje vacío
+    # Cerrar teclado anterior con mensaje informativo
     if return_to_main:
         await update.message.reply_text("caricando informazione...", reply_markup=ReplyKeyboardRemove())
     
@@ -742,9 +742,9 @@ async def cmd_stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("⚠️ L'auto-refresh non è più attivo. Non c'è nulla da fermare.")
 
 # ============================================================================
-# ACCESIBILIDAD (copiada de handlers.py original, sin cambios)
+# ACCESIBILIDAD (versión simplificada para pruebas)
 # ============================================================================
-# Descripciones de estaciones (solo texto, sin cursiva para pruebas)
+# Descripciones de estaciones (solo texto)
 DESCRIPCION_ESTACION = {
     "montepo": "· Stazione capolinea con ascensore e servizi igienici.",
     "stesicoro": "· Stazione centrale con ascensore e collegamento autobus.",
@@ -770,14 +770,12 @@ async def acc_send_station_info(update: Update, context: ContextTypes.DEFAULT_TY
         now = datetime.now(CATANIA_TZ)
     
     msg2, msg3, _, _, _, _, _, _ = build_temporary_messages(now, estacion_key)
-    # Limpiar emojis y formato
     msg2_clean = clean_text_for_display(msg2) or "· Nessun treno in arrivo"
     msg3_clean = clean_text_for_display(msg3) or "· Nessun treno in arrivo"
     
     nombre = NOMBRE_MOSTRAR.get(estacion_key, estacion_key.capitalize())
     descripcion = DESCRIPCION_ESTACION.get(estacion_key, "· Stazione accessibile.")
     
-    # Imagen accesibilidad (st_aNombre.png)
     nombre_imagen = nombre.replace(" ", "").replace("XXIII", "XXIII")
     if nombre_imagen == "SanNullo":
         nombre_imagen = "SanNullo"
@@ -787,18 +785,13 @@ async def acc_send_station_info(update: Update, context: ContextTypes.DEFAULT_TY
     cache_buster = int(time_module.time())
     img_url = f"{img_url}?v={cache_buster}"
     
-    # Enviar foto sin caption
     await update.message.reply_photo(photo=img_url, caption=f"Stazione {nombre}", parse_mode=None)
-    # Enviar descripción
     await update.message.reply_text(descripcion, parse_mode=None)
-    # Enviar mensaje 2
     msg2_obj = await update.message.reply_text(msg2_clean, parse_mode=None)
-    # Enviar mensaje 3 con botón
     keyboard_inline = InlineKeyboardMarkup([
         [InlineKeyboardButton("· Aggiornare", callback_data=f"acc_aggiornare_{estacion_key}")]
     ])
     msg3_obj = await update.message.reply_text(msg3_clean, parse_mode=None, reply_markup=keyboard_inline)
-    # Enviar lista comandos
     lista_comandos = (
         "Scegli la stazione che desideri consultare:\n"
         "/aMontepo, /aFontana, /aNesima, /aSanNullo, /aCibali, /aMilo, "
@@ -840,7 +833,6 @@ async def acc_aggiornare_callback(update: Update, context: ContextTypes.DEFAULT_
         [InlineKeyboardButton("· Aggiornare", callback_data=f"acc_aggiornare_{estacion_key}")]
     ])
     msg3_obj = await query.message.reply_text(msg3_clean, parse_mode=None, reply_markup=keyboard_inline)
-    
     lista_comandos = (
         "Scegli la stazione che desideri consultare:\n"
         "/aMontepo, /aFontana, /aNesima, /aSanNullo, /aCibali, /aMilo, "
