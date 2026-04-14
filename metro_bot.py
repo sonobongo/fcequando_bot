@@ -37,7 +37,9 @@ def main():
     defaults = Defaults(disable_notification=True)
     app = Application.builder().token(TOKEN).defaults(defaults).build()
 
-    # Comandos normales
+    # ========================================================================
+    # COMANDOS DEL MODO NORMAL (originales)
+    # ========================================================================
     commands = [
         ("start", start_wrapper), ("help", help_command_wrapper),
         ("montepo", cmd_montepo_wrapper), ("stesicoro", cmd_stesicoro_wrapper),
@@ -53,7 +55,9 @@ def main():
     for cmd, handler in commands:
         app.add_handler(CommandHandler(cmd, handler))
 
-    # Comandos accesibilidad
+    # ========================================================================
+    # COMANDOS DEL MODO ACCESIBILIDAD
+    # ========================================================================
     acc_commands = [
         ("accessibilita", acc_wrapper), ("accesibilidad", acc_wrapper),
         ("aMontepo", acc_station_wrapper), ("aStesicoro", acc_station_wrapper),
@@ -66,12 +70,16 @@ def main():
     for cmd, handler in acc_commands:
         app.add_handler(CommandHandler(cmd, handler))
 
-    # Teclados (ReplyKeyboardMarkup) para modo normal (sin cambios)
+    # ========================================================================
+    # TECLADOS (ReplyKeyboardMarkup) para modo normal
+    # ========================================================================
     button_texts = ["Monte Po", "Stesicoro", "Altri", "← Menu", "Fontana", "Nesima", "San Nullo",
                     "Cibali", "Milo", "Borgo", "Giuffrida", "Italia", "Galatea", "Giovanni XXIII"]
     app.add_handler(MessageHandler(filters.Text(button_texts), handle_button_wrapper))
 
-    # Callbacks
+    # ========================================================================
+    # CALLBACKS PARA BOTONES INLINE (modo normal y accesibilidad)
+    # ========================================================================
     app.add_handler(CallbackQueryHandler(aggiornare_callback, pattern="^aggiornare_"))
     app.add_handler(CallbackQueryHandler(acc_aggiornare_callback, pattern="^acc_aggiornare_"))
 
@@ -79,6 +87,9 @@ def main():
     print("Bot funzionante... In attesa di messaggi.")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
+# ========================================================================
+# WRAPPERS PARA LOS COMANDOS DE ACCESIBILIDAD
+# ========================================================================
 async def acc_wrapper(update, context):
     await cmd_accesibilidad(update, context)
 
