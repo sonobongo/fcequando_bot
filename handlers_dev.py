@@ -291,7 +291,7 @@ async def send_messages_2_and_3(update: Update, estacion_key: str, now: datetime
     msg2, msg3, key_mp, time_mp, key_st, time_st, mins_mp, mins_st = build_temporary_messages(now, estacion_key)
     
     msg2_obj = await send_message_2(update, msg2, key_mp, time_mp, mins_mp, estacion_key)
-    await asyncio.sleep(0.5)
+    await asyncio.sleep(0.1)
     
     if estacion_key not in ["montepo", "stesicoro"] and show_button:
         keyboard_inline = InlineKeyboardMarkup([
