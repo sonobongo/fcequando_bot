@@ -32,14 +32,32 @@ BOTON_TO_KEY = {
 }
 
 # ============================================================================
-# FUNCIÓN PARA ELIMINAR "[]" DE CUALQUIER TEXTO
+# FUNCIÓN PARA ELIMINAR "[]" DE CUALQUIER TEXTO (Y TAMBIÉN MENSAJES VACÍOS)
 # ============================================================================
-def clean_brackets(text: str) -> str:
-    """Elimina cualquier aparición de '[]' en el texto y limpia espacios dobles."""
+def clean_text_for_display(text: str) -> str:
+    """Elimina '[]', '[ ]' y espacios dobles. Si después de limpiar queda vacío, retorna None."""
     if not text:
-        return ""
+        return None
     text = text.replace("[]", "").replace("[ ]", "")
-    return ' '.join(text.split())
+    text = ' '.join(text.split())
+    if not text or text == "":
+        return None
+    return text
+
+# ============================================================================
+# FUNCIÓN PARA OBTENER EL MENSAJE DEL AUTOBÚS NESIMA → HUMANITA
+# ============================================================================
+def get_bus_message(now: datetime) -> str:
+    """Devuelve un mensaje con los horarios del autobús Nesima → Humanita (lunes a sábado, no festivos)."""
+    # Verificar si es domingo o festivo
+    if now.weekday() == 6:  # domingo
+        return ""
+    if is_festivo_nazionale(now):
+        return ""
+    # Horarios fijos
+    horarios = ["7:30", "8:30", "9:30", "10:30", "11:30", "12:30", "13:30", "14:30", "15:30", "16:30", "17:30", "18:30", "19:30"]
+    horarios_str = ", ".join(horarios)
+    return f"🚌 **Autobus Nesima → Humanita** (lun-sab, non festivi)\nOrari di partenza: {horarios_str}"
 
 # ============================================================================
 # CONSTRUCCIÓN DE MENSAJES TEMPORALES (msg2 y msg3)
@@ -211,7 +229,9 @@ async def send_default(update: Update, msg: str):
 # ENVÍO DE MENSAJE 2 (hacia Monte Po) y 3 (hacia Stesicoro) - modo normal
 # ============================================================================
 async def send_message_2(update: Update, msg: str, current_station_key: str, tiempo_restante: int, mins: int, estacion_key: str):
-    msg = clean_brackets(msg)
+    msg = clean_text_for_display(msg)
+    if msg is None:
+        return None
     if tiempo_restante is not None and (tiempo_restante <= 90 or mins <= 1):
         return await send_treno_arrivo(update, msg, "Monte Po")
     elif current_station_key and current_station_key != "montepo":
@@ -221,7 +241,9 @@ async def send_message_2(update: Update, msg: str, current_station_key: str, tie
         return await send_default(update, msg)
 
 async def send_message_3(update: Update, msg: str, current_station_key: str, tiempo_restante: int, mins: int, estacion_key: str, reply_markup=None):
-    msg = clean_brackets(msg)
+    msg = clean_text_for_display(msg)
+    if msg is None:
+        return None
     if tiempo_restante is not None and (tiempo_restante <= 90 or mins <= 1):
         img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_trenoarriva.png"
         cache_buster = int(time_module.time())
@@ -260,7 +282,7 @@ async def send_messages_2_and_3(update: Update, estacion_key: str, now: datetime
     msg2_obj = await send_message_2(update, msg2, key_mp, time_mp, mins_mp, estacion_key)
     await asyncio.sleep(0.5)
     
-    # ✅ CORRECCIÓN: El botón se muestra para TODAS las estaciones intermedias (no solo Milo)
+    # El botón se muestra para todas las estaciones intermedias (no cabeceras) y show_button=True
     if estacion_key not in ["montepo", "stesicoro"] and show_button:
         keyboard_inline = InlineKeyboardMarkup([
             [InlineKeyboardButton("🔄 Aggiornare", callback_data=f"aggiornare_{estacion_key}")]
@@ -269,10 +291,16 @@ async def send_messages_2_and_3(update: Update, estacion_key: str, now: datetime
     else:
         msg3_obj = await send_message_3(update, msg3, key_st, time_st, mins_st, estacion_key, reply_markup=None)
     
-    return (msg2_obj.message_id, msg3_obj.message_id)
+    # Si alguno de los mensajes es None (porque se limpió y quedó vacío), no lo guardamos
+    ids = []
+    if msg2_obj:
+        ids.append(msg2_obj.message_id)
+    if msg3_obj:
+        ids.append(msg3_obj.message_id)
+    return tuple(ids) if ids else None
 
 # ============================================================================
-# BUCLE AUTO (30 segundos, 20 ciclos) - para comando /auto
+# BUCLE AUTO (30 segundos, 20 ciclos) - para comando /auto (no usado en intermedias)
 # ============================================================================
 async def auto_update_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str, chat_id: int):
     if 'refresh_task' in context.chat_data:
@@ -296,7 +324,8 @@ async def auto_update_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, e
     else:
         now = datetime.now(CATANIA_TZ)
     ids = await send_messages_2_and_3(update, estacion_key, now, simulated is not None, show_button=False)
-    context.chat_data['auto_msg_ids'] = list(ids)
+    if ids:
+        context.chat_data['auto_msg_ids'] = list(ids)
     context.chat_data['auto_active'] = True
     context.chat_data['auto_cycles_left'] = 19
     for ciclo in range(19):
@@ -314,7 +343,8 @@ async def auto_update_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, e
         else:
             now = datetime.now(CATANIA_TZ)
         new_ids = await send_messages_2_and_3(update, estacion_key, now, simulated is not None, show_button=False)
-        context.chat_data['auto_msg_ids'] = list(new_ids)
+        if new_ids:
+            context.chat_data['auto_msg_ids'] = list(new_ids)
         context.chat_data['auto_cycles_left'] -= 1
     context.chat_data['auto_active'] = False
     context.chat_data.pop('auto_msg_ids', None)
@@ -343,7 +373,7 @@ async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, 
         else:
             now = datetime.now(CATANIA_TZ)
         new_ids = await send_messages_2_and_3(update, estacion_key, now, use_simulated, show_button=True)
-        context.chat_data['refresh_msg_ids'] = new_ids
+        context.chat_data['refresh_msg_ids'] = new_ids if new_ids else None
     context.chat_data['refresh_active'] = False
     context.chat_data.pop('refresh_task', None)
     context.chat_data.pop('cancel_refresh', None)
@@ -377,7 +407,7 @@ async def refresh_messages_only(update: Update, context: ContextTypes.DEFAULT_TY
         now = datetime.now(CATANIA_TZ)
     
     new_ids = await send_messages_2_and_3(update, estacion_key, now, simulated is not None, show_button=True)
-    context.chat_data['refresh_msg_ids'] = new_ids
+    context.chat_data['refresh_msg_ids'] = new_ids if new_ids else None
     context.chat_data['refresh_active'] = True
     task = asyncio.create_task(auto_refresh_loop(update, context, estacion_key, chat_id, "", use_simulated=(simulated is not None), simulated_now=now if simulated else None))
     context.chat_data['refresh_task'] = task
@@ -542,13 +572,13 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
             last_msg = last_msg.replace("📌", "🕐")
         elif "22:30" in last_msg:
             last_msg = last_msg.replace("📌", "🕙")
-        last_msg = clean_brackets(last_msg)
+        last_msg = clean_text_for_display(last_msg)
         if last_msg:
             last_msg_text = f"\n\n{last_msg}"
     
     permanent_caption = f"{test_indicator}🚇 Prossimi treni a {nombre}{last_msg_text}"
-    permanent_caption = clean_brackets(permanent_caption)
-    if not permanent_caption or permanent_caption == "🚇 Prossimi treni a ":
+    permanent_caption = clean_text_for_display(permanent_caption)
+    if not permanent_caption:
         permanent_caption = f"🚇 Prossimi treni a {nombre}"
     
     img_station = get_station_image(estacion_key, now)
@@ -557,14 +587,21 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
     if return_to_main:
         await update.message.reply_text("", reply_markup=ReplyKeyboardRemove())
     
+    # Enviar solo la foto con la cabecera (Mensaje1)
     if img_station:
         await update.message.reply_photo(photo=img_station, caption=permanent_caption, reply_markup=keyboard_main if return_to_main else keyboard_altri)
     else:
         await update.message.reply_text(permanent_caption, reply_markup=keyboard_main if return_to_main else keyboard_altri)
 
+    # *** AÑADIR MENSAJE DEL AUTOBÚS SOLO PARA NESIMA ***
+    if estacion_key == "nesima":
+        bus_msg = get_bus_message(now)
+        if bus_msg:
+            await update.message.reply_text(bus_msg, parse_mode='Markdown')
+
     # Enviar mensajes 2 y 3 iniciales SIN botón (show_button=False)
     ids = await send_messages_2_and_3(update, estacion_key, now, simulated is not None, show_button=False)
-    context.chat_data['refresh_msg_ids'] = ids
+    context.chat_data['refresh_msg_ids'] = ids if ids else None
     context.chat_data['refresh_active'] = True
     task = asyncio.create_task(auto_refresh_loop(update, context, estacion_key, update.effective_chat.id, nombre, use_simulated=(simulated is not None), simulated_now=now if simulated else None))
     context.chat_data['refresh_task'] = task
