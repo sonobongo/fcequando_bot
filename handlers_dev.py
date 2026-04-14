@@ -7,7 +7,7 @@ from horarios_logic import *
 from horarios_logic import CATANIA_TZ
 
 # ============================================================================
-# TECLADOS NORMALES (sin cambios)
+# TECLADOS NORMALES
 # ============================================================================
 keyboard_main = ReplyKeyboardMarkup(
     [[KeyboardButton("Monte Po"), KeyboardButton("Altri"), KeyboardButton("Stesicoro")]],
@@ -695,7 +695,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
     schedule_cleanup(update, context)
 
 # ============================================================================
-# ACCESIBILIDAD: VERSIÓN CON BOTONES INLINE, SIN BOTÓN "AGGIORNARE"
+# ACCESIBILIDAD: VERSIÓN CON BOTONES INLINE, BOTÓN USCIRE AL PRINCIPIO, SIN BOTÓN "AGGIORNARE"
 # ============================================================================
 
 # Descripciones de estaciones (con "Percorso tattile")
@@ -717,8 +717,11 @@ DESCRIPCION_ESTACION = {
 ESTACIONES_ORDEN = ["montepo", "fontana", "nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "giovanni", "stesicoro"]
 
 def get_accesibilidad_keyboard():
-    """Crea teclado inline con las estaciones en orden (dos columnas)."""
+    """Crea teclado inline con el botón USCIRE al principio, luego las estaciones en orden (dos columnas)."""
     buttons = []
+    # Primera fila: solo el botón USCIRE
+    buttons.append([InlineKeyboardButton("USCIRE DALLA MODALITÀ ACCESSIBILITÀ", callback_data="acc_uscire")])
+    # Luego las estaciones en pares
     for i in range(0, len(ESTACIONES_ORDEN), 2):
         row = []
         key = ESTACIONES_ORDEN[i]
@@ -729,8 +732,6 @@ def get_accesibilidad_keyboard():
             nombre2 = NOMBRE_MOSTRAR.get(key2, key2.capitalize())
             row.append(InlineKeyboardButton(nombre2, callback_data=f"acc_sel_{key2}"))
         buttons.append(row)
-    # Botón USCIRE sin emoji
-    buttons.append([InlineKeyboardButton("USCIRE DALLA MODALITÀ ACCESSIBILITÀ", callback_data="acc_uscire")])
     return InlineKeyboardMarkup(buttons)
 
 def clean_for_accessibility(text: str) -> str:
@@ -747,7 +748,7 @@ def clean_for_accessibility(text: str) -> str:
     return text
 
 async def acc_send_station_info(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str):
-    """Envía la información de una estación en modo accesibilidad sin botón Aggiornare."""
+    """Envía la información de una estación en modo accesibilidad (sin botón Aggiornare)."""
     simulated = context.chat_data.get('test_time')
     if simulated:
         if simulated.tzinfo is None:
@@ -772,22 +773,23 @@ async def acc_send_station_info(update: Update, context: ContextTypes.DEFAULT_TY
     cache_buster = int(time_module.time())
     img_url = f"{img_url}?v={cache_buster}"
     
-    # Enviar foto, descripción y los dos mensajes de horarios (sin botón)
+    # Enviar foto (caption = nombre de la estación) - este será el primer mensaje
     photo_msg = await update.message.reply_photo(photo=img_url, caption=f"Stazione {nombre}", parse_mode=None)
+    # Enviar descripción
     desc_msg = await update.message.reply_text(descripcion, parse_mode=None)
+    # Enviar horarios
     msg2_msg = await update.message.reply_text(f"Prossimi treni verso Monte Po:\n{msg2_clean}", parse_mode=None)
     msg3_msg = await update.message.reply_text(f"Prossimi treni verso Stesicoro:\n{msg3_clean}", parse_mode=None)
     
-    # Guardar IDs de todos los mensajes enviados para poder borrarlos después
+    # Guardar IDs de todos los mensajes enviados
     context.chat_data['acc_messages_ids'] = [photo_msg.message_id, desc_msg.message_id, msg2_msg.message_id, msg3_msg.message_id]
     
-    # Enviar el teclado con las estaciones y el nuevo mensaje de instrucción
+    # Enviar el teclado con las estaciones
     keyboard = get_accesibilidad_keyboard()
     keyboard_msg = await update.message.reply_text(
         "Scegli un'altra stazione oppure la stessa stazione per aggiornare l'informazione ricevuta:",
         reply_markup=keyboard
     )
-    # Guardar también el ID del mensaje del teclado
     context.chat_data['acc_messages_ids'].append(keyboard_msg.message_id)
 
 async def acc_station_selection_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -859,7 +861,6 @@ async def cmd_accesibilidad(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "♿ Modalità accessibilità attivata.\n\nScegli una stazione:",
         reply_markup=keyboard
     )
-    # Guardar el ID del mensaje del teclado para poder borrarlo después
     context.chat_data['acc_messages_ids'] = [msg.message_id]
 
 # ============================================================================
