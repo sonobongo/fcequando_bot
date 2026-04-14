@@ -149,7 +149,7 @@ def main():
         else:
             await normal_handlers.stop_wrapper(update, context)
 
-    # Comandos accesibilidad
+    # Comandos accesibilidad (modo normal y dev)
     async def acc_wrapper(update, context):
         if is_dev_mode(context):
             await dev_handlers.acc_wrapper(update, context)
@@ -171,16 +171,45 @@ def main():
         else:
             await normal_handlers.acc_aggiornare_callback(update, context)
 
-    # Wrapper para el nuevo callback de cabeceras (por si acaso, aunque normalmente no se usa en modo dev)
+    # Wrapper para el callback de cabeceras (Monte Po y Stesicoro)
     async def aggiornare_cabecera_callback_wrapper(update, context):
         if is_dev_mode(context):
-            # Si existe en dev_handlers, llamarlo; si no, usar el normal
             if hasattr(dev_handlers, 'aggiornare_cabecera_callback'):
                 await dev_handlers.aggiornare_cabecera_callback(update, context)
-            else:
+            elif hasattr(normal_handlers, 'aggiornare_cabecera_callback'):
                 await normal_handlers.aggiornare_cabecera_callback(update, context)
+            else:
+                logger.warning("aggiornare_cabecera_callback non trovato")
         else:
-            await normal_handlers.aggiornare_cabecera_callback(update, context)
+            if hasattr(normal_handlers, 'aggiornare_cabecera_callback'):
+                await normal_handlers.aggiornare_cabecera_callback(update, context)
+            else:
+                logger.warning("aggiornare_cabecera_callback non trovato")
+
+    # Nuevos callbacks para accesibilidad con botones inline
+    async def acc_station_selection_callback_wrapper(update, context):
+        if is_dev_mode(context):
+            if hasattr(dev_handlers, 'acc_station_selection_callback'):
+                await dev_handlers.acc_station_selection_callback(update, context)
+            else:
+                logger.warning("acc_station_selection_callback non trovato in dev_handlers")
+        else:
+            if hasattr(normal_handlers, 'acc_station_selection_callback'):
+                await normal_handlers.acc_station_selection_callback(update, context)
+            else:
+                logger.warning("acc_station_selection_callback non trovato in normal_handlers")
+
+    async def acc_uscire_callback_wrapper(update, context):
+        if is_dev_mode(context):
+            if hasattr(dev_handlers, 'acc_uscire_callback'):
+                await dev_handlers.acc_uscire_callback(update, context)
+            else:
+                logger.warning("acc_uscire_callback non trovato in dev_handlers")
+        else:
+            if hasattr(normal_handlers, 'acc_uscire_callback'):
+                await normal_handlers.acc_uscire_callback(update, context)
+            else:
+                logger.warning("acc_uscire_callback non trovato in normal_handlers")
 
     # Comandos desarrollo
     async def dev_mode_wrapper(update, context):
@@ -209,9 +238,10 @@ def main():
     for cmd, handler in commands:
         app.add_handler(CommandHandler(cmd, handler))
 
-    # Comandos accesibilidad
+    # Comandos accesibilidad (usamos los wrappers)
     acc_commands = [
         ("accessibilita", acc_wrapper), ("accesibilidad", acc_wrapper),
+        # Los comandos /a... ya no son necesarios si usamos botones inline, pero los mantenemos por compatibilidad
         ("aMontepo", acc_station_wrapper), ("aStesicoro", acc_station_wrapper),
         ("aFontana", acc_station_wrapper), ("aNesima", acc_station_wrapper),
         ("aSanNullo", acc_station_wrapper), ("aCibali", acc_station_wrapper),
@@ -233,8 +263,12 @@ def main():
 
     # Callbacks
     app.add_handler(CallbackQueryHandler(aggiornare_callback_wrapper, pattern="^aggiornare_"))
-    app.add_handler(CallbackQueryHandler(aggiornare_cabecera_callback_wrapper, pattern="^agg_cabecera_"))  # USAMOS EL WRAPPER
+    app.add_handler(CallbackQueryHandler(aggiornare_cabecera_callback_wrapper, pattern="^agg_cabecera_"))
     app.add_handler(CallbackQueryHandler(acc_aggiornare_callback_wrapper, pattern="^acc_aggiornare_"))
+
+    # Nuevos callbacks para accesibilidad con botones inline
+    app.add_handler(CallbackQueryHandler(acc_station_selection_callback_wrapper, pattern="^acc_sel_"))
+    app.add_handler(CallbackQueryHandler(acc_uscire_callback_wrapper, pattern="^acc_uscire$"))
 
     logger.info("Bot avviato.")
     print("Bot funzionante... In attesa di messaggi.")
