@@ -7,8 +7,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, D
 from horarios_logic import *
 from handlers import *
 from handlers_accesibilidad import (
-    cmd_accesibilidad, acc_station_command, acc_aggiornare_callback,
-    cmd_exit_accessibility, keyboard_exit_accessibility
+    cmd_accesibilidad, acc_station_command, acc_aggiornare_callback
 )
 
 flask_app = Flask(__name__)
@@ -38,7 +37,7 @@ def main():
     defaults = Defaults(disable_notification=True)
     app = Application.builder().token(TOKEN).defaults(defaults).build()
 
-    # Comandi normali
+    # Comandos normales
     commands = [
         ("start", start_wrapper), ("help", help_command_wrapper),
         ("montepo", cmd_montepo_wrapper), ("stesicoro", cmd_stesicoro_wrapper),
@@ -54,7 +53,7 @@ def main():
     for cmd, handler in commands:
         app.add_handler(CommandHandler(cmd, handler))
 
-    # Comandi accesibilidad
+    # Comandos accesibilidad
     acc_commands = [
         ("accessibilita", acc_wrapper), ("accesibilidad", acc_wrapper),
         ("aMontepo", acc_station_wrapper), ("aStesicoro", acc_station_wrapper),
@@ -67,7 +66,7 @@ def main():
     for cmd, handler in acc_commands:
         app.add_handler(CommandHandler(cmd, handler))
 
-    # Teclados (quitamos el botón "USCIRE DAL MODO ACCESSIBILITÀ")
+    # Teclados (ReplyKeyboardMarkup) para modo normal (sin cambios)
     button_texts = ["Monte Po", "Stesicoro", "Altri", "← Menu", "Fontana", "Nesima", "San Nullo",
                     "Cibali", "Milo", "Borgo", "Giuffrida", "Italia", "Galatea", "Giovanni XXIII"]
     app.add_handler(MessageHandler(filters.Text(button_texts), handle_button_wrapper))
