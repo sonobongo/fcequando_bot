@@ -264,7 +264,6 @@ def main():
     # Callbacks
     app.add_handler(CallbackQueryHandler(aggiornare_callback_wrapper, pattern="^aggiornare_"))
     app.add_handler(CallbackQueryHandler(aggiornare_cabecera_callback_wrapper, pattern="^agg_cabecera_"))
-    app.add_handler(CallbackQueryHandler(acc_aggiornare_callback_wrapper, pattern="^acc_aggiornare_"))
 
     # Nuevos callbacks para accesibilidad con botones inline
     app.add_handler(CallbackQueryHandler(acc_station_selection_callback_wrapper, pattern="^acc_sel_"))
