@@ -7,14 +7,8 @@ from horarios_logic import *
 from horarios_logic import CATANIA_TZ
 
 # ============================================================================
-# TECLADOS
+# DESCRIPCIONES DE ESTACIONES (texto plano, con punto)
 # ============================================================================
-keyboard_exit_accessibility = ReplyKeyboardMarkup(
-    [[KeyboardButton("USCIRE DAL MODO ACCESSIBILITÀ")]],
-    resize_keyboard=True, one_time_keyboard=False
-)
-
-# Descripciones de estaciones (texto plano, con punto)
 DESCRIPCION_ESTACION = {
     "montepo": "· Stazione capolinea con ascensore e servizi igienici.",
     "stesicoro": "· Stazione centrale con ascensore e collegamento autobus.",
@@ -140,26 +134,23 @@ async def acc_aggiornare_callback(update: Update, context: ContextTypes.DEFAULT_
 # COMANDOS DEL MODO ACCESIBILIDAD
 # ============================================================================
 async def cmd_accesibilidad(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Activa el modo accesibilidad."""
-    context.chat_data['accessibility_mode'] = True
-    await update.message.reply_text(
-        "♿ Modalità accessibilità attivata.\n\n"
-        "Scegli la stazione che desideri consultare:\n"
-        "/aMontepo, /aFontana, /aNesima, /aSanNullo, /aCibali, /aMilo, /aBorgo, /aGiuffrida, /aItalia, /aGalatea, /aGiovanni, /aStesicoro\n\n"
-        "Per uscire, premi il pulsante qui sotto.",
-        reply_markup=keyboard_exit_accessibility
-    )
-
-async def cmd_exit_accessibility(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Desactiva el modo accesibilidad y restaura el teclado normal."""
-    context.chat_data['accessibility_mode'] = False
-    context.chat_data.pop('acc_msg_ids', None)
-    context.chat_data.pop('acc_last_station', None)
-    # Restaurar teclado principal (debe definirse en handlers.py original, aquí solo enviamos mensaje)
-    # El teclado principal se restablecerá cuando el usuario use el botón normal.
-    await update.message.reply_text(
-        "✅ Modalità accessibilità disattivata. Puoi tornare a usare i pulsanti normali."
-    )
+    """Activa o desactiva el modo accesibilidad (toggle)."""
+    if context.chat_data.get('accessibility_mode', False):
+        # Si ya está activo, lo desactivamos
+        context.chat_data['accessibility_mode'] = False
+        context.chat_data.pop('acc_msg_ids', None)
+        context.chat_data.pop('acc_last_station', None)
+        await update.message.reply_text(
+            "✅ Modalità accessibilità disattivata. Puoi tornare a usare i pulsanti normali."
+        )
+    else:
+        # Activamos el modo
+        context.chat_data['accessibility_mode'] = True
+        await update.message.reply_text(
+            "♿ Modalità accessibilità attivata.\n\n"
+            "Scegli la stazione che desideri consultare:\n"
+            "/aMontepo, /aFontana, /aNesima, /aSanNullo, /aCibali, /aMilo, /aBorgo, /aGiuffrida, /aItalia, /aGalatea, /aGiovanni, /aStesicoro"
+        )
 
 async def acc_station_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Maneja los comandos /aEstacion."""
