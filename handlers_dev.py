@@ -280,7 +280,7 @@ async def send_message_3(update: Update, msg: str, current_station_key: str, tie
         return await send_default(update, msg)
 
 # ============================================================================
-# FUNCIÓN PARA ENVIAR msg2 y msg3 (con o sin botón)
+# FUNCIÓN PARA ENVIAR msg2 y msg3 (con o sin botón) - para modo normal
 # ============================================================================
 async def send_messages_2_and_3(update: Update, estacion_key: str, now: datetime, simulated: bool = False, show_button: bool = True):
     msg2, msg3, key_mp, time_mp, key_st, time_st, mins_mp, mins_st = build_temporary_messages(now, estacion_key)
@@ -317,8 +317,8 @@ async def auto_clean_and_restart(update: Update, context: ContextTypes.DEFAULT_T
         msg_ids.extend(context.chat_data['refresh_msg_ids'])
     if 'bus_msg_id' in context.chat_data:
         msg_ids.append(context.chat_data['bus_msg_id'])
-    if 'acc_keyboard_id' in context.chat_data:
-        msg_ids.append(context.chat_data['acc_keyboard_id'])
+    if 'acc_messages_ids' in context.chat_data:
+        msg_ids.extend(context.chat_data['acc_messages_ids'])
     
     for mid in msg_ids:
         try:
@@ -346,7 +346,7 @@ def schedule_cleanup(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.chat_data['cleanup_task'] = task
 
 # ============================================================================
-# REFRESCAR SOLO MENSAJES 2 y 3 (sin foto)
+# REFRESCAR SOLO MENSAJES 2 y 3 (sin foto) - para modo normal
 # ============================================================================
 async def refresh_messages_only(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str):
     chat_id = update.effective_chat.id
@@ -375,7 +375,7 @@ async def refresh_messages_only(update: Update, context: ContextTypes.DEFAULT_TY
     schedule_cleanup(update, context)
 
 # ============================================================================
-# CALLBACK PARA EL BOTÓN "AGGIORNARE" (estaciones intermedias)
+# CALLBACK PARA EL BOTÓN "AGGIORNARE" (estaciones intermedias) - modo normal
 # ============================================================================
 async def aggiornare_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -632,7 +632,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
         return
 
     # ========================================================================
-    # ESTACIONES INTERMEDIAS
+    # ESTACIONES INTERMEDIAS (modo normal, sin cambios)
     # ========================================================================
     closed, next_open, special_closing_msg = is_metro_closed(now, "Montepo")
     if closed:
@@ -695,7 +695,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
     schedule_cleanup(update, context)
 
 # ============================================================================
-# ACCESIBILIDAD: BOTONES INLINE, CON ELIMINACIÓN Y REAPARICIÓN AL FINAL
+# ACCESIBILIDAD: VERSIÓN CON BOTONES INLINE, SIN BOTÓN "AGGIORNARE"
 # ============================================================================
 
 # Descripciones de estaciones (con "Percorso tattile")
@@ -729,8 +729,8 @@ def get_accesibilidad_keyboard():
             nombre2 = NOMBRE_MOSTRAR.get(key2, key2.capitalize())
             row.append(InlineKeyboardButton(nombre2, callback_data=f"acc_sel_{key2}"))
         buttons.append(row)
-    # Añadir botón USCIRE para salir del modo accesibilidad
-    buttons.append([InlineKeyboardButton("🚪 USCIRE", callback_data="acc_uscire")])
+    # Botón USCIRE sin emoji
+    buttons.append([InlineKeyboardButton("USCIRE DALLA MODALITÀ ACCESSIBILITÀ", callback_data="acc_uscire")])
     return InlineKeyboardMarkup(buttons)
 
 def clean_for_accessibility(text: str) -> str:
@@ -747,7 +747,7 @@ def clean_for_accessibility(text: str) -> str:
     return text
 
 async def acc_send_station_info(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str):
-    """Envía la información de una estación en modo accesibilidad."""
+    """Envía la información de una estación en modo accesibilidad sin botón Aggiornare."""
     simulated = context.chat_data.get('test_time')
     if simulated:
         if simulated.tzinfo is None:
@@ -772,61 +772,23 @@ async def acc_send_station_info(update: Update, context: ContextTypes.DEFAULT_TY
     cache_buster = int(time_module.time())
     img_url = f"{img_url}?v={cache_buster}"
     
-    # Enviar foto, descripción y los dos mensajes de horarios
-    await update.message.reply_photo(photo=img_url, caption=f"Stazione {nombre}", parse_mode=None)
-    await update.message.reply_text(descripcion, parse_mode=None)
-    await update.message.reply_text(f"Prossimi treni verso Monte Po:\n{msg2_clean}", parse_mode=None)
+    # Enviar foto, descripción y los dos mensajes de horarios (sin botón)
+    photo_msg = await update.message.reply_photo(photo=img_url, caption=f"Stazione {nombre}", parse_mode=None)
+    desc_msg = await update.message.reply_text(descripcion, parse_mode=None)
+    msg2_msg = await update.message.reply_text(f"Prossimi treni verso Monte Po:\n{msg2_clean}", parse_mode=None)
+    msg3_msg = await update.message.reply_text(f"Prossimi treni verso Stesicoro:\n{msg3_clean}", parse_mode=None)
     
-    # Botón Aggiornare para el mensaje hacia Stesicoro
-    keyboard_inline = InlineKeyboardMarkup([
-        [InlineKeyboardButton("Aggiornare", callback_data=f"acc_aggiornare_{estacion_key}")]
-    ])
-    await update.message.reply_text(f"Prossimi treni verso Stesicoro:\n{msg3_clean}", parse_mode=None, reply_markup=keyboard_inline)
+    # Guardar IDs de todos los mensajes enviados para poder borrarlos después
+    context.chat_data['acc_messages_ids'] = [photo_msg.message_id, desc_msg.message_id, msg2_msg.message_id, msg3_msg.message_id]
     
-    # Enviar de nuevo el teclado con las estaciones al final
+    # Enviar el teclado con las estaciones y el nuevo mensaje de instrucción
     keyboard = get_accesibilidad_keyboard()
-    keyboard_msg = await update.message.reply_text("Scegli un'altra stazione o premi USCIRE:", reply_markup=keyboard)
-    # Guardar el ID del mensaje con el teclado para poder eliminarlo luego en el callback de aggiornare
-    context.chat_data['acc_keyboard_id'] = keyboard_msg.message_id
-
-async def acc_aggiornare_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Callback del botón 'Aggiornare' en modo accesibilidad: borra el teclado antiguo, envía nuevos horarios y luego el teclado nuevo."""
-    query = update.callback_query
-    await query.answer()
-    estacion_key = query.data.split("_")[2]
-    
-    # Eliminar el teclado antiguo (el mensaje con los botones de estaciones)
-    keyboard_id = context.chat_data.get('acc_keyboard_id')
-    if keyboard_id:
-        try:
-            await context.bot.delete_message(chat_id=query.message.chat_id, message_id=keyboard_id)
-        except Exception:
-            pass
-        context.chat_data.pop('acc_keyboard_id', None)
-    
-    simulated = context.chat_data.get('test_time')
-    if simulated:
-        if simulated.tzinfo is None:
-            simulated = CATANIA_TZ.localize(simulated)
-        now = simulated
-    else:
-        now = datetime.now(CATANIA_TZ)
-    
-    msg2, msg3, _, _, _, _, _, _ = build_temporary_messages(now, estacion_key)
-    msg2_clean = clean_for_accessibility(msg2) or "Nessun treno in arrivo verso Monte Po."
-    msg3_clean = clean_for_accessibility(msg3) or "Nessun treno in arrivo verso Stesicoro."
-    
-    # Enviar nuevos mensajes de horarios (sin borrar los anteriores)
-    await query.message.reply_text(f"Prossimi treni verso Monte Po:\n{msg2_clean}", parse_mode=None)
-    keyboard_inline = InlineKeyboardMarkup([
-        [InlineKeyboardButton("Aggiornare", callback_data=f"acc_aggiornare_{estacion_key}")]
-    ])
-    await query.message.reply_text(f"Prossimi treni verso Stesicoro:\n{msg3_clean}", parse_mode=None, reply_markup=keyboard_inline)
-    
-    # Volver a enviar el teclado con las estaciones al final
-    keyboard = get_accesibilidad_keyboard()
-    keyboard_msg = await query.message.reply_text("Scegli un'altra stazione o premi USCIRE:", reply_markup=keyboard)
-    context.chat_data['acc_keyboard_id'] = keyboard_msg.message_id
+    keyboard_msg = await update.message.reply_text(
+        "Scegli un'altra stazione oppure la stessa stazione per aggiornare l'informazione ricevuta:",
+        reply_markup=keyboard
+    )
+    # Guardar también el ID del mensaje del teclado
+    context.chat_data['acc_messages_ids'].append(keyboard_msg.message_id)
 
 async def acc_station_selection_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Callback cuando se pulsa una estación en el menú de accesibilidad."""
@@ -834,22 +796,23 @@ async def acc_station_selection_callback(update: Update, context: ContextTypes.D
     await query.answer()
     estacion_key = query.data.split("_")[2]  # "acc_sel_montepo"
     
-    # Eliminar el mensaje del teclado (el que contiene los botones) para limpiar
-    keyboard_id = context.chat_data.get('acc_keyboard_id')
-    if keyboard_id:
-        try:
-            await context.bot.delete_message(chat_id=query.message.chat_id, message_id=keyboard_id)
-        except Exception:
-            pass
-        context.chat_data.pop('acc_keyboard_id', None)
+    # Borrar todos los mensajes anteriores de accesibilidad (foto, descripción, horarios, teclado)
+    msg_ids = context.chat_data.get('acc_messages_ids')
+    if msg_ids:
+        for mid in msg_ids:
+            try:
+                await context.bot.delete_message(chat_id=query.message.chat_id, message_id=mid)
+            except Exception:
+                pass
+        context.chat_data.pop('acc_messages_ids', None)
     
-    # Eliminar también el mensaje del callback (el teclado en sí) para que no quede duplicado
+    # Eliminar también el mensaje del callback (el teclado que se pulsó)
     try:
         await query.message.delete()
     except Exception:
         pass
     
-    # Enviar la información de la estación seleccionada
+    # Enviar la información de la estación seleccionada (que puede ser la misma para refrescar)
     fake_update = type('Update', (), {
         'message': query.message,
         'effective_chat': query.message.chat,
@@ -862,16 +825,17 @@ async def acc_uscire_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     query = update.callback_query
     await query.answer()
     
-    # Eliminar todos los mensajes relacionados con accesibilidad (teclados y horarios)
-    keyboard_id = context.chat_data.get('acc_keyboard_id')
-    if keyboard_id:
-        try:
-            await context.bot.delete_message(chat_id=query.message.chat_id, message_id=keyboard_id)
-        except Exception:
-            pass
-        context.chat_data.pop('acc_keyboard_id', None)
+    # Borrar todos los mensajes de accesibilidad
+    msg_ids = context.chat_data.get('acc_messages_ids')
+    if msg_ids:
+        for mid in msg_ids:
+            try:
+                await context.bot.delete_message(chat_id=query.message.chat_id, message_id=mid)
+            except Exception:
+                pass
+        context.chat_data.pop('acc_messages_ids', None)
     
-    # Eliminar el mensaje del teclado actual
+    # Eliminar el teclado actual
     try:
         await query.message.delete()
     except Exception:
@@ -879,7 +843,6 @@ async def acc_uscire_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     
     # Limpiar datos de accesibilidad
     context.chat_data['accessibility_mode'] = False
-    context.chat_data.pop('acc_msg_ids', None)
     context.chat_data.pop('acc_last_station', None)
     
     # Enviar confirmación y mostrar teclado normal
@@ -888,20 +851,19 @@ async def acc_uscire_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
 async def cmd_accesibilidad(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Activa el modo accesibilidad y muestra el menú con botones inline."""
     context.chat_data['accessibility_mode'] = True
-    context.chat_data.pop('acc_msg_ids', None)
+    context.chat_data.pop('acc_messages_ids', None)
     context.chat_data.pop('acc_last_station', None)
-    context.chat_data.pop('acc_keyboard_id', None)
     
     keyboard = get_accesibilidad_keyboard()
     msg = await update.message.reply_text(
         "♿ Modalità accessibilità attivata.\n\nScegli una stazione:",
         reply_markup=keyboard
     )
-    # Guardar el ID del mensaje del teclado para poder manipularlo después (opcional)
-    context.chat_data['acc_keyboard_id'] = msg.message_id
+    # Guardar el ID del mensaje del teclado para poder borrarlo después
+    context.chat_data['acc_messages_ids'] = [msg.message_id]
 
 # ============================================================================
-# FUNCIONES DE COMANDOS (wrappers y comandos originales)
+# FUNCIONES DE COMANDOS (wrappers y comandos originales) - sin cambios relevantes
 # ============================================================================
 async def start_wrapper(update, context): await start(update, context)
 async def help_command_wrapper(update, context): await help_command(update, context)
@@ -925,8 +887,7 @@ async def testfin_command_wrapper(update, context): await testfin_command(update
 async def auto_wrapper(update, context): await cmd_auto(update, context)
 async def stop_wrapper(update, context): await cmd_stop(update, context)
 async def acc_wrapper(update, context): await cmd_accesibilidad(update, context)
-# Ya no necesitamos acc_station_wrapper porque usamos botones inline, pero lo dejamos vacío para no romper
-async def acc_station_wrapper(update, context): pass
+async def acc_station_wrapper(update, context): pass  # Ya no se usan los comandos /a... pero los dejamos
 
 # Funciones originales (modo normal)
 async def cmd_montepo(update, context):
