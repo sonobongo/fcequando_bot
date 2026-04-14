@@ -7,7 +7,7 @@ from horarios_logic import *
 from horarios_logic import CATANIA_TZ
 
 # ============================================================================
-# TECLADOS
+# TECLADOS (igual que en Milo)
 # ============================================================================
 keyboard_main = ReplyKeyboardMarkup(
     [[KeyboardButton("Monte Po"), KeyboardButton("Altri"), KeyboardButton("Stesicoro")]],
@@ -293,7 +293,7 @@ async def send_messages_2_and_3(update: Update, estacion_key: str, now: datetime
     msg2_obj = await send_message_2(update, msg2, key_mp, time_mp, mins_mp, estacion_key)
     await asyncio.sleep(0.1)
     
-    # Botón para TODAS las estaciones, incluyendo intermedias (Fontana, Nesima, San Nullo, etc.)
+    # Mostrar botón si show_button es True (para todas las estaciones intermedias, como Milo)
     if show_button:
         keyboard_inline = InlineKeyboardMarkup([
             [InlineKeyboardButton("🔄 Aggiornare", callback_data=f"aggiornare_{estacion_key}")]
@@ -391,12 +391,12 @@ async def aggiornare_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     await refresh_messages_only(fake_update, context, estacion_key)
 
 # ============================================================================
-# CALLBACK PARA EL BOTÓN EN CABECERAS (Monte Po y Stesicoro) - actualiza editando
+# CALLBACK PARA EL BOTÓN EN CABECERAS (Monte Po y Stesicoro)
 # ============================================================================
 async def aggiornare_cabecera_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    estacion_key = query.data.split("_")[2]  # "agg_cabecera_montepo"
+    estacion_key = query.data.split("_")[2]
     
     simulated = context.chat_data.get('test_time')
     if simulated:
@@ -460,13 +460,12 @@ async def aggiornare_cabecera_callback(update: Update, context: ContextTypes.DEF
                 last_msg = last_msg.replace("📌", "🕙")
             msg += f"\n\n{last_msg}"
     
-    # Editar el mensaje original (la foto o el texto) - el botón se mantiene automáticamente
+    # Editar el mensaje manteniendo el botón
     if query.message.photo:
         await query.edit_message_caption(caption=msg, parse_mode='Markdown')
     else:
         await query.edit_message_text(text=msg, parse_mode='Markdown')
     
-    # Reiniciar temporizador de limpieza
     schedule_cleanup(update, context)
 
 # ============================================================================
@@ -585,7 +584,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
         return
 
     # ========================================================================
-    # ESTACIONES INTERMEDIAS (Fontana, Nesima, San Nullo, etc.)
+    # ESTACIONES INTERMEDIAS (exactamente igual que Milo)
     # ========================================================================
     closed, next_open, special_closing_msg = is_metro_closed(now, "Montepo")
     if closed:
@@ -646,14 +645,14 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
         msg1 = await update.message.reply_text(permanent_caption, reply_markup=keyboard_main if return_to_main else keyboard_altri)
     context.chat_data['main_msg_id'] = msg1.message_id
 
-    # Enviar mensajes 2 y 3 CON botón para todas las intermedias (Fontana, Nesima, San Nullo, etc.)
+    # Enviar mensajes 2 y 3 CON botón (igual que en Milo)
     ids = await send_messages_2_and_3(update, estacion_key, now, simulated is not None, show_button=True)
     context.chat_data['refresh_msg_ids'] = ids if ids else None
 
     schedule_cleanup(update, context)
 
 # ============================================================================
-# FUNCIONES DE COMANDOS (wrappers y comandos originales)
+# FUNCIONES DE COMANDOS (wrappers y comandos originales) - igual que antes
 # ============================================================================
 async def start_wrapper(update, context): await start(update, context)
 async def help_command_wrapper(update, context): await help_command(update, context)
@@ -871,7 +870,7 @@ async def cmd_stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("⚠️ L'auto-refresh non è più attivo. Non c'è nulla da fermare.")
 
 # ============================================================================
-# ACCESIBILIDAD (versión simplificada)
+# ACCESIBILIDAD (mismo código que antes, no lo modifico)
 # ============================================================================
 DESCRIPCION_ESTACION = {
     "montepo": "· Stazione capolinea con ascensore e servizi igienici.",
