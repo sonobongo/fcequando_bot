@@ -2,7 +2,7 @@ import asyncio
 import time as time_module
 from datetime import datetime, timedelta
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove
-from telegram.ext import ContextTypes, MessageHandler, filters, CommandHandler
+from telegram.ext import ContextTypes
 from horarios_logic import *
 from horarios_logic import CATANIA_TZ
 
@@ -803,11 +803,18 @@ async def acc_send_station_info(update: Update, context: ContextTypes.DEFAULT_TY
     cache_buster = int(time_module.time())
     img_url = f"{img_url}?v={cache_buster}"
     
-    # Enviar todos los mensajes sin borrar nada
     await update.message.reply_photo(photo=img_url, caption=f"Stazione {nombre}", parse_mode=None)
     await update.message.reply_text(descripcion, parse_mode=None)
     await update.message.reply_text(f"Prossimi treni verso Monte Po:\n{msg2_clean}", parse_mode=None)
     await update.message.reply_text(f"Prossimi treni verso Stesicoro:\n{msg3_clean}", parse_mode=None)
+    
+    instrucciones = (
+        "\n📌 **Come fare:**\n"
+        "• Per **cambiare stazione**, scrivi il nome (es. 'Fontana' o 'fon').\n"
+        "• Per **aggiornare** le informazioni, scrivi di nuovo lo stesso nome.\n"
+        "• Per **uscire** dalla modalità accessibilità, scrivi /uscire."
+    )
+    await update.message.reply_text(instrucciones, parse_mode=None)
 
 async def acc_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Maneja los mensajes de texto cuando el modo accesibilidad está activo."""
@@ -839,7 +846,7 @@ async def cmd_accesibilidad(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Activa el modo accesibilidad (entrada por texto con prefijos)."""
     context.chat_data['accessibility_mode'] = True
     await update.message.reply_text(
-        "♿ Modalità accessibilità attivata.\n\n"
+        "♿ **Modalità accessibilità attivata**\n\n"
         "Puoi scrivere o dire in voce il nome della stazione o anche solo l'inizio:\n"
         "• 'mon' per Monte Po\n"
         "• 'fon' per Fontana\n"
@@ -853,8 +860,9 @@ async def cmd_accesibilidad(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• 'gal' per Galatea\n"
         "• 'gio' per Giovanni XXIII\n"
         "• 'ste' per Stesicoro\n\n"
-        "Esempio: scrivi 'mon' e ti mostrerò le informazioni di Monte Po.\n\n"
-        "Per uscire, scrivi /uscire"
+        "**Esempio:** scrivi 'mon' e ti mostrerò le informazioni di Monte Po.\n\n"
+        "Per **uscire** dalla modalità, scrivi /uscire.",
+        parse_mode=None
     )
 
 async def cmd_uscire(update: Update, context: ContextTypes.DEFAULT_TYPE):
