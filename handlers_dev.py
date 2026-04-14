@@ -291,9 +291,10 @@ async def send_messages_2_and_3(update: Update, estacion_key: str, now: datetime
     msg2, msg3, key_mp, time_mp, key_st, time_st, mins_mp, mins_st = build_temporary_messages(now, estacion_key)
     
     msg2_obj = await send_message_2(update, msg2, key_mp, time_mp, mins_mp, estacion_key)
-    await asyncio.sleep(0.1)
+    await asyncio.sleep(0.1)  # Reducido de 0.5 a 0.1 segundos
     
-    if show_button:
+    # Botón solo para estaciones intermedias (excluye cabeceras)
+    if estacion_key not in ["montepo", "stesicoro"] and show_button:
         keyboard_inline = InlineKeyboardMarkup([
             [InlineKeyboardButton("🔄 Aggiornare", callback_data=f"aggiornare_{estacion_key}")]
         ])
@@ -307,6 +308,49 @@ async def send_messages_2_and_3(update: Update, estacion_key: str, now: datetime
     if msg3_obj:
         ids.append(msg3_obj.message_id)
     return tuple(ids) if ids else None
+
+# ============================================================================
+# FUNCIÓN DE LIMPIEZA Y REINICIO AUTOMÁTICO (20 minutos)
+# ============================================================================
+async def auto_clean_and_restart(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await asyncio.sleep(20 * 60)  # 20 minutos
+    chat_id = update.effective_chat.id
+    
+    # Recopilar IDs de mensajes del bot
+    msg_ids = []
+    if 'main_msg_id' in context.chat_data:
+        msg_ids.append(context.chat_data['main_msg_id'])
+    if 'refresh_msg_ids' in context.chat_data:
+        msg_ids.extend(context.chat_data['refresh_msg_ids'])
+    
+    # Eliminar mensajes
+    for mid in msg_ids:
+        try:
+            await context.bot.delete_message(chat_id=chat_id, message_id=mid)
+        except Exception:
+            pass
+    
+    # Limpiar datos del chat
+    context.chat_data.clear()
+    
+    # Ejecutar /start
+    from handlers import start
+    fake_update = type('Update', (), {
+        'message': update.message,
+        'effective_chat': update.effective_chat,
+        'effective_user': update.effective_user
+    })()
+    await start(fake_update, context)
+
+def schedule_cleanup(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Cancela la tarea anterior y programa una nueva limpieza en 20 minutos."""
+    if 'cleanup_task' in context.chat_data:
+        try:
+            context.chat_data['cleanup_task'].cancel()
+        except Exception:
+            pass
+    task = asyncio.create_task(auto_clean_and_restart(update, context))
+    context.chat_data['cleanup_task'] = task
 
 # ============================================================================
 # REFRESCAR SOLO MENSAJES 2 y 3 (sin foto)
@@ -337,9 +381,9 @@ async def refresh_messages_only(update: Update, context: ContextTypes.DEFAULT_TY
     new_ids = await send_messages_2_and_3(update, estacion_key, now, simulated is not None, show_button=True)
     if new_ids:
         context.chat_data['refresh_msg_ids'] = new_ids
-    else:
-        # Si no se enviaron nuevos mensajes, no guardamos nada
-        pass
+    
+    # Reiniciar temporizador de limpieza (porque hubo interacción)
+    schedule_cleanup(update, context)
 
 # ============================================================================
 # CALLBACK PARA EL BOTÓN "AGGIORNARE"
@@ -348,9 +392,13 @@ async def aggiornare_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     query = update.callback_query
     await query.answer()
     estacion_key = query.data.split("_")[1]
-    # Usamos el mensaje original del callback para enviar las respuestas
-    fake_update = type('Update', (), {'message': query.message, 'effective_chat': query.message.chat, 'callback_query': query})()
+    fake_update = type('Update', (), {
+        'message': query.message,
+        'effective_chat': query.message.chat,
+        'callback_query': query
+    })()
     await refresh_messages_only(fake_update, context, estacion_key)
+    # Reiniciar temporizador (ya se hace dentro de refresh_messages_only)
 
 # ============================================================================
 # RESPUESTA PRINCIPAL (foto + msg2/msg3)
@@ -394,9 +442,11 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
                     msg = f"{special_closing_msg}\n🚇 La metropolitana è chiusa in questo momento.\n🕒 Riaprirà alle {next_open.strftime('%H:%M')}."
             img = get_station_image(estacion_key, now)
             if img:
-                await update.message.reply_photo(photo=img, caption=msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
+                msg1 = await update.message.reply_photo(photo=img, caption=msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
             else:
-                await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
+                msg1 = await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
+            context.chat_data['main_msg_id'] = msg1.message_id
+            schedule_cleanup(update, context)
             return
 
         next_dep, minutes, seconds, has_trains = get_next_departure(station, now)
@@ -405,9 +455,11 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
             msg = f"🚇 Non ci sono più treni oggi. Il servizio termina alle {close_h:02d}:{close_m:02d}."
             img = get_station_image(estacion_key, now)
             if img:
-                await update.message.reply_photo(photo=img, caption=msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
+                msg1 = await update.message.reply_photo(photo=img, caption=msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
             else:
-                await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
+                msg1 = await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
+            context.chat_data['main_msg_id'] = msg1.message_id
+            schedule_cleanup(update, context)
             return
 
         dest = "Stesicoro" if station == "Montepo" else "Monte Po"
@@ -447,13 +499,15 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
 
         total_seconds_rest = int(remaining.total_seconds())
         if total_seconds_rest <= 90 or mins_rest <= 1:
-            await send_treno_arrivo_cabecera(update, msg)
+            msg1 = await send_treno_arrivo_cabecera(update, msg)
         else:
             img = get_station_image(estacion_key, now)
             if img:
-                await update.message.reply_photo(photo=img, caption=msg, reply_markup=keyboard_main if return_to_main else keyboard_altri, parse_mode='Markdown')
+                msg1 = await update.message.reply_photo(photo=img, caption=msg, reply_markup=keyboard_main if return_to_main else keyboard_altri, parse_mode='Markdown')
             else:
-                await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri, parse_mode='Markdown')
+                msg1 = await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri, parse_mode='Markdown')
+        context.chat_data['main_msg_id'] = msg1.message_id
+        schedule_cleanup(update, context)
         return
 
     # ========================================================================
@@ -474,9 +528,11 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
                 msg = f"{special_closing_msg}\n🚇 La metropolitana è chiusa in questo momento.\n🕒 Riaprirà alle {next_open.strftime('%H:%M')}."
         img = get_station_image(estacion_key, now)
         if img:
-            await update.message.reply_photo(photo=img, caption=msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
+            msg1 = await update.message.reply_photo(photo=img, caption=msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
         else:
-            await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
+            msg1 = await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
+        context.chat_data['main_msg_id'] = msg1.message_id
+        schedule_cleanup(update, context)
         return
 
     nombre = NOMBRE_MOSTRAR.get(estacion_key, estacion_key.capitalize())
@@ -510,17 +566,21 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
 
     # Cerrar teclado anterior con mensaje informativo
     if return_to_main:
-        await update.message.reply_text("caricando informazione...", reply_markup=ReplyKeyboardRemove())
+        await update.message.reply_text("Caricando informazione...", reply_markup=ReplyKeyboardRemove())
     
     # Enviar foto con la leyenda (Mensaje1)
     if img_station:
-        await update.message.reply_photo(photo=img_station, caption=permanent_caption, reply_markup=keyboard_main if return_to_main else keyboard_altri)
+        msg1 = await update.message.reply_photo(photo=img_station, caption=permanent_caption, reply_markup=keyboard_main if return_to_main else keyboard_altri)
     else:
-        await update.message.reply_text(permanent_caption, reply_markup=keyboard_main if return_to_main else keyboard_altri)
+        msg1 = await update.message.reply_text(permanent_caption, reply_markup=keyboard_main if return_to_main else keyboard_altri)
+    context.chat_data['main_msg_id'] = msg1.message_id
 
     # Enviar mensajes 2 y 3 con botón desde el principio (show_button=True)
     ids = await send_messages_2_and_3(update, estacion_key, now, simulated is not None, show_button=True)
     context.chat_data['refresh_msg_ids'] = ids if ids else None
+
+    # Programar limpieza automática tras 20 minutos de inactividad
+    schedule_cleanup(update, context)
 
 # ============================================================================
 # COMANDOS Y WRAPPERS (incluyendo /auto, /stop, accesibilidad)
