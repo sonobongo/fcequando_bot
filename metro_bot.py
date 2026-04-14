@@ -149,7 +149,7 @@ def main():
         else:
             await normal_handlers.stop_wrapper(update, context)
 
-    # Comandos accesibilidad (modo normal y dev)
+    # Comandos accesibilidad
     async def acc_wrapper(update, context):
         if is_dev_mode(context):
             await dev_handlers.acc_wrapper(update, context)
@@ -186,31 +186,6 @@ def main():
             else:
                 logger.warning("aggiornare_cabecera_callback non trovato")
 
-    # Nuevos callbacks para accesibilidad con botones inline
-    async def acc_station_selection_callback_wrapper(update, context):
-        if is_dev_mode(context):
-            if hasattr(dev_handlers, 'acc_station_selection_callback'):
-                await dev_handlers.acc_station_selection_callback(update, context)
-            else:
-                logger.warning("acc_station_selection_callback non trovato in dev_handlers")
-        else:
-            if hasattr(normal_handlers, 'acc_station_selection_callback'):
-                await normal_handlers.acc_station_selection_callback(update, context)
-            else:
-                logger.warning("acc_station_selection_callback non trovato in normal_handlers")
-
-    async def acc_uscire_callback_wrapper(update, context):
-        if is_dev_mode(context):
-            if hasattr(dev_handlers, 'acc_uscire_callback'):
-                await dev_handlers.acc_uscire_callback(update, context)
-            else:
-                logger.warning("acc_uscire_callback non trovato in dev_handlers")
-        else:
-            if hasattr(normal_handlers, 'acc_uscire_callback'):
-                await normal_handlers.acc_uscire_callback(update, context)
-            else:
-                logger.warning("acc_uscire_callback non trovato in normal_handlers")
-
     # Comandos desarrollo
     async def dev_mode_wrapper(update, context):
         context.chat_data['dev_mode'] = True
@@ -238,23 +213,20 @@ def main():
     for cmd, handler in commands:
         app.add_handler(CommandHandler(cmd, handler))
 
-    # Comandos accesibilidad (usamos los wrappers)
-    acc_commands = [
-        ("accessibilita", acc_wrapper), ("accesibilidad", acc_wrapper),
-        # Los comandos /a... ya no son necesarios si usamos botones inline, pero los mantenemos por compatibilidad
-        ("aMontepo", acc_station_wrapper), ("aStesicoro", acc_station_wrapper),
-        ("aFontana", acc_station_wrapper), ("aNesima", acc_station_wrapper),
-        ("aSanNullo", acc_station_wrapper), ("aCibali", acc_station_wrapper),
-        ("aMilo", acc_station_wrapper), ("aBorgo", acc_station_wrapper),
-        ("aGiuffrida", acc_station_wrapper), ("aItalia", acc_station_wrapper),
-        ("aGalatea", acc_station_wrapper), ("aGiovanni", acc_station_wrapper)
-    ]
-    for cmd, handler in acc_commands:
-        app.add_handler(CommandHandler(cmd, handler))
-
-    # Comandos desarrollo
-    app.add_handler(CommandHandler("dev", dev_mode_wrapper))
-    app.add_handler(CommandHandler("devfin", dev_fin_wrapper))
+    # Comandos accesibilidad (solo el toggle, los comandos /a... ya no se usan)
+    app.add_handler(CommandHandler("accessibilita", acc_wrapper))
+    app.add_handler(CommandHandler("accesibilidad", acc_wrapper))
+    # Comando para salir del modo accesibilidad (también se maneja por texto)
+    app.add_handler(CommandHandler("uscire", dev_handlers.cmd_uscire if is_dev_mode else normal_handlers.cmd_uscire))  # pero usamos wrapper
+    # Para simplificar, registramos el comando /uscire directamente con el handler de dev (que también está en normal? mejor usar wrapper)
+    # Creamos un wrapper simple
+    async def uscire_wrapper(update, context):
+        if is_dev_mode(context):
+            await dev_handlers.cmd_uscire(update, context)
+        else:
+            # Si normal_handlers no tiene cmd_uscire, lo definimos nosotros
+            await update.message.reply_text("Modalità accessibilità non attiva.")
+    app.add_handler(CommandHandler("uscire", uscire_wrapper))
 
     # Teclados (ReplyKeyboardMarkup) para modo normal
     button_texts = ["Monte Po", "Stesicoro", "Altri", "← Menu", "Fontana", "Nesima", "San Nullo",
@@ -264,10 +236,15 @@ def main():
     # Callbacks
     app.add_handler(CallbackQueryHandler(aggiornare_callback_wrapper, pattern="^aggiornare_"))
     app.add_handler(CallbackQueryHandler(aggiornare_cabecera_callback_wrapper, pattern="^agg_cabecera_"))
+    # El callback acc_aggiornare ya no se usa en el nuevo modo accesibilidad, pero lo dejamos por compatibilidad si existe
+    # app.add_handler(CallbackQueryHandler(acc_aggiornare_callback_wrapper, pattern="^acc_aggiornare_"))
 
-    # Nuevos callbacks para accesibilidad con botones inline
-    app.add_handler(CallbackQueryHandler(acc_station_selection_callback_wrapper, pattern="^acc_sel_"))
-    app.add_handler(CallbackQueryHandler(acc_uscire_callback_wrapper, pattern="^acc_uscire$"))
+    # Manejador de texto para modo accesibilidad (debe ir después de los comandos)
+    # Lo registramos solo si existe la función en dev_handlers; en modo normal no se usa
+    # Para simplificar, lo registramos directamente con el handler de dev (que también funcionará en normal si se importa)
+    # Pero como el modo accesibilidad solo está implementado en dev, lo hacemos condicional
+    if hasattr(dev_handlers, 'acc_handle_text'):
+        app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, dev_handlers.acc_handle_text))
 
     logger.info("Bot avviato.")
     print("Bot funzionante... In attesa di messaggi.")
