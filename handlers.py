@@ -160,7 +160,7 @@ def build_temporary_messages(now: datetime, estacion_key: str):
     return msg2, msg3, current_station_key_mp, tiempo_restante_mp, current_station_key_st, tiempo_restante_st, mins_mp, mins_st
 
 # ============================================================================
-# FUNCIONES DE ENVÍO CON IMAGEN
+# FUNCIONES DE ENVÍO CON IMAGEN (modo normal)
 # ============================================================================
 async def send_treno_arrivo(update: Update, msg: str, direction: str):
     img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_trenoarriva.png"
@@ -198,7 +198,7 @@ async def send_default(update: Update, msg: str):
         return await update.message.reply_text(msg, parse_mode='Markdown')
 
 # ============================================================================
-# ENVÍO DE MENSAJE 2 (hacia Monte Po) y 3 (hacia Stesicoro)
+# ENVÍO DE MENSAJE 2 (hacia Monte Po) y 3 (hacia Stesicoro) - modo normal
 # ============================================================================
 async def send_message_2(update: Update, msg: str, current_station_key: str, tiempo_restante: int, mins: int, estacion_key: str):
     if tiempo_restante is not None and (tiempo_restante <= 90 or mins <= 1):
@@ -309,12 +309,12 @@ async def auto_update_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, e
     await update.message.reply_text("🔄 Aggiornamenti automatici terminati (20 cicli completati).")
 
 # ============================================================================
-# REFRESCO NORMAL (2 ciclos: 35,45,55 segundos) - MODIFICADO: botón inmediato para Milo
+# REFRESCO NORMAL (2 ciclos: 35,45,55 segundos)
 # ============================================================================
 async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str, chat_id: int, station_display_name: str, use_simulated: bool = False, simulated_now: datetime = None):
     tiempos_espera = [35, 45, 55]
     try:
-        for idx, espera in enumerate(tiempos_espera):
+        for espera in tiempos_espera:
             await asyncio.sleep(espera)
             if context.chat_data.get('cancel_refresh', False):
                 break
@@ -345,6 +345,7 @@ async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, 
 # ============================================================================
 async def refresh_messages_only(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str):
     chat_id = update.effective_chat.id
+    # Borrar mensajes actuales 2 y 3
     msg_ids = context.chat_data.get('refresh_msg_ids')
     if msg_ids:
         for mid in msg_ids:
@@ -353,12 +354,15 @@ async def refresh_messages_only(update: Update, context: ContextTypes.DEFAULT_TY
             except Exception:
                 pass
         context.chat_data.pop('refresh_msg_ids', None)
+    # Detener la tarea de refresco actual
     if 'refresh_task' in context.chat_data:
         task = context.chat_data['refresh_task']
         if not task.done():
             task.cancel()
         context.chat_data.pop('refresh_task', None)
     context.chat_data['refresh_active'] = False
+    
+    # Obtener hora actual
     simulated = context.chat_data.get('test_time')
     if simulated:
         if simulated.tzinfo is None:
@@ -366,14 +370,18 @@ async def refresh_messages_only(update: Update, context: ContextTypes.DEFAULT_TY
         now = simulated
     else:
         now = datetime.now(CATANIA_TZ)
+    
+    # Enviar nuevos mensajes 2 y 3 CON botón (show_button=True)
     new_ids = await send_messages_2_and_3(update, estacion_key, now, simulated is not None, show_button=True)
     context.chat_data['refresh_msg_ids'] = new_ids
+    
+    # Reiniciar el bucle de refresco automático (2 ciclos) con show_button=True
     context.chat_data['refresh_active'] = True
     task = asyncio.create_task(auto_refresh_loop(update, context, estacion_key, chat_id, "", use_simulated=(simulated is not None), simulated_now=now if simulated else None))
     context.chat_data['refresh_task'] = task
 
 # ============================================================================
-# CALLBACK PARA EL BOTÓN INLINE "AGGIORNARE"
+# CALLBACK PARA EL BOTÓN INLINE "AGGIORNARE" (modo normal) - solo refresca msg2 y msg3
 # ============================================================================
 async def aggiornare_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -388,6 +396,7 @@ async def aggiornare_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
 async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str, return_to_main: bool = True):
     context.chat_data['last_return_to_main'] = return_to_main
     
+    # Detener cualquier bucle automático
     if context.chat_data.get('auto_active', False):
         context.chat_data['auto_active'] = False
         if 'auto_task' in context.chat_data:
@@ -533,6 +542,11 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
             last_msg = last_msg.replace("📌", "🕙")
         last_msg_text = f"\n\n{last_msg}"
     permanent_caption = f"{test_indicator}🚇 Prossimi treni a {nombre}{last_msg_text}"
+    
+    # *** CORRECCIÓN PARA ELIMINAR MENSAJES VACÍOS O "[]" ***
+    if permanent_caption == "" or permanent_caption == "[]":
+        permanent_caption = f"🚇 Prossimi treni a {nombre}"
+    
     img_station = get_station_image(estacion_key, now)
 
     # Forzar cierre del teclado anterior si volvemos al principal
