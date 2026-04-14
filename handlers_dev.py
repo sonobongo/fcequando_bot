@@ -344,6 +344,11 @@ async def aggiornare_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     query = update.callback_query
     await query.answer()
     estacion_key = query.data.split("_")[1]
+    fake_update = type('Update', (), {'message': query.message, 'effective_chat': query.message.chat, 'callback_query': query})()
+    await refresh_messages_only(fake_update, context, estacion_key)
+    query = update.callback_query
+    await query.answer()
+    estacion_key = query.data.split("_")[1]
     # Llamamos a la función que refresca solo los mensajes 2 y 3
     await refresh_messages_only(update, context, estacion_key)
 
