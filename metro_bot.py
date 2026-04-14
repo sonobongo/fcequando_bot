@@ -228,11 +228,18 @@ def main():
     app.add_handler(CallbackQueryHandler(aggiornare_callback_wrapper, pattern="^aggiornare_"))
     app.add_handler(CallbackQueryHandler(aggiornare_cabecera_callback_wrapper, pattern="^agg_cabecera_"))
 
-    # Activación rápida de accesibilidad escribiendo cualquier palabra que empiece con "ac"
+    # ========================================================================
+    # MANEJADORES DE TEXTO EN ORDEN PRIORITARIO
+    # ========================================================================
+    # 1. Activación rápida de accesibilidad (si el texto empieza con "ac")
     if hasattr(dev_handlers, 'acc_try_activate'):
         app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, dev_handlers.acc_try_activate))
 
-    # Manejador de texto para modo accesibilidad (solo si la función existe)
+    # 2. Manejador de texto para modo normal (busca nombres completos de estación)
+    if hasattr(dev_handlers, 'normal_handle_text'):
+        app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, dev_handlers.normal_handle_text))
+
+    # 3. Manejador de texto para modo accesibilidad (prefijos y comandos especiales)
     if hasattr(dev_handlers, 'acc_handle_text'):
         app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, dev_handlers.acc_handle_text))
 
