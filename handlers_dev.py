@@ -833,11 +833,10 @@ async def acc_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"Hai scelto {nombre_estacion}. Ecco le informazioni:")
         await acc_send_station_info(update, context, estacion_key)
     else:
-        # No reconocido: recordar opciones
+        # No reconocido: recordar opciones (sin revelar el truco de los prefijos)
         await update.message.reply_text(
             "Stazione non riconosciuta. Le stazioni disponibili sono:\n"
             "Monte Po, Fontana, Nesima, San Nullo, Cibali, Milo, Borgo, Giuffrida, Italia, Galatea, Giovanni XXIII, Stesicoro\n\n"
-            "Puoi scrivere solo l'inizio del nome (es. 'mon', 'fon', 'nes', 'gio').\n"
             "Per uscire dalla modalità accessibilità, scrivi /uscire"
         )
 
@@ -883,6 +882,36 @@ async def acc_try_activate(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip().lower()
     if text.startswith("ac"):
         await cmd_accesibilidad(update, context)
+
+# ============================================================================
+# MANEJADOR DE TEXTO EN MODO NORMAL (BUSCA NOMBRE COMPLETO DE ESTACIÓN)
+# ============================================================================
+async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Maneja mensajes de texto en modo normal (no accesibilidad): busca nombre completo de estación en el texto."""
+    if context.chat_data.get('accessibility_mode', False):
+        return  # No intervenir si está en modo accesibilidad
+    
+    text = update.message.text.strip()
+    # Buscar el nombre completo de alguna estación en el texto
+    # Lista de nombres en orden descendente de longitud para priorizar nombres compuestos
+    estaciones_nombres = list(NOMBRE_MOSTRAR.values())
+    # Mapeo inverso de nombre a clave
+    nombre_to_key = {v: k for k, v in NOMBRE_MOSTRAR.items()}
+    # Ordenar por longitud descendente para que "Giovanni XXIII" se detecte antes que "Giovanni"
+    estaciones_nombres.sort(key=len, reverse=True)
+    
+    for nombre in estaciones_nombres:
+        if nombre.lower() in text.lower():
+            estacion_key = nombre_to_key[nombre]
+            # Simular el comando correspondiente
+            await send_station_response(update, context, estacion_key, return_to_main=True)
+            return
+    
+    # No se encontró ninguna estación
+    await update.message.reply_text(
+        "Stazione non riconosciuta. Le stazioni disponibili sono: Monte Po, Fontana, Nesima, San Nullo, Cibali, Milo, Borgo, Giuffrida, Italia, Galatea, Giovanni XXIII, Stesicoro.",
+        reply_markup=keyboard_main
+    )
 
 # ============================================================================
 # FUNCIONES DE COMANDOS (wrappers y comandos originales)
