@@ -317,7 +317,6 @@ async def auto_clean_and_restart(update: Update, context: ContextTypes.DEFAULT_T
         msg_ids.extend(context.chat_data['refresh_msg_ids'])
     if 'bus_msg_id' in context.chat_data:
         msg_ids.append(context.chat_data['bus_msg_id'])
-    # Ya no guardamos mensajes de accesibilidad, así que no los borramos
     
     for mid in msg_ids:
         try:
@@ -692,8 +691,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
     context.chat_data['refresh_msg_ids'] = ids if ids else None
 
     schedule_cleanup(update, context)
-
-# ============================================================================
+    # ============================================================================
 # ACCESIBILIDAD: MODO POR TEXTO (reconoce prefijos como "mon", "fon", "nes", etc.)
 # ============================================================================
 
@@ -732,11 +730,9 @@ def get_station_by_prefix(text: str) -> tuple:
     o si hay coincidencia aproximada.
     """
     text = text.lower().strip()
-    # Simplificar tildes y caracteres especiales
     import unicodedata
     text = unicodedata.normalize('NFKD', text).encode('ASCII', 'ignore').decode('ASCII')
     
-    # Prefijos únicos para cada estación (ordenados de más largo a más corto para evitar falsos positivos)
     prefijos = [
         ("monte", "montepo"), ("mon", "montepo"),
         ("fontana", "fontana"), ("font", "fontana"), ("fon", "fontana"),
@@ -756,7 +752,6 @@ def get_station_by_prefix(text: str) -> tuple:
         if text.startswith(prefijo):
             return clave, NOMBRE_MOSTRAR.get(clave, clave.capitalize())
     
-    # Si no hay prefijo, intentar coincidencia exacta (por si escribe el nombre completo)
     mapping = {
         "monte po": "montepo", "montepo": "montepo",
         "stesicoro": "stesicoro",
@@ -821,19 +816,15 @@ async def acc_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     text = update.message.text.strip()
-    # Comprobar si el usuario quiere salir
     if text.lower() in ["/uscire", "uscire", "exit", "salir"]:
         await cmd_uscire(update, context)
         return
     
-    # Buscar estación por prefijo o nombre
     estacion_key, nombre_estacion = get_station_by_prefix(text)
     if estacion_key:
-        # Confirmar la elección antes de enviar la información
         await update.message.reply_text(f"Hai scelto {nombre_estacion}. Ecco le informazioni:")
         await acc_send_station_info(update, context, estacion_key)
     else:
-        # No reconocido: recordar opciones (sin revelar el truco de los prefijos)
         await update.message.reply_text(
             "Stazione non riconosciuta. Le stazioni disponibili sono:\n"
             "Monte Po, Fontana, Nesima, San Nullo, Cibali, Milo, Borgo, Giuffrida, Italia, Galatea, Giovanni XXIII, Stesicoro\n\n"
@@ -874,11 +865,10 @@ async def cmd_uscire(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text("⚠️ Non sei in modalità accessibilità.")
 
-# Función para activar accesibilidad desde cualquier mensaje que empiece con "ac"
 async def acc_try_activate(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Si el texto empieza con 'ac' (case-insensitive) y la accesibilidad no está activa, la activa."""
     if context.chat_data.get('accessibility_mode', False):
-        return  # ya está activa
+        return
     text = update.message.text.strip().lower()
     if text.startswith("ac"):
         await cmd_accesibilidad(update, context)
@@ -889,25 +879,19 @@ async def acc_try_activate(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Maneja mensajes de texto en modo normal (no accesibilidad): busca nombre completo de estación en el texto."""
     if context.chat_data.get('accessibility_mode', False):
-        return  # No intervenir si está en modo accesibilidad
+        return
     
     text = update.message.text.strip()
-    # Buscar el nombre completo de alguna estación en el texto
-    # Lista de nombres en orden descendente de longitud para priorizar nombres compuestos
     estaciones_nombres = list(NOMBRE_MOSTRAR.values())
-    # Mapeo inverso de nombre a clave
     nombre_to_key = {v: k for k, v in NOMBRE_MOSTRAR.items()}
-    # Ordenar por longitud descendente para que "Giovanni XXIII" se detecte antes que "Giovanni"
     estaciones_nombres.sort(key=len, reverse=True)
     
     for nombre in estaciones_nombres:
         if nombre.lower() in text.lower():
             estacion_key = nombre_to_key[nombre]
-            # Simular el comando correspondiente
             await send_station_response(update, context, estacion_key, return_to_main=True)
             return
     
-    # No se encontró ninguna estación
     await update.message.reply_text(
         "Stazione non riconosciuta. Le stazioni disponibili sono: Monte Po, Fontana, Nesima, San Nullo, Cibali, Milo, Borgo, Giuffrida, Italia, Galatea, Giovanni XXIII, Stesicoro.",
         reply_markup=keyboard_main
@@ -937,9 +921,8 @@ async def test_command_wrapper(update, context): await test_command(update, cont
 async def testfin_command_wrapper(update, context): await testfin_command(update, context)
 async def auto_wrapper(update, context): await cmd_auto(update, context)
 async def stop_wrapper(update, context): await cmd_stop(update, context)
-# Wrappers accesibilidad
 async def acc_wrapper(update, context): await cmd_accesibilidad(update, context)
-async def acc_station_wrapper(update, context): pass  # Ya no se usan los comandos /a... pero los dejamos por compatibilidad
+async def acc_station_wrapper(update, context): pass
 
 # Funciones originales (modo normal)
 async def cmd_montepo(update, context):
