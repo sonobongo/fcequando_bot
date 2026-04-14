@@ -32,6 +32,16 @@ BOTON_TO_KEY = {
 }
 
 # ============================================================================
+# FUNCIÓN PARA ELIMINAR "[]" DE CUALQUIER TEXTO
+# ============================================================================
+def clean_brackets(text: str) -> str:
+    """Elimina cualquier aparición de '[]' en el texto y limpia espacios dobles."""
+    if not text:
+        return ""
+    text = text.replace("[]", "").replace("[ ]", "")
+    return ' '.join(text.split())
+
+# ============================================================================
 # CONSTRUCCIÓN DE MENSAJES TEMPORALES (msg2 y msg3)
 # ============================================================================
 def build_temporary_messages(now: datetime, estacion_key: str):
@@ -201,6 +211,7 @@ async def send_default(update: Update, msg: str):
 # ENVÍO DE MENSAJE 2 (hacia Monte Po) y 3 (hacia Stesicoro) - modo normal
 # ============================================================================
 async def send_message_2(update: Update, msg: str, current_station_key: str, tiempo_restante: int, mins: int, estacion_key: str):
+    msg = clean_brackets(msg)
     if tiempo_restante is not None and (tiempo_restante <= 90 or mins <= 1):
         return await send_treno_arrivo(update, msg, "Monte Po")
     elif current_station_key and current_station_key != "montepo":
@@ -210,6 +221,7 @@ async def send_message_2(update: Update, msg: str, current_station_key: str, tie
         return await send_default(update, msg)
 
 async def send_message_3(update: Update, msg: str, current_station_key: str, tiempo_restante: int, mins: int, estacion_key: str, reply_markup=None):
+    msg = clean_brackets(msg)
     if tiempo_restante is not None and (tiempo_restante <= 90 or mins <= 1):
         img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_trenoarriva.png"
         cache_buster = int(time_module.time())
@@ -248,20 +260,19 @@ async def send_messages_2_and_3(update: Update, estacion_key: str, now: datetime
     msg2_obj = await send_message_2(update, msg2, key_mp, time_mp, mins_mp, estacion_key)
     await asyncio.sleep(0.5)
     
+    # ✅ CORRECCIÓN: El botón se muestra para TODAS las estaciones intermedias (no solo Milo)
     if estacion_key not in ["montepo", "stesicoro"] and show_button:
         keyboard_inline = InlineKeyboardMarkup([
             [InlineKeyboardButton("🔄 Aggiornare", callback_data=f"aggiornare_{estacion_key}")]
         ])
         msg3_obj = await send_message_3(update, msg3, key_st, time_st, mins_st, estacion_key, reply_markup=keyboard_inline)
-        print(f"DEBUG: Botón enviado para {estacion_key} (show_button={show_button})")
     else:
         msg3_obj = await send_message_3(update, msg3, key_st, time_st, mins_st, estacion_key, reply_markup=None)
-        print(f"DEBUG: Botón NO enviado para {estacion_key} (show_button={show_button})")
     
     return (msg2_obj.message_id, msg3_obj.message_id)
 
 # ============================================================================
-# BUCLE AUTO (30 segundos, 20 ciclos) - para comando /auto (no usado en estaciones intermedias)
+# BUCLE AUTO (30 segundos, 20 ciclos) - para comando /auto
 # ============================================================================
 async def auto_update_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str, chat_id: int):
     if 'refresh_task' in context.chat_data:
@@ -314,12 +325,10 @@ async def auto_update_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, e
 # REFRESCO NORMAL (2 ciclos de 30 segundos, con botón en cada ciclo)
 # ============================================================================
 async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str, chat_id: int, station_display_name: str, use_simulated: bool = False, simulated_now: datetime = None):
-    print(f"DEBUG auto_refresh_loop: iniciada para {estacion_key}")
     for ciclo in range(2):
         await asyncio.sleep(30)
         if context.chat_data.get('cancel_refresh', False):
             break
-        print(f"DEBUG auto_refresh_loop: ciclo {ciclo+1} para {estacion_key}")
         msg_ids = context.chat_data.get('refresh_msg_ids')
         if msg_ids:
             for mid in msg_ids:
@@ -338,14 +347,12 @@ async def auto_refresh_loop(update: Update, context: ContextTypes.DEFAULT_TYPE, 
     context.chat_data['refresh_active'] = False
     context.chat_data.pop('refresh_task', None)
     context.chat_data.pop('cancel_refresh', None)
-    print(f"DEBUG auto_refresh_loop: finalizada para {estacion_key}")
 
 # ============================================================================
 # FUNCIÓN PARA REFRESCAR SOLO MENSAJES 2 y 3 (sin foto)
 # ============================================================================
 async def refresh_messages_only(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str):
     chat_id = update.effective_chat.id
-    # Borrar mensajes actuales 2 y 3
     msg_ids = context.chat_data.get('refresh_msg_ids')
     if msg_ids:
         for mid in msg_ids:
@@ -354,7 +361,6 @@ async def refresh_messages_only(update: Update, context: ContextTypes.DEFAULT_TY
             except Exception:
                 pass
         context.chat_data.pop('refresh_msg_ids', None)
-    # Detener la tarea de refresco actual
     if 'refresh_task' in context.chat_data:
         task = context.chat_data['refresh_task']
         if not task.done():
@@ -362,7 +368,6 @@ async def refresh_messages_only(update: Update, context: ContextTypes.DEFAULT_TY
         context.chat_data.pop('refresh_task', None)
     context.chat_data['refresh_active'] = False
     
-    # Obtener hora actual
     simulated = context.chat_data.get('test_time')
     if simulated:
         if simulated.tzinfo is None:
@@ -371,17 +376,14 @@ async def refresh_messages_only(update: Update, context: ContextTypes.DEFAULT_TY
     else:
         now = datetime.now(CATANIA_TZ)
     
-    # Enviar nuevos mensajes 2 y 3 CON botón (show_button=True)
     new_ids = await send_messages_2_and_3(update, estacion_key, now, simulated is not None, show_button=True)
     context.chat_data['refresh_msg_ids'] = new_ids
-    
-    # Reiniciar el bucle de refresco automático (2 ciclos) con show_button=True
     context.chat_data['refresh_active'] = True
     task = asyncio.create_task(auto_refresh_loop(update, context, estacion_key, chat_id, "", use_simulated=(simulated is not None), simulated_now=now if simulated else None))
     context.chat_data['refresh_task'] = task
 
 # ============================================================================
-# CALLBACK PARA EL BOTÓN INLINE "AGGIORNARE" (modo normal) - solo refresca msg2 y msg3
+# CALLBACK PARA EL BOTÓN INLINE "AGGIORNARE" (modo normal)
 # ============================================================================
 async def aggiornare_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -540,11 +542,13 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
             last_msg = last_msg.replace("📌", "🕐")
         elif "22:30" in last_msg:
             last_msg = last_msg.replace("📌", "🕙")
-        if last_msg and last_msg != "[]":
+        last_msg = clean_brackets(last_msg)
+        if last_msg:
             last_msg_text = f"\n\n{last_msg}"
     
     permanent_caption = f"{test_indicator}🚇 Prossimi treni a {nombre}{last_msg_text}"
-    if permanent_caption == "" or permanent_caption == "[]" or "[]" in permanent_caption:
+    permanent_caption = clean_brackets(permanent_caption)
+    if not permanent_caption or permanent_caption == "🚇 Prossimi treni a ":
         permanent_caption = f"🚇 Prossimi treni a {nombre}"
     
     img_station = get_station_image(estacion_key, now)
@@ -558,6 +562,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
     else:
         await update.message.reply_text(permanent_caption, reply_markup=keyboard_main if return_to_main else keyboard_altri)
 
+    # Enviar mensajes 2 y 3 iniciales SIN botón (show_button=False)
     ids = await send_messages_2_and_3(update, estacion_key, now, simulated is not None, show_button=False)
     context.chat_data['refresh_msg_ids'] = ids
     context.chat_data['refresh_active'] = True
