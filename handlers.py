@@ -694,13 +694,10 @@ async def handle_button(update, context):
     elif text in BOTON_TO_KEY:
         est_key = BOTON_TO_KEY[text]
         context.chat_data['last_station'] = est_key
-        # Guardamos el return_to_main según desde qué teclado se pulsa
-        # Si el texto está en keyboard_altri, entonces return_to_main=False, sino True
-        if text in ["Fontana", "Nesima", "San Nullo", "Cibali", "Milo", "Borgo", "Giuffrida", "Italia", "Galatea", "Giovanni XXIII"]:
-            return_to_main = False
-        else:
-            return_to_main = True
-        await send_station_response(update, context, est_key, return_to_main)
+        # Siempre volvemos al teclado principal después de elegir una estación
+        await send_station_response(update, context, est_key, return_to_main=True)
+    else:
+        await update.message.reply_text("Scelta non valida. Usa i pulsanti.", reply_markup=keyboard_main)
     else:
         await update.message.reply_text("Scelta non valida. Usa i pulsanti.", reply_markup=keyboard_main)
 
