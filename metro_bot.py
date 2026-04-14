@@ -7,7 +7,6 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, D
 from horarios_logic import *
 import handlers as normal_handlers
 import handlers_dev as dev_handlers
-import handlers_accesibilidad as acc_handlers
 
 flask_app = Flask(__name__)
 
@@ -165,11 +164,7 @@ def main():
             await dev_handlers.aggiornare_callback(update, context)
         else:
             await normal_handlers.aggiornare_callback(update, context)
-    async def acc_aggiornare_callback_wrapper(update, context):
-        if is_dev_mode(context):
-            await dev_handlers.acc_aggiornare_callback(update, context)
-        else:
-            await normal_handlers.acc_aggiornare_callback(update, context)
+    # Ya no se usa acc_aggiornare_callback
 
     # Wrapper para el callback de cabeceras (Monte Po y Stesicoro)
     async def aggiornare_cabecera_callback_wrapper(update, context):
@@ -213,18 +208,15 @@ def main():
     for cmd, handler in commands:
         app.add_handler(CommandHandler(cmd, handler))
 
-    # Comandos accesibilidad (solo el toggle, los comandos /a... ya no se usan)
+    # Comandos accesibilidad (solo el toggle)
     app.add_handler(CommandHandler("accessibilita", acc_wrapper))
     app.add_handler(CommandHandler("accesibilidad", acc_wrapper))
-    # Comando para salir del modo accesibilidad (también se maneja por texto)
-    app.add_handler(CommandHandler("uscire", dev_handlers.cmd_uscire if is_dev_mode else normal_handlers.cmd_uscire))  # pero usamos wrapper
-    # Para simplificar, registramos el comando /uscire directamente con el handler de dev (que también está en normal? mejor usar wrapper)
-    # Creamos un wrapper simple
+    # Comando para salir del modo accesibilidad
     async def uscire_wrapper(update, context):
         if is_dev_mode(context):
             await dev_handlers.cmd_uscire(update, context)
         else:
-            # Si normal_handlers no tiene cmd_uscire, lo definimos nosotros
+            # Si normal_handlers no tiene cmd_uscire, lo implementamos básico
             await update.message.reply_text("Modalità accessibilità non attiva.")
     app.add_handler(CommandHandler("uscire", uscire_wrapper))
 
@@ -236,13 +228,8 @@ def main():
     # Callbacks
     app.add_handler(CallbackQueryHandler(aggiornare_callback_wrapper, pattern="^aggiornare_"))
     app.add_handler(CallbackQueryHandler(aggiornare_cabecera_callback_wrapper, pattern="^agg_cabecera_"))
-    # El callback acc_aggiornare ya no se usa en el nuevo modo accesibilidad, pero lo dejamos por compatibilidad si existe
-    # app.add_handler(CallbackQueryHandler(acc_aggiornare_callback_wrapper, pattern="^acc_aggiornare_"))
 
-    # Manejador de texto para modo accesibilidad (debe ir después de los comandos)
-    # Lo registramos solo si existe la función en dev_handlers; en modo normal no se usa
-    # Para simplificar, lo registramos directamente con el handler de dev (que también funcionará en normal si se importa)
-    # Pero como el modo accesibilidad solo está implementado en dev, lo hacemos condicional
+    # Manejador de texto para modo accesibilidad (solo si existe la función en dev_handlers)
     if hasattr(dev_handlers, 'acc_handle_text'):
         app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, dev_handlers.acc_handle_text))
 
