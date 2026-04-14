@@ -222,7 +222,7 @@ def main():
 
     # Callbacks
     app.add_handler(CallbackQueryHandler(aggiornare_callback_wrapper, pattern="^aggiornare_"))
-    app.add_handler(CallbackQueryHandler(aggiornare_cabecera_callback, pattern="^agg_cabecera_"))   # <--- NUEVO
+    app.add_handler(CallbackQueryHandler(normal_handlers.aggiornare_cabecera_callback, pattern="^agg_cabecera_"))   # <--- NUEVO
     app.add_handler(CallbackQueryHandler(acc_aggiornare_callback_wrapper, pattern="^acc_aggiornare_"))
 
     logger.info("Bot avviato.")
