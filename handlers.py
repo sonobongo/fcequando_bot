@@ -45,10 +45,10 @@ def clean_text_for_display(text: str) -> str:
     return text
 
 # ============================================================================
-# FUNCIÓN PARA OBTENER EL MENSAJE DEL AUTOBÚS NESIMA → HUMANITA
+# FUNCIÓN PARA OBTENER EL PRÓXIMO AUTOBÚS NESIMA → HUMANITAS
 # ============================================================================
 def get_bus_message(now: datetime) -> str:
-    """Devuelve un mensaje con los horarios del autobús Nesima → Humanita (lunes a sábado, no festivos)."""
+    """Devuelve el próximo autobús Nesima → Humanitas (lunes a sábado, no festivos)."""
     # Verificar si es domingo o festivo
     if now.weekday() == 6:  # domingo
         return ""
@@ -56,8 +56,19 @@ def get_bus_message(now: datetime) -> str:
         return ""
     # Horarios fijos
     horarios = ["7:30", "8:30", "9:30", "10:30", "11:30", "12:30", "13:30", "14:30", "15:30", "16:30", "17:30", "18:30", "19:30"]
-    horarios_str = ", ".join(horarios)
-    return f"🚌 **Autobus Nesima → Humanita** (lun-sab, non festivi)\nOrari di partenza: {horarios_str}"
+    # Convertir hora actual a minutos desde medianoche
+    ahora_min = now.hour * 60 + now.minute
+    siguiente = None
+    for h in horarios:
+        hh, mm = map(int, h.split(':'))
+        bus_min = hh * 60 + mm
+        if bus_min > ahora_min:
+            siguiente = h
+            break
+    if siguiente:
+        return f"🚌 Prossimo autobus per **Humanitas** alle {siguiente}"
+    else:
+        return "🚌 Nessun altro autobus per Humanitas oggi."
 
 # ============================================================================
 # CONSTRUCCIÓN DE MENSAJES TEMPORALES (msg2 y msg3)
