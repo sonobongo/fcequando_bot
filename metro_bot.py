@@ -36,7 +36,7 @@ def main():
     app = Application.builder().token(TOKEN).defaults(defaults).build()
 
     # ========================================================================
-    # WRAPPERS QUE DECIDEN QUÉ MÓDULO USAR (normal o dev)
+    # WRAPPERS QUE DECIDEN QUÉ MÓDULO USAR SEGÚN MODO DEV
     # ========================================================================
     def is_dev_mode(context):
         return context.chat_data.get('dev_mode', False)
@@ -214,7 +214,7 @@ def main():
     app.add_handler(CommandHandler("dev", dev_mode_wrapper))
     app.add_handler(CommandHandler("devfin", dev_fin_wrapper))
 
-    # Teclados
+    # Teclados (ReplyKeyboardMarkup) para modo normal
     button_texts = ["Monte Po", "Stesicoro", "Altri", "← Menu", "Fontana", "Nesima", "San Nullo",
                     "Cibali", "Milo", "Borgo", "Giuffrida", "Italia", "Galatea", "Giovanni XXIII"]
     app.add_handler(MessageHandler(filters.Text(button_texts), handle_button_wrapper))
