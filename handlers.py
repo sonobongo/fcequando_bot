@@ -1,7 +1,7 @@
 import asyncio
 import time as time_module
 from datetime import datetime, timedelta
-from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove
 from telegram.ext import ContextTypes
 from horarios_logic import *
 from horarios_logic import CATANIA_TZ
@@ -535,6 +535,10 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
     permanent_caption = f"{test_indicator}🚇 Prossimi treni a {nombre}{last_msg_text}"
     img_station = get_station_image(estacion_key, now)
 
+    # Forzar cierre del teclado anterior si volvemos al principal
+    if return_to_main:
+        await update.message.reply_text("", reply_markup=ReplyKeyboardRemove())
+    
     if img_station:
         await update.message.reply_photo(photo=img_station, caption=permanent_caption, reply_markup=keyboard_main if return_to_main else keyboard_altri)
     else:
