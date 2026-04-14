@@ -291,9 +291,9 @@ async def send_messages_2_and_3(update: Update, estacion_key: str, now: datetime
     msg2, msg3, key_mp, time_mp, key_st, time_st, mins_mp, mins_st = build_temporary_messages(now, estacion_key)
     
     msg2_obj = await send_message_2(update, msg2, key_mp, time_mp, mins_mp, estacion_key)
-    await asyncio.sleep(0.1)  # Reducido de 0.5 a 0.1 segundos
+    await asyncio.sleep(0.1)
     
-    # Botón ahora para TODAS las estaciones (incluyendo cabeceras)
+    # Botón para TODAS las estaciones, incluyendo intermedias (Fontana, Nesima, San Nullo, etc.)
     if show_button:
         keyboard_inline = InlineKeyboardMarkup([
             [InlineKeyboardButton("🔄 Aggiornare", callback_data=f"aggiornare_{estacion_key}")]
@@ -313,28 +313,24 @@ async def send_messages_2_and_3(update: Update, estacion_key: str, now: datetime
 # FUNCIÓN DE LIMPIEZA Y REINICIO AUTOMÁTICO (20 minutos)
 # ============================================================================
 async def auto_clean_and_restart(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await asyncio.sleep(20 * 60)  # 20 minutos
+    await asyncio.sleep(20 * 60)
     chat_id = update.effective_chat.id
     
-    # Recopilar IDs de mensajes del bot
     msg_ids = []
     if 'main_msg_id' in context.chat_data:
         msg_ids.append(context.chat_data['main_msg_id'])
     if 'refresh_msg_ids' in context.chat_data:
         msg_ids.extend(context.chat_data['refresh_msg_ids'])
     
-    # Eliminar mensajes
     for mid in msg_ids:
         try:
             await context.bot.delete_message(chat_id=chat_id, message_id=mid)
         except Exception:
             pass
     
-    # Limpiar datos del chat
     context.chat_data.clear()
     
-    # Ejecutar /start
-    from handlers import start
+    from handlers_dev import start
     fake_update = type('Update', (), {
         'message': update.message,
         'effective_chat': update.effective_chat,
@@ -343,7 +339,6 @@ async def auto_clean_and_restart(update: Update, context: ContextTypes.DEFAULT_T
     await start(fake_update, context)
 
 def schedule_cleanup(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Cancela la tarea anterior y programa una nueva limpieza en 20 minutos."""
     if 'cleanup_task' in context.chat_data:
         try:
             context.chat_data['cleanup_task'].cancel()
@@ -358,7 +353,6 @@ def schedule_cleanup(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def refresh_messages_only(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str):
     chat_id = update.effective_chat.id
     
-    # 1. Borrar mensajes antiguos 2 y 3 (si existen)
     old_ids = context.chat_data.get('refresh_msg_ids')
     if old_ids:
         for mid in old_ids:
@@ -368,7 +362,6 @@ async def refresh_messages_only(update: Update, context: ContextTypes.DEFAULT_TY
                 pass
         context.chat_data.pop('refresh_msg_ids', None)
     
-    # 2. Obtener hora actual
     simulated = context.chat_data.get('test_time')
     if simulated:
         if simulated.tzinfo is None:
@@ -377,12 +370,10 @@ async def refresh_messages_only(update: Update, context: ContextTypes.DEFAULT_TY
     else:
         now = datetime.now(CATANIA_TZ)
     
-    # 3. Enviar nuevos mensajes 2 y 3 (con botón)
     new_ids = await send_messages_2_and_3(update, estacion_key, now, simulated is not None, show_button=True)
     if new_ids:
         context.chat_data['refresh_msg_ids'] = new_ids
     
-    # Reiniciar temporizador de limpieza (porque hubo interacción)
     schedule_cleanup(update, context)
 
 # ============================================================================
@@ -398,18 +389,15 @@ async def aggiornare_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         'callback_query': query
     })()
     await refresh_messages_only(fake_update, context, estacion_key)
-    # Reiniciar temporizador (ya se hace dentro de refresh_messages_only)
 
 # ============================================================================
-# CALLBACK PARA EL BOTÓN "AGGIORNARE" EN CABECERAS (Monte Po y Stesicoro)
+# CALLBACK PARA EL BOTÓN EN CABECERAS (Monte Po y Stesicoro) - actualiza editando
 # ============================================================================
 async def aggiornare_cabecera_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Callback para actualizar el mensaje principal de Monte Po o Stesicoro (edición)."""
     query = update.callback_query
     await query.answer()
     estacion_key = query.data.split("_")[2]  # "agg_cabecera_montepo"
     
-    # Obtener hora actual
     simulated = context.chat_data.get('test_time')
     if simulated:
         if simulated.tzinfo is None:
@@ -418,7 +406,6 @@ async def aggiornare_cabecera_callback(update: Update, context: ContextTypes.DEF
     else:
         now = datetime.now(CATANIA_TZ)
     
-    # Reconstruir el mensaje (igual que en send_station_response para cabeceras)
     station = "Montepo" if estacion_key == "montepo" else "Stesicoro"
     closed, next_open, special_closing_msg = is_metro_closed(now, station)
     if closed:
@@ -473,14 +460,13 @@ async def aggiornare_cabecera_callback(update: Update, context: ContextTypes.DEF
                 last_msg = last_msg.replace("📌", "🕙")
             msg += f"\n\n{last_msg}"
     
-    # Editar el mensaje original (la foto o el texto)
+    # Editar el mensaje original (la foto o el texto) - el botón se mantiene automáticamente
     if query.message.photo:
         await query.edit_message_caption(caption=msg, parse_mode='Markdown')
     else:
         await query.edit_message_text(text=msg, parse_mode='Markdown')
     
-    # El botón se mantiene (no hace falta reenviarlo)
-    # Reiniciar el temporizador de limpieza
+    # Reiniciar temporizador de limpieza
     schedule_cleanup(update, context)
 
 # ============================================================================
@@ -489,7 +475,6 @@ async def aggiornare_cabecera_callback(update: Update, context: ContextTypes.DEF
 async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str, return_to_main: bool = True):
     context.chat_data['last_return_to_main'] = return_to_main
     
-    # Limpiar posibles tareas antiguas (ya no hay auto-refresh)
     if 'refresh_task' in context.chat_data:
         task = context.chat_data['refresh_task']
         if not task.done():
@@ -511,7 +496,6 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
         station = "Montepo" if estacion_key == "montepo" else "Stesicoro"
         closed, next_open, special_closing_msg = is_metro_closed(now, station)
         
-        # Crear botón inline para cabeceras (se usará siempre)
         keyboard_inline = InlineKeyboardMarkup([
             [InlineKeyboardButton("🔄 Aggiornare", callback_data=f"agg_cabecera_{estacion_key}")]
         ])
@@ -589,7 +573,6 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
         total_seconds_rest = int(remaining.total_seconds())
         if total_seconds_rest <= 90 or mins_rest <= 1:
             msg1 = await send_treno_arrivo_cabecera(update, msg)
-            # Añadir el botón inline al mensaje recién enviado (porque la función no lo soporta)
             await msg1.edit_reply_markup(reply_markup=keyboard_inline)
         else:
             img = get_station_image(estacion_key, now)
@@ -598,13 +581,11 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
             else:
                 msg1 = await update.message.reply_text(msg, reply_markup=keyboard_inline, parse_mode='Markdown')
         context.chat_data['main_msg_id'] = msg1.message_id
-        
-        # No enviamos msg2 ni msg3 para cabeceras
         schedule_cleanup(update, context)
         return
 
     # ========================================================================
-    # ESTACIONES INTERMEDIAS
+    # ESTACIONES INTERMEDIAS (Fontana, Nesima, San Nullo, etc.)
     # ========================================================================
     closed, next_open, special_closing_msg = is_metro_closed(now, "Montepo")
     if closed:
@@ -645,7 +626,6 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
     if not permanent_caption:
         permanent_caption = f"🚇 Prossimi treni a {nombre}"
     
-    # Añadir mensajes de autobús si corresponde
     if estacion_key == "nesima":
         bus_msg = get_bus_message_nesima(now)
         if bus_msg:
@@ -657,55 +637,48 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
     
     img_station = get_station_image(estacion_key, now)
 
-    # Cerrar teclado anterior con mensaje informativo
     if return_to_main:
         await update.message.reply_text("caricando informazione...", reply_markup=ReplyKeyboardRemove())
     
-    # Enviar foto con la leyenda (Mensaje1)
     if img_station:
         msg1 = await update.message.reply_photo(photo=img_station, caption=permanent_caption, reply_markup=keyboard_main if return_to_main else keyboard_altri)
     else:
         msg1 = await update.message.reply_text(permanent_caption, reply_markup=keyboard_main if return_to_main else keyboard_altri)
     context.chat_data['main_msg_id'] = msg1.message_id
 
-    # Enviar mensajes 2 y 3 con botón desde el principio (show_button=True)
+    # Enviar mensajes 2 y 3 CON botón para todas las intermedias (Fontana, Nesima, San Nullo, etc.)
     ids = await send_messages_2_and_3(update, estacion_key, now, simulated is not None, show_button=True)
     context.chat_data['refresh_msg_ids'] = ids if ids else None
 
-    # Programar limpieza automática tras 20 minutos de inactividad
     schedule_cleanup(update, context)
 
 # ============================================================================
-# COMANDOS Y WRAPPERS (incluyendo /auto, /stop, accesibilidad)
+# FUNCIONES DE COMANDOS (wrappers y comandos originales)
 # ============================================================================
-async def cancel_refresh_and_run(update: Update, context: ContextTypes.DEFAULT_TYPE, coro, *args, **kwargs):
-    await coro(update, context, *args, **kwargs)
+async def start_wrapper(update, context): await start(update, context)
+async def help_command_wrapper(update, context): await help_command(update, context)
+async def cmd_montepo_wrapper(update, context): await cmd_montepo(update, context)
+async def cmd_stesicoro_wrapper(update, context): await cmd_stesicoro(update, context)
+async def cmd_milo_wrapper(update, context): await cmd_milo(update, context)
+async def cmd_fontana_wrapper(update, context): await cmd_fontana(update, context)
+async def cmd_nesima_wrapper(update, context): await cmd_nesima(update, context)
+async def cmd_sannullo_wrapper(update, context): await cmd_sannullo(update, context)
+async def cmd_cibali_wrapper(update, context): await cmd_cibali(update, context)
+async def cmd_borgo_wrapper(update, context): await cmd_borgo(update, context)
+async def cmd_giuffrida_wrapper(update, context): await cmd_giuffrida(update, context)
+async def cmd_italia_wrapper(update, context): await cmd_italia(update, context)
+async def cmd_galatea_wrapper(update, context): await cmd_galatea(update, context)
+async def cmd_giovanni_wrapper(update, context): await cmd_giovanni(update, context)
+async def cmd_altri_wrapper(update, context): await cmd_altri(update, context)
+async def handle_button_wrapper(update, context): await handle_button(update, context)
+async def cmd_testgif_wrapper(update, context): await cmd_testgif(update, context)
+async def test_command_wrapper(update, context): await test_command(update, context)
+async def testfin_command_wrapper(update, context): await testfin_command(update, context)
+async def auto_wrapper(update, context): await cmd_auto(update, context)
+async def stop_wrapper(update, context): await cmd_stop(update, context)
+async def acc_wrapper(update, context): await cmd_accesibilidad(update, context)
+async def acc_station_wrapper(update, context): await acc_station_command(update, context)
 
-async def start_wrapper(update, context): await cancel_refresh_and_run(update, context, start)
-async def help_command_wrapper(update, context): await cancel_refresh_and_run(update, context, help_command)
-async def cmd_montepo_wrapper(update, context): await cancel_refresh_and_run(update, context, cmd_montepo)
-async def cmd_stesicoro_wrapper(update, context): await cancel_refresh_and_run(update, context, cmd_stesicoro)
-async def cmd_milo_wrapper(update, context): await cancel_refresh_and_run(update, context, cmd_milo)
-async def cmd_fontana_wrapper(update, context): await cancel_refresh_and_run(update, context, cmd_fontana)
-async def cmd_nesima_wrapper(update, context): await cancel_refresh_and_run(update, context, cmd_nesima)
-async def cmd_sannullo_wrapper(update, context): await cancel_refresh_and_run(update, context, cmd_sannullo)
-async def cmd_cibali_wrapper(update, context): await cancel_refresh_and_run(update, context, cmd_cibali)
-async def cmd_borgo_wrapper(update, context): await cancel_refresh_and_run(update, context, cmd_borgo)
-async def cmd_giuffrida_wrapper(update, context): await cancel_refresh_and_run(update, context, cmd_giuffrida)
-async def cmd_italia_wrapper(update, context): await cancel_refresh_and_run(update, context, cmd_italia)
-async def cmd_galatea_wrapper(update, context): await cancel_refresh_and_run(update, context, cmd_galatea)
-async def cmd_giovanni_wrapper(update, context): await cancel_refresh_and_run(update, context, cmd_giovanni)
-async def cmd_altri_wrapper(update, context): await cancel_refresh_and_run(update, context, cmd_altri)
-async def handle_button_wrapper(update, context): await cancel_refresh_and_run(update, context, handle_button)
-async def cmd_testgif_wrapper(update, context): await cancel_refresh_and_run(update, context, cmd_testgif)
-async def test_command_wrapper(update, context): await cancel_refresh_and_run(update, context, test_command)
-async def testfin_command_wrapper(update, context): await cancel_refresh_and_run(update, context, testfin_command)
-async def auto_wrapper(update, context): await cancel_refresh_and_run(update, context, cmd_auto)
-async def stop_wrapper(update, context): await cancel_refresh_and_run(update, context, cmd_stop)
-async def acc_wrapper(update, context): await cancel_refresh_and_run(update, context, cmd_accesibilidad)
-async def acc_station_wrapper(update, context): await cancel_refresh_and_run(update, context, acc_station_command)
-
-# Funciones originales (modo normal)
 async def cmd_montepo(update, context):
     context.chat_data['last_station'] = "montepo"
     await send_station_response(update, context, "montepo", return_to_main=False)
@@ -744,6 +717,7 @@ async def cmd_giovanni(update, context):
     await send_station_response(update, context, "giovanni", return_to_main=False)
 async def cmd_altri(update, context):
     await update.message.reply_text("⬇️ Altre stazioni:", reply_markup=keyboard_altri)
+
 async def start(update, context):
     user = update.effective_user
     now = datetime.now(CATANIA_TZ)
@@ -759,6 +733,7 @@ async def start(update, context):
         f"{last_msg}",
         reply_markup=keyboard_main
     )
+
 async def help_command(update, context):
     await update.message.reply_text(
         "Comandi disponibili:\n"
@@ -779,6 +754,7 @@ async def help_command(update, context):
         "Oppure premi i pulsanti.",
         reply_markup=keyboard_main
     )
+
 async def handle_button(update, context):
     text = update.message.text
     if text == "Altri":
@@ -895,9 +871,8 @@ async def cmd_stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("⚠️ L'auto-refresh non è più attivo. Non c'è nulla da fermare.")
 
 # ============================================================================
-# ACCESIBILIDAD (versión simplificada para pruebas)
+# ACCESIBILIDAD (versión simplificada)
 # ============================================================================
-# Descripciones de estaciones (solo texto)
 DESCRIPCION_ESTACION = {
     "montepo": "· Stazione capolinea con ascensore e servizi igienici.",
     "stesicoro": "· Stazione centrale con ascensore e collegamento autobus.",
