@@ -293,8 +293,8 @@ async def send_messages_2_and_3(update: Update, estacion_key: str, now: datetime
     msg2_obj = await send_message_2(update, msg2, key_mp, time_mp, mins_mp, estacion_key)
     await asyncio.sleep(0.1)  # Reducido de 0.5 a 0.1 segundos
     
-    # Botón solo para estaciones intermedias (excluye cabeceras)
-    if estacion_key not in ["montepo", "stesicoro"] and show_button:
+    # Botón ahora para TODAS las estaciones (incluyendo cabeceras)
+    if show_button:
         keyboard_inline = InlineKeyboardMarkup([
             [InlineKeyboardButton("🔄 Aggiornare", callback_data=f"aggiornare_{estacion_key}")]
         ])
@@ -566,7 +566,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
 
     # Cerrar teclado anterior con mensaje informativo
     if return_to_main:
-        await update.message.reply_text("Caricando informazione...", reply_markup=ReplyKeyboardRemove())
+        await update.message.reply_text("caricando informazione...", reply_markup=ReplyKeyboardRemove())
     
     # Enviar foto con la leyenda (Mensaje1)
     if img_station:
