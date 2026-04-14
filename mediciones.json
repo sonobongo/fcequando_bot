@@ -24,6 +24,46 @@
         { "origen": "Galatea", "destino": "Giovanni XXIII", "tiempo_seg": 154.054 },
         { "origen": "Giovanni XXIII", "destino": "Stesicoro", "tiempo_seg": 121.389 }
       ]
+    },
+    {
+      "id": "20260413_lunes_1115_valle",
+      "fecha": "2026-04-13",
+      "dia_semana": "lunes",
+      "hora": "11:15",
+      "ocupacion": 0.3,
+      "observacion": "hora valle, sin incidencias destacadas",
+      "trayectos_vuelta": [
+        { "origen": "Stesicoro", "destino": "Giovanni XXIII", "tiempo_seg": 161.400 },
+        { "origen": "Giovanni XXIII", "destino": "Galatea", "tiempo_seg": 148.331 },
+        { "origen": "Galatea", "destino": "Italia", "tiempo_seg": 100.421 },
+        { "origen": "Italia", "destino": "Borgo", "tiempo_seg": 169.273, "observacion": "sin parada en Giuffrida (si hubiera +40s)" },
+        { "origen": "Borgo", "destino": "Milo", "tiempo_seg": 105.931 },
+        { "origen": "Milo", "destino": "Cibali", "tiempo_seg": 116.417 },
+        { "origen": "Cibali", "destino": "San Nullo", "tiempo_seg": 101.300 },
+        { "origen": "San Nullo", "destino": "Nesima", "tiempo_seg": 141.784 },
+        { "origen": "Nesima", "destino": "Fontana", "tiempo_seg": 96.960 },
+        { "origen": "Fontana", "destino": "Monte Po", "tiempo_seg": 102.329 }
+      ]
+    },
+    {
+      "id": "20260413_lunes_1145_70pct",
+      "fecha": "2026-04-13",
+      "dia_semana": "lunes",
+      "hora": "11:45",
+      "ocupacion": 0.7,
+      "observacion": "aforo 70%, hora valle pero más lleno de lo habitual",
+      "trayectos_ida": [
+        { "origen": "Monte Po", "destino": "Fontana", "tiempo_seg": 109.270 },
+        { "origen": "Fontana", "destino": "Nesima", "tiempo_seg": 111.117 },
+        { "origen": "Nesima", "destino": "San Nullo", "tiempo_seg": 143.039 },
+        { "origen": "San Nullo", "destino": "Cibali", "tiempo_seg": 114.692 },
+        { "origen": "Cibali", "destino": "Milo", "tiempo_seg": 116.612 },
+        { "origen": "Milo", "destino": "Borgo", "tiempo_seg": 116.911 },
+        { "origen": "Borgo", "destino": "Italia", "tiempo_seg": 182.563, "observacion": "sin parada en Giuffrida (si hubiera +40s)" },
+        { "origen": "Italia", "destino": "Galatea", "tiempo_seg": 100.855 },
+        { "origen": "Galatea", "destino": "Giovanni XXIII", "tiempo_seg": 185.161 },
+        { "origen": "Giovanni XXIII", "destino": "Stesicoro", "tiempo_seg": 129.455 }
+      ]
     }
   ]
 }
