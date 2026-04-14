@@ -694,10 +694,10 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
     schedule_cleanup(update, context)
 
 # ============================================================================
-# ACCESIBILIDAD: NUEVO MODO CON TEXTO (ESCRIBIR NOMBRE DE LA ESTACIÓN)
+# ACCESIBILIDAD: MODO POR TEXTO (reconoce prefijos como "mon", "fon", "nes", etc.)
 # ============================================================================
 
-# Descripciones de estaciones (con "Percorso tattile" - ya corregido)
+# Descripciones de estaciones (con "Percorso tattile")
 DESCRIPCION_ESTACION = {
     "montepo": "Stazione capolinea con ascensore e servizi igienici.",
     "stesicoro": "Stazione centrale con ascensore e collegamento autobus.",
@@ -725,6 +725,57 @@ def clean_for_accessibility(text: str) -> str:
         text = text.replace(old, new)
     text = ' '.join(text.split())
     return text
+
+def get_station_by_prefix(text: str) -> tuple:
+    """
+    Devuelve (clave_estacion, nombre_mostrar) si el texto comienza con un prefijo conocido,
+    o si hay coincidencia aproximada.
+    """
+    text = text.lower().strip()
+    # Simplificar tildes y caracteres especiales
+    import unicodedata
+    text = unicodedata.normalize('NFKD', text).encode('ASCII', 'ignore').decode('ASCII')
+    
+    # Prefijos únicos para cada estación (ordenados de más largo a más corto para evitar falsos positivos)
+    prefijos = [
+        ("monte", "montepo"), ("mon", "montepo"),
+        ("fontana", "fontana"), ("font", "fontana"), ("fon", "fontana"),
+        ("nesima", "nesima"), ("nes", "nesima"),
+        ("san nullo", "sannullo"), ("san", "sannullo"), ("sann", "sannullo"),
+        ("cibali", "cibali"), ("cib", "cibali"),
+        ("milo", "milo"), ("mil", "milo"),
+        ("borgo", "borgo"), ("bor", "borgo"),
+        ("giuffrida", "giuffrida"), ("giu", "giuffrida"),
+        ("italia", "italia"), ("ita", "italia"),
+        ("galatea", "galatea"), ("gal", "galatea"),
+        ("giovanni", "giovanni"), ("gio", "giovanni"), ("giov", "giovanni"),
+        ("stesicoro", "stesicoro"), ("stes", "stesicoro"), ("ste", "stesicoro")
+    ]
+    
+    for prefijo, clave in prefijos:
+        if text.startswith(prefijo):
+            return clave, NOMBRE_MOSTRAR.get(clave, clave.capitalize())
+    
+    # Si no hay prefijo, intentar coincidencia exacta (por si escribe el nombre completo)
+    mapping = {
+        "monte po": "montepo", "montepo": "montepo",
+        "stesicoro": "stesicoro",
+        "fontana": "fontana",
+        "nesima": "nesima",
+        "san nullo": "sannullo", "sannullo": "sannullo",
+        "cibali": "cibali",
+        "milo": "milo",
+        "borgo": "borgo",
+        "giuffrida": "giuffrida",
+        "italia": "italia",
+        "galatea": "galatea",
+        "giovanni xxiii": "giovanni", "giovanni": "giovanni"
+    }
+    if text in mapping:
+        clave = mapping[text]
+        return clave, NOMBRE_MOSTRAR.get(clave, clave.capitalize())
+    
+    return None, None
 
 async def acc_send_station_info(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str):
     """Envía la información de una estación en modo accesibilidad (sin borrar mensajes anteriores)."""
@@ -758,38 +809,10 @@ async def acc_send_station_info(update: Update, context: ContextTypes.DEFAULT_TY
     await update.message.reply_text(f"Prossimi treni verso Monte Po:\n{msg2_clean}", parse_mode=None)
     await update.message.reply_text(f"Prossimi treni verso Stesicoro:\n{msg3_clean}", parse_mode=None)
 
-def normalize_station_name(name: str) -> str:
-    """Convierte el nombre de la estación a la clave interna (ignora mayúsculas, tildes, espacios)."""
-    name = name.lower().strip()
-    # Simplificar tildes
-    import unicodedata
-    name = unicodedata.normalize('NFKD', name).encode('ASCII', 'ignore').decode('ASCII')
-    # Quitar espacios extra
-    name = ' '.join(name.split())
-    # Mapeo manual para variantes comunes
-    mapping = {
-        "monte po": "montepo",
-        "montepo": "montepo",
-        "stesicoro": "stesicoro",
-        "fontana": "fontana",
-        "nesima": "nesima",
-        "san nullo": "sannullo",
-        "sannullo": "sannullo",
-        "cibali": "cibali",
-        "milo": "milo",
-        "borgo": "borgo",
-        "giuffrida": "giuffrida",
-        "italia": "italia",
-        "galatea": "galatea",
-        "giovanni xxiii": "giovanni",
-        "giovanni": "giovanni"
-    }
-    return mapping.get(name, None)
-
 async def acc_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Maneja los mensajes de texto cuando el modo accesibilidad está activo."""
     if not context.chat_data.get('accessibility_mode', False):
-        return  # No estamos en modo accesibilidad, ignorar
+        return
     
     text = update.message.text.strip()
     # Comprobar si el usuario quiere salir
@@ -797,26 +820,41 @@ async def acc_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await cmd_uscire(update, context)
         return
     
-    # Buscar estación
-    estacion_key = normalize_station_name(text)
-    if estacion_key and estacion_key in NOMBRE_MOSTRAR:
+    # Buscar estación por prefijo o nombre
+    estacion_key, nombre_estacion = get_station_by_prefix(text)
+    if estacion_key:
+        # Confirmar la elección antes de enviar la información
+        await update.message.reply_text(f"Hai scelto {nombre_estacion}. Ecco le informazioni:")
         await acc_send_station_info(update, context, estacion_key)
     else:
-        # Si no se reconoce, recordar las opciones
+        # No reconocido: recordar opciones
         await update.message.reply_text(
             "Stazione non riconosciuta. Le stazioni disponibili sono:\n"
             "Monte Po, Fontana, Nesima, San Nullo, Cibali, Milo, Borgo, Giuffrida, Italia, Galatea, Giovanni XXIII, Stesicoro\n\n"
+            "Puoi scrivere solo l'inizio del nome (es. 'mon', 'fon', 'nes', 'gio').\n"
             "Per uscire dalla modalità accessibilità, scrivi /uscire"
         )
 
 async def cmd_accesibilidad(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Activa el modo accesibilidad (entrada por texto)."""
+    """Activa el modo accesibilidad (entrada por texto con prefijos)."""
     context.chat_data['accessibility_mode'] = True
     await update.message.reply_text(
         "♿ Modalità accessibilità attivata.\n\n"
-        "Escribe o di en voz alta el nombre de la estación que deseas consultar:\n"
-        "Monte Po, Fontana, Nesima, San Nullo, Cibali, Milo, Borgo, Giuffrida, Italia, Galatea, Giovanni XXIII, Stesicoro\n\n"
-        "Para salir, escribe /uscire"
+        "Puoi scrivere o dire in voce il nome della stazione o anche solo l'inizio:\n"
+        "• 'mon' per Monte Po\n"
+        "• 'fon' per Fontana\n"
+        "• 'nes' per Nesima\n"
+        "• 'san' per San Nullo\n"
+        "• 'cib' per Cibali\n"
+        "• 'mil' per Milo\n"
+        "• 'bor' per Borgo\n"
+        "• 'giu' per Giuffrida\n"
+        "• 'ita' per Italia\n"
+        "• 'gal' per Galatea\n"
+        "• 'gio' per Giovanni XXIII\n"
+        "• 'ste' per Stesicoro\n\n"
+        "Esempio: scrivi 'mon' e ti mostrerò le informazioni di Monte Po.\n\n"
+        "Per uscire, scrivi /uscire"
     )
 
 async def cmd_uscire(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -854,7 +892,7 @@ async def test_command_wrapper(update, context): await test_command(update, cont
 async def testfin_command_wrapper(update, context): await testfin_command(update, context)
 async def auto_wrapper(update, context): await cmd_auto(update, context)
 async def stop_wrapper(update, context): await cmd_stop(update, context)
-# Los wrappers de accesibilidad ahora apuntan a las nuevas funciones
+# Wrappers accesibilidad
 async def acc_wrapper(update, context): await cmd_accesibilidad(update, context)
 async def acc_station_wrapper(update, context): pass  # Ya no se usan los comandos /a... pero los dejamos por compatibilidad
 
