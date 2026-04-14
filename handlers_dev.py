@@ -7,7 +7,7 @@ from horarios_logic import *
 from horarios_logic import CATANIA_TZ
 
 # ============================================================================
-# TECLADOS (igual que en Milo)
+# TECLADOS
 # ============================================================================
 keyboard_main = ReplyKeyboardMarkup(
     [[KeyboardButton("Monte Po"), KeyboardButton("Altri"), KeyboardButton("Stesicoro")]],
@@ -60,24 +60,22 @@ def get_bus_message_nesima(now: datetime) -> str:
     return ""
 
 # ============================================================================
-# BUS GRATUITO MONTE PO → MISTERBIANCO
+# BUS GRATUITO MONTE PO → MISTERBIANCO (aviso 15 minutos antes)
 # ============================================================================
-def get_bus_message_montepo(now: datetime) -> str:
+def get_bus_message_montepo_advanced(now: datetime) -> str:
+    """Devuelve mensaje de autobús gratuito Misterbianco si falta 15 minutos o menos para la próxima salida."""
     if now.weekday() >= 5 or is_festivo_nazionale(now):
         return ""
     ahora_min = now.hour * 60 + now.minute
+    # Horarios de salida desde Monte Po (mañana y tarde)
     manana = [("7:00", 7*60), ("7:15", 7*60+15), ("7:30", 7*60+30), ("7:45", 7*60+45),
               ("8:00", 8*60), ("8:15", 8*60+15), ("8:30", 8*60+30)]
     tarde = [("13:00", 13*60), ("13:15", 13*60+15), ("13:30", 13*60+30), ("13:45", 13*60+45),
              ("14:00", 14*60), ("14:15", 14*60+15), ("14:30", 14*60+30)]
-    if 6*60+45 <= ahora_min <= 8*60+31:
-        for hora_str, hora_min in manana:
-            if hora_min > ahora_min:
-                return f"🚌 Autobus gratuito per Misterbianco alle {hora_str}"
-    elif 12*60+45 <= ahora_min <= 14*60+31:
-        for hora_str, hora_min in tarde:
-            if hora_min > ahora_min:
-                return f"🚌 Autobus gratuito per Misterbianco alle {hora_str}"
+    # Buscar próxima salida en el rango de 15 minutos
+    for hora_str, hora_min in manana + tarde:
+        if hora_min > ahora_min and (hora_min - ahora_min) <= 15:
+            return f"🚌 **Autobus gratuito per Misterbianco** alle {hora_str} (partenza da Monte Po)"
     return ""
 
 # ============================================================================
@@ -293,7 +291,6 @@ async def send_messages_2_and_3(update: Update, estacion_key: str, now: datetime
     msg2_obj = await send_message_2(update, msg2, key_mp, time_mp, mins_mp, estacion_key)
     await asyncio.sleep(0.1)
     
-    # Mostrar botón si show_button es True (para todas las estaciones intermedias, como Milo)
     if show_button:
         keyboard_inline = InlineKeyboardMarkup([
             [InlineKeyboardButton("🔄 Aggiornare", callback_data=f"aggiornare_{estacion_key}")]
@@ -321,6 +318,8 @@ async def auto_clean_and_restart(update: Update, context: ContextTypes.DEFAULT_T
         msg_ids.append(context.chat_data['main_msg_id'])
     if 'refresh_msg_ids' in context.chat_data:
         msg_ids.extend(context.chat_data['refresh_msg_ids'])
+    if 'bus_msg_id' in context.chat_data:
+        msg_ids.append(context.chat_data['bus_msg_id'])
     
     for mid in msg_ids:
         try:
@@ -391,12 +390,12 @@ async def aggiornare_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     await refresh_messages_only(fake_update, context, estacion_key)
 
 # ============================================================================
-# CALLBACK PARA EL BOTÓN EN CABECERAS (Monte Po y Stesicoro)
+# CALLBACK PARA EL BOTÓN EN CABECERAS (Monte Po y Stesicoro) - actualiza editando y mantiene el botón
 # ============================================================================
 async def aggiornare_cabecera_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    estacion_key = query.data.split("_")[2]
+    estacion_key = query.data.split("_")[2]  # "agg_cabecera_montepo"
     
     simulated = context.chat_data.get('test_time')
     if simulated:
@@ -460,11 +459,39 @@ async def aggiornare_cabecera_callback(update: Update, context: ContextTypes.DEF
                 last_msg = last_msg.replace("📌", "🕙")
             msg += f"\n\n{last_msg}"
     
-    # Editar el mensaje manteniendo el botón
+    # Reconstruir el botón inline (el mismo que tenía)
+    keyboard_inline = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🔄 Aggiornare", callback_data=f"agg_cabecera_{estacion_key}")]
+    ])
+    
+    # Editar el mensaje original manteniendo el botón
     if query.message.photo:
-        await query.edit_message_caption(caption=msg, parse_mode='Markdown')
+        await query.edit_message_caption(caption=msg, parse_mode='Markdown', reply_markup=keyboard_inline)
     else:
-        await query.edit_message_text(text=msg, parse_mode='Markdown')
+        await query.edit_message_text(text=msg, parse_mode='Markdown', reply_markup=keyboard_inline)
+    
+    # Si es Monte Po, actualizar también el mensaje del autobús gratuito
+    if estacion_key == "montepo":
+        bus_text = get_bus_message_montepo_advanced(now)
+        bus_msg_id = context.chat_data.get('bus_msg_id')
+        if bus_text:
+            if bus_msg_id:
+                try:
+                    await context.bot.edit_message_text(chat_id=query.message.chat_id, message_id=bus_msg_id, text=bus_text, parse_mode='Markdown')
+                except Exception:
+                    pass
+            else:
+                # Si no existía, crear nuevo mensaje
+                bus_msg = await query.message.reply_text(bus_text, parse_mode='Markdown')
+                context.chat_data['bus_msg_id'] = bus_msg.message_id
+        else:
+            # Si ya no hay bus, borrar el mensaje anterior si existe
+            if bus_msg_id:
+                try:
+                    await context.bot.delete_message(chat_id=query.message.chat_id, message_id=bus_msg_id)
+                except Exception:
+                    pass
+                context.chat_data.pop('bus_msg_id', None)
     
     schedule_cleanup(update, context)
 
@@ -518,6 +545,16 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
             else:
                 msg1 = await update.message.reply_text(msg, reply_markup=keyboard_inline)
             context.chat_data['main_msg_id'] = msg1.message_id
+            
+            # Para Monte Po, añadir mensaje de autobús gratuito si procede
+            if estacion_key == "montepo":
+                bus_text = get_bus_message_montepo_advanced(now)
+                if bus_text:
+                    bus_msg = await update.message.reply_text(bus_text, parse_mode='Markdown')
+                    context.chat_data['bus_msg_id'] = bus_msg.message_id
+                else:
+                    context.chat_data.pop('bus_msg_id', None)
+            
             schedule_cleanup(update, context)
             return
 
@@ -531,6 +568,15 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
             else:
                 msg1 = await update.message.reply_text(msg, reply_markup=keyboard_inline)
             context.chat_data['main_msg_id'] = msg1.message_id
+            
+            if estacion_key == "montepo":
+                bus_text = get_bus_message_montepo_advanced(now)
+                if bus_text:
+                    bus_msg = await update.message.reply_text(bus_text, parse_mode='Markdown')
+                    context.chat_data['bus_msg_id'] = bus_msg.message_id
+                else:
+                    context.chat_data.pop('bus_msg_id', None)
+            
             schedule_cleanup(update, context)
             return
 
@@ -580,11 +626,21 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
             else:
                 msg1 = await update.message.reply_text(msg, reply_markup=keyboard_inline, parse_mode='Markdown')
         context.chat_data['main_msg_id'] = msg1.message_id
+        
+        # Para Monte Po, añadir mensaje de autobús gratuito
+        if estacion_key == "montepo":
+            bus_text = get_bus_message_montepo_advanced(now)
+            if bus_text:
+                bus_msg = await update.message.reply_text(bus_text, parse_mode='Markdown')
+                context.chat_data['bus_msg_id'] = bus_msg.message_id
+            else:
+                context.chat_data.pop('bus_msg_id', None)
+        
         schedule_cleanup(update, context)
         return
 
     # ========================================================================
-    # ESTACIONES INTERMEDIAS (exactamente igual que Milo)
+    # ESTACIONES INTERMEDIAS
     # ========================================================================
     closed, next_open, special_closing_msg = is_metro_closed(now, "Montepo")
     if closed:
@@ -629,10 +685,6 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
         bus_msg = get_bus_message_nesima(now)
         if bus_msg:
             permanent_caption += f"\n\n{bus_msg}"
-    if estacion_key == "montepo":
-        bus_msg = get_bus_message_montepo(now)
-        if bus_msg:
-            permanent_caption += f"\n\n{bus_msg}"
     
     img_station = get_station_image(estacion_key, now)
 
@@ -645,14 +697,13 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
         msg1 = await update.message.reply_text(permanent_caption, reply_markup=keyboard_main if return_to_main else keyboard_altri)
     context.chat_data['main_msg_id'] = msg1.message_id
 
-    # Enviar mensajes 2 y 3 CON botón (igual que en Milo)
     ids = await send_messages_2_and_3(update, estacion_key, now, simulated is not None, show_button=True)
     context.chat_data['refresh_msg_ids'] = ids if ids else None
 
     schedule_cleanup(update, context)
 
 # ============================================================================
-# FUNCIONES DE COMANDOS (wrappers y comandos originales) - igual que antes
+# FUNCIONES DE COMANDOS (wrappers y comandos originales)
 # ============================================================================
 async def start_wrapper(update, context): await start(update, context)
 async def help_command_wrapper(update, context): await help_command(update, context)
@@ -870,7 +921,7 @@ async def cmd_stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("⚠️ L'auto-refresh non è più attivo. Non c'è nulla da fermare.")
 
 # ============================================================================
-# ACCESIBILIDAD (mismo código que antes, no lo modifico)
+# ACCESIBILIDAD (versión simplificada)
 # ============================================================================
 DESCRIPCION_ESTACION = {
     "montepo": "· Stazione capolinea con ascensore e servizi igienici.",
