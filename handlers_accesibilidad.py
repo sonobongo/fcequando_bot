@@ -7,7 +7,7 @@ from horarios_logic import *
 from horarios_logic import CATANIA_TZ
 
 # ============================================================================
-# DESCRIPCIONES DE ESTACIONES (formato exacto que pediste)
+# DESCRIPCIONES DE ESTACIONES (formato exacto, sin [] ni caracteres extra)
 # ============================================================================
 DESCRIPCION_ESTACION = {
     "montepo": "· Prossimi treni a Monte Po: Stazione capolinea con ascensore e servizi igienici.",
@@ -35,7 +35,6 @@ def clean_text(text: str) -> str:
     }
     for old, new in replacements.items():
         text = text.replace(old, new)
-    # Eliminar espacios dobles
     return ' '.join(text.split())
 
 async def acc_send_station_info(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str):
@@ -49,7 +48,6 @@ async def acc_send_station_info(update: Update, context: ContextTypes.DEFAULT_TY
     else:
         now = datetime.now(CATANIA_TZ)
     
-    # Obtener mensajes 2 y 3 originales (con emojis y Markdown)
     msg2, msg3, _, _, _, _, _, _ = build_temporary_messages(now, estacion_key)
     msg2_clean = clean_text(msg2)
     msg3_clean = clean_text(msg3)
@@ -57,7 +55,7 @@ async def acc_send_station_info(update: Update, context: ContextTypes.DEFAULT_TY
     nombre = NOMBRE_MOSTRAR.get(estacion_key, estacion_key.capitalize())
     descripcion = DESCRIPCION_ESTACION.get(estacion_key, f"· Prossimi treni a {nombre}: Stazione accessibile.")
     
-    # 1. Enviar foto (sin caption o con el nombre)
+    # 1. Foto (st_aNombre.png)
     nombre_imagen = nombre.replace(" ", "").replace("XXIII", "XXIII")
     if nombre_imagen == "SanNullo":
         nombre_imagen = "SanNullo"
@@ -68,19 +66,19 @@ async def acc_send_station_info(update: Update, context: ContextTypes.DEFAULT_TY
     img_url = f"{img_url}?v={cache_buster}"
     await update.message.reply_photo(photo=img_url, caption=f"Stazione {nombre}", parse_mode=None)
     
-    # 2. Enviar descripción
+    # 2. Descripción
     await update.message.reply_text(descripcion, parse_mode=None)
     
-    # 3. Enviar mensaje 2
+    # 3. Mensaje 2 (hacia Monte Po)
     msg2_obj = await update.message.reply_text(msg2_clean, parse_mode=None)
     
-    # 4. Enviar mensaje 3 con botón inline
+    # 4. Mensaje 3 (hacia Stesicoro) con botón inline
     keyboard_inline = InlineKeyboardMarkup([
         [InlineKeyboardButton("· Aggiornare", callback_data=f"acc_aggiornare_{estacion_key}")]
     ])
     msg3_obj = await update.message.reply_text(msg3_clean, parse_mode=None, reply_markup=keyboard_inline)
     
-    # 5. Enviar mensaje 4 (lista de comandos)
+    # 5. Mensaje 4 (lista de comandos)
     lista_comandos = (
         "Scegli la stazione che desideri consultare:\n"
         "/aMontepo, /aFontana, /aNesima, /aSanNullo, /aCibali, /aMilo, "
@@ -117,7 +115,6 @@ async def acc_aggiornare_callback(update: Update, context: ContextTypes.DEFAULT_
     else:
         now = datetime.now(CATANIA_TZ)
     
-    # Generar nuevos mensajes 2 y 3
     msg2, msg3, _, _, _, _, _, _ = build_temporary_messages(now, estacion_key)
     msg2_clean = clean_text(msg2)
     msg3_clean = clean_text(msg3)
@@ -149,7 +146,7 @@ async def cmd_accesibilidad(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.chat_data['accessibility_mode'] = False
         context.chat_data.pop('acc_msg_ids', None)
         context.chat_data.pop('acc_last_station', None)
-        await update.message.reply_text("✅ Modalità accessibilità disattivata. Puoi tornare a usare i pulsanti normali.")
+        await update.message.reply_text("✅ Modalità accessibilità disattivata.")
     else:
         # Activar
         context.chat_data['accessibility_mode'] = True
