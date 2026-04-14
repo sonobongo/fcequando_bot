@@ -38,9 +38,7 @@ def main():
     defaults = Defaults(disable_notification=True)
     app = Application.builder().token(TOKEN).defaults(defaults).build()
 
-    # ========================================================================
-    # COMANDOS DEL MODO NORMAL (originales)
-    # ========================================================================
+    # Comandi normali
     commands = [
         ("start", start_wrapper), ("help", help_command_wrapper),
         ("montepo", cmd_montepo_wrapper), ("stesicoro", cmd_stesicoro_wrapper),
@@ -56,9 +54,7 @@ def main():
     for cmd, handler in commands:
         app.add_handler(CommandHandler(cmd, handler))
 
-    # ========================================================================
-    # COMANDOS DEL MODO ACCESIBILIDAD
-    # ========================================================================
+    # Comandi accesibilidad
     acc_commands = [
         ("accessibilita", acc_wrapper), ("accesibilidad", acc_wrapper),
         ("aMontepo", acc_station_wrapper), ("aStesicoro", acc_station_wrapper),
@@ -71,32 +67,19 @@ def main():
     for cmd, handler in acc_commands:
         app.add_handler(CommandHandler(cmd, handler))
 
-    # ========================================================================
-    # MANEJADORES DE TECLADO (ReplyKeyboardMarkup) para modo normal
-    # ========================================================================
+    # Teclados (quitamos el botón "USCIRE DAL MODO ACCESSIBILITÀ")
     button_texts = ["Monte Po", "Stesicoro", "Altri", "← Menu", "Fontana", "Nesima", "San Nullo",
-                    "Cibali", "Milo", "Borgo", "Giuffrida", "Italia", "Galatea", "Giovanni XXIII",
-                    "USCIRE DAL MODO ACCESSIBILITÀ"]  # El botón de salida del modo accesibilidad
+                    "Cibali", "Milo", "Borgo", "Giuffrida", "Italia", "Galatea", "Giovanni XXIII"]
     app.add_handler(MessageHandler(filters.Text(button_texts), handle_button_wrapper))
 
-    # ========================================================================
-    # CALLBACKS PARA BOTONES INLINE (modo normal y accesibilidad)
-    # ========================================================================
+    # Callbacks
     app.add_handler(CallbackQueryHandler(aggiornare_callback, pattern="^aggiornare_"))
     app.add_handler(CallbackQueryHandler(acc_aggiornare_callback, pattern="^acc_aggiornare_"))
-
-    # ========================================================================
-    # MANEJADOR PARA EL BOTÓN DE SALIDA DEL MODO ACCESIBILIDAD
-    # ========================================================================
-    app.add_handler(MessageHandler(filters.Text("USCIRE DAL MODO ACCESSIBILITÀ"), cmd_exit_accessibility))
 
     logger.info("Bot avviato.")
     print("Bot funzionante... In attesa di messaggi.")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
-# ========================================================================
-# WRAPPERS PARA LOS COMANDOS DE ACCESIBILIDAD
-# ========================================================================
 async def acc_wrapper(update, context):
     await cmd_accesibilidad(update, context)
 
