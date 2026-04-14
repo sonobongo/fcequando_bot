@@ -7,7 +7,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, D
 from horarios_logic import *
 import handlers as normal_handlers
 import handlers_dev as dev_handlers
-import handlers_accesibilidad as acc_handlers   # Asegúrate de importar el módulo de accesibilidad
+import handlers_accesibilidad as acc_handlers
 
 flask_app = Flask(__name__)
 
@@ -171,6 +171,17 @@ def main():
         else:
             await normal_handlers.acc_aggiornare_callback(update, context)
 
+    # Wrapper para el nuevo callback de cabeceras (por si acaso, aunque normalmente no se usa en modo dev)
+    async def aggiornare_cabecera_callback_wrapper(update, context):
+        if is_dev_mode(context):
+            # Si existe en dev_handlers, llamarlo; si no, usar el normal
+            if hasattr(dev_handlers, 'aggiornare_cabecera_callback'):
+                await dev_handlers.aggiornare_cabecera_callback(update, context)
+            else:
+                await normal_handlers.aggiornare_cabecera_callback(update, context)
+        else:
+            await normal_handlers.aggiornare_cabecera_callback(update, context)
+
     # Comandos desarrollo
     async def dev_mode_wrapper(update, context):
         context.chat_data['dev_mode'] = True
@@ -222,7 +233,7 @@ def main():
 
     # Callbacks
     app.add_handler(CallbackQueryHandler(aggiornare_callback_wrapper, pattern="^aggiornare_"))
-    app.add_handler(CallbackQueryHandler(normal_handlers.aggiornare_cabecera_callback, pattern="^agg_cabecera_"))   # <--- NUEVO
+    app.add_handler(CallbackQueryHandler(aggiornare_cabecera_callback_wrapper, pattern="^agg_cabecera_"))  # USAMOS EL WRAPPER
     app.add_handler(CallbackQueryHandler(acc_aggiornare_callback_wrapper, pattern="^acc_aggiornare_"))
 
     logger.info("Bot avviato.")
