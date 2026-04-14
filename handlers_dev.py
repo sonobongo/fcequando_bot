@@ -505,7 +505,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
 
     # Cerrar teclado anterior sin enviar mensaje vacío
     if return_to_main:
-        await update.message.reply_text(".", reply_markup=ReplyKeyboardRemove())
+        await update.message.reply_text("caricando informazione...", reply_markup=ReplyKeyboardRemove())
     
     # Enviar foto con la leyenda (Mensaje1)
     if img_station:
