@@ -809,10 +809,9 @@ async def acc_send_station_info(update: Update, context: ContextTypes.DEFAULT_TY
     await update.message.reply_text(f"Prossimi treni verso Stesicoro:\n{msg3_clean}", parse_mode=None)
     
     instrucciones = (
-        "\n📌 **Come fare:**\n"
-        "• Per **cambiare stazione**, scrivi il nome (es. 'Fontana' o 'fon').\n"
-        "• Per **aggiornare** le informazioni, scrivi di nuovo lo stesso nome.\n"
-        "• Per **uscire** dalla modalità accessibilità, scrivi /uscire."
+        "Digita o detta la stazione che desideri controllare; se desideri aggiornare la stazione corrente, ripeti l'operazione.\n"
+        "Scegli: Monte Po, Fontana, Nesima, San Nullo, Cibali, Milo, Borgo, Giuffrida, Italia, Galatea, Giovanni XXIII, Stesicoro.\n"
+        "Per uscire dalla modalità accessibilità, scrivi /uscire."
     )
     await update.message.reply_text(instrucciones, parse_mode=None)
 
@@ -875,6 +874,15 @@ async def cmd_uscire(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     else:
         await update.message.reply_text("⚠️ Non sei in modalità accessibilità.")
+
+# Función para activar accesibilidad desde cualquier mensaje que empiece con "ac"
+async def acc_try_activate(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Si el texto empieza con 'ac' (case-insensitive) y la accesibilidad no está activa, la activa."""
+    if context.chat_data.get('accessibility_mode', False):
+        return  # ya está activa
+    text = update.message.text.strip().lower()
+    if text.startswith("ac"):
+        await cmd_accesibilidad(update, context)
 
 # ============================================================================
 # FUNCIONES DE COMANDOS (wrappers y comandos originales)
@@ -954,8 +962,7 @@ async def start(update, context):
         last_msg = last_msg.replace("📌", "🕙")
     await update.message.reply_text(
         f"Ciao {user.first_name}! 👋\n\n"
-        "Quando arriva la metropolitana di Catania?\n"
-        "Premi o usa i comandi /accessibilita ♿ per aprire il modo accessibile per tutti.\n\n"
+        "Premi i pulsanti o scrive Accessibilità ♿ per aprire il modo accessibile per tutti.\n\n"
         f"{last_msg}",
         reply_markup=keyboard_main
     )
