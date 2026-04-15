@@ -394,12 +394,25 @@ async def refresh_messages_only(update: Update, context: ContextTypes.DEFAULT_TY
     schedule_cleanup(update, context)
 
 # ============================================================================
-# CALLBACK PARA EL BOTÓN "AGGIORNARE" (estaciones intermedias)
+# CALLBACK PARA EL BOTÓN "AGGIORNARE" (estaciones intermedias) - CON COOLDOWN DI 2 SECONDI
 # ============================================================================
 async def aggiornare_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()
     estacion_key = query.data.split("_")[1]
+    
+    # Cooldown di 2 secondi per questa stazione
+    cooldown_key = f"cooldown_{estacion_key}"
+    last_update = context.chat_data.get(cooldown_key, 0)
+    now = time_module.time()
+    if now - last_update < 2:
+        # Pulsazione ignorata (silenziosa)
+        await query.answer()
+        return
+    
+    # Registra il momento di questa pulsazione
+    context.chat_data[cooldown_key] = now
+    await query.answer()
+    
     fake_update = type('Update', (), {
         'message': query.message,
         'effective_chat': query.message.chat,
