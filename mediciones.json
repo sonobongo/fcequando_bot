@@ -64,6 +64,110 @@
         { "origen": "Galatea", "destino": "Giovanni XXIII", "tiempo_seg": 185.161 },
         { "origen": "Giovanni XXIII", "destino": "Stesicoro", "tiempo_seg": 129.455 }
       ]
+    },
+    {
+      "id": "20260415_miercoles_1930_70pct",
+      "fecha": "2026-04-15",
+      "dia_semana": "miercoles",
+      "hora": "19:30",
+      "ocupacion": 0.7,
+      "observacion": "aforo 70%, hora punta tarde",
+      "trayectos_ida": [
+        { "origen": "Stesicoro", "destino": "Giovanni XXIII", "tiempo_seg": 161.400 },
+        { "origen": "Giovanni XXIII", "destino": "Galatea", "tiempo_seg": 144.930 },
+        { "origen": "Galatea", "destino": "Italia", "tiempo_seg": 93.922 },
+        { "origen": "Italia", "destino": "Borgo", "tiempo_seg": 157.561, "observacion": "sin parada en Giuffrida (si hubiera +40s)" },
+        { "origen": "Borgo", "destino": "Milo", "tiempo_seg": 126.967 }
+      ],
+      "trayectos_vuelta": [
+        { "origen": "Milo", "destino": "Borgo", "tiempo_seg": 114.069 },
+        { "origen": "Borgo", "destino": "Italia", "tiempo_seg": 167.735, "observacion": "sin parada en Giuffrida (si hubiera +40s)" },
+        { "origen": "Italia", "destino": "Galatea", "tiempo_seg": 107.153 },
+        { "origen": "Galatea", "destino": "Giovanni XXIII", "tiempo_seg": 159.266 },
+        { "origen": "Giovanni XXIII", "destino": "Stesicoro", "tiempo_seg": 126.373 }
+      ]
+    },
+    {
+      "id": "20260406_lunes_0650",
+      "fecha": "2026-04-06",
+      "dia_semana": "lunes",
+      "hora": "06:50",
+      "ocupacion": 0.5,
+      "observacion": "mixto (inicio valle, luego punta)",
+      "trayectos_ida": [
+        { "origen": "Stesicoro", "destino": "Giovanni XXIII", "tiempo_seg": 166 },
+        { "origen": "Giovanni XXIII", "destino": "Galatea", "tiempo_seg": 134 },
+        { "origen": "Galatea", "destino": "Italia", "tiempo_seg": 85 },
+        { "origen": "Italia", "destino": "Giuffrida", "tiempo_seg": 72, "observacion": "sin parada" },
+        { "origen": "Italia", "destino": "Giuffrida", "tiempo_seg": 112, "observacion": "con parada" },
+        { "origen": "Giuffrida", "destino": "Borgo", "tiempo_seg": 85 },
+        { "origen": "Borgo", "destino": "Milo", "tiempo_seg": 106 }
+      ],
+      "trayectos_vuelta": [
+        { "origen": "Milo", "destino": "Borgo", "tiempo_seg": 120 },
+        { "origen": "Borgo", "destino": "Giuffrida", "tiempo_seg": 79, "observacion": "sin parada" },
+        { "origen": "Borgo", "destino": "Giuffrida", "tiempo_seg": 119, "observacion": "con parada" },
+        { "origen": "Giuffrida", "destino": "Italia", "tiempo_seg": 106 },
+        { "origen": "Italia", "destino": "Galatea", "tiempo_seg": 125 },
+        { "origen": "Galatea", "destino": "Giovanni XXIII", "tiempo_seg": 179 },
+        { "origen": "Giovanni XXIII", "destino": "Stesicoro", "tiempo_seg": 139 }
+      ]
+    },
+    {
+      "id": "20260407_martes_0735",
+      "fecha": "2026-04-07",
+      "dia_semana": "martes",
+      "hora": "07:35",
+      "ocupacion": 0.8,
+      "observacion": "hora punta",
+      "trayectos_ida": [
+        { "origen": "Stesicoro", "destino": "Giovanni XXIII", "tiempo_seg": 142.132 },
+        { "origen": "Giovanni XXIII", "destino": "Galatea", "tiempo_seg": 146.482 },
+        { "origen": "Galatea", "destino": "Italia", "tiempo_seg": 87.683 },
+        { "origen": "Italia", "destino": "Giuffrida", "tiempo_seg": 181.028, "observacion": "con parada" },
+        { "origen": "Borgo", "destino": "Milo", "tiempo_seg": 110.051 },
+        { "origen": "Milo", "destino": "Cibali", "tiempo_seg": 118.167 },
+        { "origen": "Cibali", "destino": "San Nullo", "tiempo_seg": 97.826 },
+        { "origen": "San Nullo", "destino": "Nesima", "tiempo_seg": 156.949 }
+      ],
+      "trayectos_vuelta": [
+        { "origen": "Nesima", "destino": "San Nullo", "tiempo_seg": 131.380 },
+        { "origen": "San Nullo", "destino": "Cibali", "tiempo_seg": 111.579 },
+        { "origen": "Cibali", "destino": "Milo", "tiempo_seg": 140.744 },
+        { "origen": "Milo", "destino": "Borgo", "tiempo_seg": 131.047 },
+        { "origen": "Borgo", "destino": "Italia", "tiempo_seg": 181.418, "observacion": "sin parada" },
+        { "origen": "Italia", "destino": "Galatea", "tiempo_seg": 94.260 },
+        { "origen": "Galatea", "destino": "Giovanni XXIII", "tiempo_seg": 156.747 },
+        { "origen": "Giovanni XXIII", "destino": "Stesicoro", "tiempo_seg": 141.324 }
+      ]
+    },
+    {
+      "id": "20260408_miercoles_1140",
+      "fecha": "2026-04-08",
+      "dia_semana": "miercoles",
+      "hora": "11:40",
+      "ocupacion": 0.3,
+      "observacion": "hora valle",
+      "trayectos_ida": [
+        { "origen": "Stesicoro", "destino": "Giovanni XXIII", "tiempo_seg": 134 },
+        { "origen": "Giovanni XXIII", "destino": "Galatea", "tiempo_seg": 136 },
+        { "origen": "Galatea", "destino": "Italia", "tiempo_seg": 80 }
+      ],
+      "trayectos_vuelta": []
+    },
+    {
+      "id": "20260408_miercoles_1200",
+      "fecha": "2026-04-08",
+      "dia_semana": "miercoles",
+      "hora": "12:00",
+      "ocupacion": 0.3,
+      "observacion": "hora valle",
+      "trayectos_ida": [],
+      "trayectos_vuelta": [
+        { "origen": "Italia", "destino": "Galatea", "tiempo_seg": 130 },
+        { "origen": "Galatea", "destino": "Giovanni XXIII", "tiempo_seg": 158.649 },
+        { "origen": "Giovanni XXIII", "destino": "Stesicoro", "tiempo_seg": 140.626 }
+      ]
     }
   ]
 }
