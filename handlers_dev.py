@@ -737,7 +737,7 @@ async def handle_button(update, context):
         await update.message.reply_text("Scelta non valida. Usa i pulsanti.", reply_markup=keyboard_main)
 
 
-"""
+
 async def test_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     args = context.args
     if not args:
@@ -811,9 +811,9 @@ async def test_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await send_station_response(update, context, station, return_to_main=False)
         return
     await update.message.reply_text("Comando non riconosciuto. Usa /test DDMMYYYY HHMM o /test DDMMYYYY HHMM X")
-"""
 
-"""
+
+
 async def testfin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if context.chat_data and 'test_time' in context.chat_data:
         del context.chat_data['test_time']
@@ -826,7 +826,7 @@ async def cmd_auto(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("⚠️ L'auto-refresh non è più attivo. Non c'è nulla da fermare.")
-"""
+
 # ============================================================================
 # DETECCIÓN DE NOMBRE DE ESTACIÓN EN MODO NORMAL (SOLO GALATEA PARA PRUEBA)
 # ============================================================================
