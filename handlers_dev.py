@@ -289,7 +289,7 @@ async def send_messages_2_and_3(update: Update, estacion_key: str, now: datetime
     await asyncio.sleep(0.1)
     
     # SOLO para estaciones intermedias (excluye montepo y stesicoro) se muestra el botón en msg3
-    if estacion_key not in ["montepo", "stesicoro"] and show_button:
+    if estacion_key not in ["montepo", "stesicoro"]:
         keyboard_inline = InlineKeyboardMarkup([
             [InlineKeyboardButton("🔄 Aggiornare", callback_data=f"aggiornare_{estacion_key}")]
         ])
