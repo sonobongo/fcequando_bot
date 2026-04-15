@@ -194,7 +194,7 @@ async def acc_try_activate(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if context.chat_data.get('accessibility_mode', False):
         return
     text = update.message.text.strip().lower()
-    if text.startswith("ac"):
+    if text.startswith("acces"):
         await cmd_accesibilidad(update, context)
 
 # ============================================================================
