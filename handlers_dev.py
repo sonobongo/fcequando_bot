@@ -265,6 +265,12 @@ async def send_message_3(update: Update, msg: str, current_station_key: str, tie
     msg = clean_text_for_display(msg)
     if msg is None:
         return None
+    
+    # Caso especial: ningún tren en dirección Stesicoro
+    if "nessun treno in arrivo al momento" in msg:
+        msg = msg.replace("nessun treno in arrivo al momento", "Il servizio è terminato")
+        return await update.message.reply_text(msg, parse_mode='Markdown', reply_markup=reply_markup)
+    
     if tiempo_restante is not None and (tiempo_restante <= 90 or mins <= 1):
         img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_trenoarriva.png"
         cache_buster = int(time_module.time())
