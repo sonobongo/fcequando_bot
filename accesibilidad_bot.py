@@ -49,7 +49,7 @@ def get_station_by_prefix(text: str) -> tuple:
     import unicodedata
     text = unicodedata.normalize('NFKD', text).encode('ASCII', 'ignore').decode('ASCII')
     
-    # Prefijos (ordenados de más largo a más corto)
+    # Prefijos (ordenados de más largo a más corto) - SECRETOS
     prefijos = [
         ("monte", "montepo"), ("mon", "montepo"),
         ("fontana", "fontana"), ("font", "fontana"), ("fon", "fontana"),
@@ -162,27 +162,15 @@ async def acc_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 # ============================================================================
-# COMANDO PARA ACTIVAR MODO ACCESIBILIDAD
+# COMANDO PARA ACTIVAR MODO ACCESIBILIDAD (SIN REVELAR PREFIJOS)
 # ============================================================================
 async def cmd_accesibilidad(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Activa el modo accesibilidad (entrada por texto con prefijos secretos)."""
     context.chat_data['accessibility_mode'] = True
     await update.message.reply_text(
         "♿ Modalità accessibilità attivata.\n\n"
-        "Puoi scrivere o dire in voce il nome della stazione o anche solo l'inizio:\n"
-        "• 'mon' per Monte Po\n"
-        "• 'fon' per Fontana\n"
-        "• 'nes' per Nesima\n"
-        "• 'san' per San Nullo\n"
-        "• 'cib' per Cibali\n"
-        "• 'mil' per Milo\n"
-        "• 'bor' per Borgo\n"
-        "• 'giu' per Giuffrida\n"
-        "• 'ita' per Italia\n"
-        "• 'gal' per Galatea\n"
-        "• 'gio' per Giovanni XXIII\n"
-        "• 'ste' per Stesicoro\n\n"
-        "Esempio: scrivi 'mon' e ti mostrerò le informazioni di Monte Po.\n\n"
+        "Puoi scrivere o dire in voce il nome della stazione che desideri consultare.\n"
+        "Esempio: scrivi 'Monte Po' o 'Galatea'.\n\n"
         "Per uscire dalla modalità, scrivi /uscire.",
         parse_mode=None
     )
@@ -194,13 +182,7 @@ async def cmd_uscire(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Desactiva el modo accesibilidad y vuelve al modo normal (con teclado principal)."""
     if context.chat_data.get('accessibility_mode', False):
         context.chat_data['accessibility_mode'] = False
-        # El teclado principal se define en el bot principal, pero podemos enviar un mensaje de confirmación
-        await update.message.reply_text(
-            "✅ Modalità accessibilità disattivata. Sei tornato al menu principale."
-        )
-        # Opcional: aquí podrías enviar el teclado normal si lo tienes importado
-        # from handlers import keyboard_main
-        # await update.message.reply_text("Menu principale:", reply_markup=keyboard_main)
+        await update.message.reply_text("✅ Modalità accessibilità disattivata. Sei tornato al menu principale.")
     else:
         await update.message.reply_text("⚠️ Non sei in modalità accessibilità.")
 
@@ -217,5 +199,4 @@ async def acc_try_activate(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ============================================================================
 # NOTA: La función build_temporary_messages y NOMBRE_MOSTRAR se importan de horarios_logic
-# Asegúrate de que horarios_logic.py contenga esas definiciones.
 # ============================================================================
