@@ -697,10 +697,6 @@ async def start(update, context):
     user = update.effective_user
     now = datetime.now(CATANIA_TZ)
     last_msg = get_last_train_message(now)
-    if "01:00" in last_msg:
-        last_msg = last_msg.replace("📌", "🕐")
-    elif "22:30" in last_msg:
-        last_msg = last_msg.replace("📌", "🕙")
     msg = await update.message.reply_text(
         f"Ciao {user.first_name}! 👋\n\n"
         "Premi i pulsanti o scrive Accessibilità ♿ per aprire il modo accessibile per tutti.\n\n"
@@ -719,12 +715,9 @@ async def help_command(update, context):
         "/milo - Prossimi treni a Milo\n"
         "/altri - Mostra altre stazioni\n"
         "/fontana, /nesima, /sannullo, /cibali, /borgo, /giuffrida, /italia, /galatea, /giovanni\n"
-        "/auto - Avvia aggiornamenti ogni 30 secondi (20 cicli)\n"
         "/stop - Ferma gli aggiornamenti automatici\n"
         "/test DDMMYYYY HHMM - Attiva modalità test\n"
-        "/test DDMMYYYY HHMM X - Test con 3 cicli (M, S, ML)\n"
         "/testfin - Disattiva modalità test\n"
-        "/testgif - Invia GIF di prova e lo cancella dopo 1 minuto\n\n"
         "Modalità accessibilità: /accessibilita\n\n"
         "Oppure premi i pulsanti.",
         reply_markup=keyboard_main
@@ -743,21 +736,8 @@ async def handle_button(update, context):
     else:
         await update.message.reply_text("Scelta non valida. Usa i pulsanti.", reply_markup=keyboard_main)
 
-async def cmd_testgif(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    gif_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_stesicoro_fontana.gif"
-    text_msg = (
-        "🚆 Prossimi treni a Nesima\n\n"
-        "🔺 Per Monte Po: Passa tra 3 minuti.\n"
-        "   [il treno si trova attualmente a Monte Po]"
-    )
-    await update.message.reply_text(text_msg)
-    gif_message = await update.message.reply_animation(animation=gif_url)
-    await asyncio.sleep(60)
-    try:
-        await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=gif_message.message_id)
-    except Exception as e:
-        print(f"Error al borrar el GIF: {e}")
 
+"""
 async def test_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     args = context.args
     if not args:
@@ -831,7 +811,9 @@ async def test_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await send_station_response(update, context, station, return_to_main=False)
         return
     await update.message.reply_text("Comando non riconosciuto. Usa /test DDMMYYYY HHMM o /test DDMMYYYY HHMM X")
+"""
 
+"""
 async def testfin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if context.chat_data and 'test_time' in context.chat_data:
         del context.chat_data['test_time']
@@ -844,7 +826,7 @@ async def cmd_auto(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("⚠️ L'auto-refresh non è più attivo. Non c'è nulla da fermare.")
-
+"""
 # ============================================================================
 # DETECCIÓN DE NOMBRE DE ESTACIÓN EN MODO NORMAL (SOLO GALATEA PARA PRUEBA)
 # ============================================================================
@@ -873,14 +855,5 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await send_station_response(update, context, "galatea", return_to_main=True)
         return
     
-    # 3. Variante "galaxia"
-    if "galaxia" in text_norm:
-        print(">>> [DEBUG] Matched 'galaxia' anywhere")
-        await send_station_response(update, context, "galatea", return_to_main=True)
-        return
     
-    print(">>> [DEBUG] No match")
-    await update.message.reply_text(
-        "Stazione non riconosciuta. Prova con 'galatea'.",
-        reply_markup=keyboard_main
-    )
+  
