@@ -315,27 +315,35 @@ async def auto_clean_and_restart(update: Update, context: ContextTypes.DEFAULT_T
     await asyncio.sleep(20 * 60)
     chat_id = update.effective_chat.id
     
+    # IDs de mensajes a borrar (todos excepto el de bienvenida)
     msg_ids = []
     if 'main_msg_id' in context.chat_data:
         msg_ids.append(context.chat_data['main_msg_id'])
     if 'refresh_msg_ids' in context.chat_data:
         msg_ids.extend(context.chat_data['refresh_msg_ids'])
+    if 'bus_msg_id' in context.chat_data:
+        msg_ids.append(context.chat_data['bus_msg_id'])
+    
+    welcome_id = context.chat_data.get('welcome_msg_id')
     
     for mid in msg_ids:
+        if mid == welcome_id:
+            continue
         try:
             await context.bot.delete_message(chat_id=chat_id, message_id=mid)
         except Exception:
             pass
     
+    # Conservar modo dev y el ID del mensaje de bienvenida
+    dev_mode = context.chat_data.get('dev_mode', False)
+    welcome_id = context.chat_data.get('welcome_msg_id')
     context.chat_data.clear()
+    if dev_mode:
+        context.chat_data['dev_mode'] = True
+    if welcome_id:
+        context.chat_data['welcome_msg_id'] = welcome_id
     
-    from handlers_dev import start
-    fake_update = type('Update', (), {
-        'message': update.message,
-        'effective_chat': update.effective_chat,
-        'effective_user': update.effective_user
-    })()
-    await start(fake_update, context)
+    # NO se envía ningún mensaje de aviso
 
 def schedule_cleanup(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if 'cleanup_task' in context.chat_data:
@@ -639,13 +647,14 @@ async def start(update, context):
         last_msg = last_msg.replace("📌", "🕐")
     elif "22:30" in last_msg:
         last_msg = last_msg.replace("📌", "🕙")
-    await update.message.reply_text(
+    msg = await update.message.reply_text(
         f"Ciao {user.first_name}! 👋\n\n"
-        "Quando arriva la metropolitana di Catania?\n"
-        "Premi o usa i comandi /accessibilita ♿ per aprire il modo accessibile per tutti.\n\n"
+        "Premi i pulsanti o scrive Accessibilità ♿ per aprire il modo accessibile per tutti.\n\n"
         f"{last_msg}",
         reply_markup=keyboard_main
     )
+    # Guardar el ID del mensaje de bienvenida para no borrarlo después
+    context.chat_data['welcome_msg_id'] = msg.message_id
 async def help_command(update, context):
     await update.message.reply_text(
         "Comandi disponibili:\n"
