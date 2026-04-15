@@ -85,24 +85,38 @@ def get_measured_travel_time(origen: str, destino: str, direccion: str, now: dat
 # TIEMPOS BASE ENTRE ESTACIONES (en segundos) - valores reales promediados
 # ============================================================================
 FORWARD_PEAK = [
-    ("montepo", "fontana", 110), ("fontana", "nesima", 112),
-    ("nesima", "sannullo", 133), ("sannullo", "cibali", 106),
-    ("cibali", "milo", 124), ("milo", "borgo", 131),
-    ("borgo", "giuffrida", 109), ("giuffrida", "italia", 96),
-    ("italia", "galatea", 93), ("galatea", "giovanni", 166),
+    ("montepo", "fontana", 109),    # redondeado
+    ("fontana", "nesima", 111),
+    ("nesima", "sannullo", 143),
+    ("sannullo", "cibali", 115),
+    ("cibali", "milo", 118),
+    ("milo", "borgo", 120),
+    ("borgo", "giuffrida", 112),
+    ("giuffrida", "italia", 85),
+    ("italia", "galatea", 91),
+    ("galatea", "giovanni", 157),
     ("giovanni", "stesicoro", 139)
 ]
 
 REVERSE_PEAK = [
-    ("stesicoro", "giovanni", 138), ("giovanni", "galatea", 150),
-    ("galatea", "italia", 87), ("italia", "giuffrida", 176),
-    ("giuffrida", "borgo", 92), ("borgo", "milo", 115),
-    ("milo", "cibali", 133), ("cibali", "sannullo", 109),
-    ("sannullo", "nesima", 132), ("nesima", "fontana", 99),
-    ("fontana", "montepo", 98)
+    ("stesicoro", "giovanni", 136),
+    ("giovanni", "galatea", 161),
+    ("galatea", "italia", 112),
+    ("italia", "giuffrida", 106),
+    ("giuffrida", "borgo", 119),
+    ("borgo", "milo", 116),
+    ("milo", "cibali", 123),
+    ("cibali", "sannullo", 104),
+    ("sannullo", "nesima", 140),
+    ("nesima", "fontana", 100),
+    ("fontana", "montepo", 99)
 ]
 
-EXTRA_TRAMOS_FORWARD = [("milo","borgo"), ("borgo","giuffrida"), ("giuffrida","italia"), ("italia","galatea"), ("galatea","giovanni")]
+EXTRA_TRAMOS_FORWARD = [
+    ("milo","borgo"), ("borgo","giuffrida"), ("giuffrida","italia"),
+    ("italia","galatea"), ("galatea","giovanni")
+]
+
 EXTRA_TRAMOS_REVERSE = [
     ("giovanni", "galatea"), ("galatea", "italia"), ("italia", "giuffrida"),
     ("giuffrida", "borgo"), ("borgo", "milo"), ("milo", "cibali"),
