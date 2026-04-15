@@ -841,15 +841,15 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
         print(">>> [DEBUG] Matched prefix 'gal' at start")
         await send_station_response(update, context, "galatea", return_to_main=True)
         return
-
-# 3. Variante "galaxia" en cualquier parte
-if "galaxia" in text_norm:
-    print(">>> [DEBUG] Matched 'galaxia' anywhere")
-    await send_station_response(update, context, "galatea", return_to_main=True)
-    return
-
-print(">>> [DEBUG] No match")
-await update.message.reply_text(
-    "Stazione non riconosciuta. Prova con 'galatea'.",
-    reply_markup=keyboard_main
-)
+    
+    # 3. Reconocer variante "galaxia" en cualquier parte
+    if "galaxia" in text_norm:
+        print(">>> [DEBUG] Matched 'galaxia' anywhere")
+        await send_station_response(update, context, "galatea", return_to_main=True)
+        return
+    
+    print(">>> [DEBUG] No match")
+    await update.message.reply_text(
+        "Stazione non riconosciuta. Prova con 'galatea'.",
+        reply_markup=keyboard_main
+    )
