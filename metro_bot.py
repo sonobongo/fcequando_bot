@@ -164,6 +164,11 @@ def main():
             await dev_handlers.aggiornare_callback(update, context)
         else:
             await normal_handlers.aggiornare_callback(update, context)
+    async def acc_aggiornare_callback_wrapper(update, context):
+        if is_dev_mode(context):
+            await dev_handlers.acc_aggiornare_callback(update, context)
+        else:
+            await normal_handlers.acc_aggiornare_callback(update, context)
 
     # Wrapper para el callback de cabeceras (Monte Po y Stesicoro)
     async def aggiornare_cabecera_callback_wrapper(update, context):
@@ -208,16 +213,21 @@ def main():
         app.add_handler(CommandHandler(cmd, handler))
 
     # Comandos accesibilidad
-    app.add_handler(CommandHandler("accessibilita", acc_wrapper))
-    app.add_handler(CommandHandler("accesibilidad", acc_wrapper))
+    acc_commands = [
+        ("accessibilita", acc_wrapper), ("accesibilidad", acc_wrapper),
+        ("aMontepo", acc_station_wrapper), ("aStesicoro", acc_station_wrapper),
+        ("aFontana", acc_station_wrapper), ("aNesima", acc_station_wrapper),
+        ("aSanNullo", acc_station_wrapper), ("aCibali", acc_station_wrapper),
+        ("aMilo", acc_station_wrapper), ("aBorgo", acc_station_wrapper),
+        ("aGiuffrida", acc_station_wrapper), ("aItalia", acc_station_wrapper),
+        ("aGalatea", acc_station_wrapper), ("aGiovanni", acc_station_wrapper)
+    ]
+    for cmd, handler in acc_commands:
+        app.add_handler(CommandHandler(cmd, handler))
 
-    # Comando para salir del modo accesibilidad
-    async def uscire_wrapper(update, context):
-        if is_dev_mode(context):
-            await dev_handlers.cmd_uscire(update, context)
-        else:
-            await update.message.reply_text("Modalità accessibilità non attiva.")
-    app.add_handler(CommandHandler("uscire", uscire_wrapper))
+    # Comandos desarrollo
+    app.add_handler(CommandHandler("dev", dev_mode_wrapper))
+    app.add_handler(CommandHandler("devfin", dev_fin_wrapper))
 
     # Teclados (ReplyKeyboardMarkup) para modo normal
     button_texts = ["Monte Po", "Stesicoro", "Altri", "← Menu", "Fontana", "Nesima", "San Nullo",
@@ -227,21 +237,7 @@ def main():
     # Callbacks
     app.add_handler(CallbackQueryHandler(aggiornare_callback_wrapper, pattern="^aggiornare_"))
     app.add_handler(CallbackQueryHandler(aggiornare_cabecera_callback_wrapper, pattern="^agg_cabecera_"))
-
-    # ========================================================================
-    # MANEJADORES DE TEXTO EN ORDEN PRIORITARIO
-    # ========================================================================
-    # 1. Activación rápida de accesibilidad (si el texto empieza con "ac")
-    if hasattr(dev_handlers, 'acc_try_activate'):
-        app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, dev_handlers.acc_try_activate))
-
-    # 2. Manejador de texto para modo normal (busca nombres completos de estación)
-    if hasattr(dev_handlers, 'normal_handle_text'):
-        app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, dev_handlers.normal_handle_text))
-
-    # 3. Manejador de texto para modo accesibilidad (prefijos y comandos especiales)
-    if hasattr(dev_handlers, 'acc_handle_text'):
-        app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, dev_handlers.acc_handle_text))
+    app.add_handler(CallbackQueryHandler(acc_aggiornare_callback_wrapper, pattern="^acc_aggiornare_"))
 
     logger.info("Bot avviato.")
     print("Bot funzionante... In attesa di messaggi.")
