@@ -1,10 +1,33 @@
 import asyncio
 import time as time_module
+import json
+import os
 from datetime import datetime, timedelta
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove
 from telegram.ext import ContextTypes
 from horarios_logic import *
 from horarios_logic import CATANIA_TZ
+
+# ============================================================================
+# CARGAR VARIANTES DE ESTACIONES DESDE JSON
+# ============================================================================
+def load_station_variants():
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    json_path = os.path.join(script_dir, 'variantes_estaciones.json')
+    if os.path.exists(json_path):
+        with open(json_path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    else:
+        # Fallback: solo Galatea (modo prueba)
+        return {
+            "galatea": {
+                "nombre": "Galatea",
+                "variantes": ["galatea", "galaxia", "galate", "galat"],
+                "prefijo": "gal"
+            }
+        }
+
+STATION_VARIANTS = load_station_variants()
 
 # ============================================================================
 # TECLADOS
@@ -839,31 +862,34 @@ async def cmd_stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("⚠️ L'auto-refresh non è più attivo. Non c'è nulla da fermare.")
 
 # ============================================================================
-# DETECCIÓN DE NOMBRE DE ESTACIÓN EN MODO NORMAL (SOLO GALATEA PARA PRUEBA)
+# DETECCIÓN DE NOMBRE DE ESTACIÓN EN MODO NORMAL (USANDO JSON)
 # ============================================================================
 async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Maneja mensajes de texto en modo normal: SOLO RECONOCE GALATEA (modo prueba)."""
+    """Reconoce estaciones según el diccionario JSON (nombres, variantes, prefijos al inicio)."""
     if context.chat_data.get('accessibility_mode', False):
         return
     
-    text = update.message.text.strip().lower()
-    # Normalizar tildes
+    text = update.message.text.strip()
+    # Normalizar: minúsculas, eliminar tildes
     import unicodedata
-    text_norm = unicodedata.normalize('NFKD', text).encode('ASCII', 'ignore').decode('ASCII')
+    text_norm = unicodedata.normalize('NFKD', text.lower()).encode('ASCII', 'ignore').decode('ASCII')
     
-    # Palabras que se consideran variantes de Galatea
-    variantes_galatea = ["galatea", "galaxia", "galate", "galat"]
+    # Recorrer todas las estaciones definidas
+    for key, data in STATION_VARIANTS.items():
+        # 1. Buscar nombre completo o variantes en cualquier parte del texto
+        for nombre in [data['nombre'].lower()] + data.get('variantes', []):
+            if nombre in text_norm:
+                await send_station_response(update, context, key, return_to_main=True)
+                return
+        # 2. Buscar prefijo de 3 letras solo al inicio del texto
+        prefijo = data.get('prefijo', '')
+        if prefijo and text_norm.startswith(prefijo):
+            await send_station_response(update, context, key, return_to_main=True)
+            return
     
-    encontrado = False
-    for variante in variantes_galatea:
-        if variante in text_norm:
-            encontrado = True
-            break
-    
-    if encontrado:
-        await send_station_response(update, context, "galatea", return_to_main=True)
-    else:
-        await update.message.reply_text(
-            "Stazione non riconosciuta. (Solo Galatea è riconosciuta in questa modalità di test).",
-            reply_markup=keyboard_main
-        )
+    # No reconocido
+    await update.message.reply_text(
+        "Stazione non riconosciuta. Le stazioni disponibili sono: " +
+        ", ".join([data['nombre'] for data in STATION_VARIANTS.values()]) + ".",
+        reply_markup=keyboard_main
+    )
