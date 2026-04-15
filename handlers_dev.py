@@ -838,53 +838,40 @@ async def cmd_stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # DETECCIÓN DE NOMBRE DE ESTACIÓN EN MODO NORMAL (USANDO JSON)
 # ============================================================================
 async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    print(">>> [DEBUG] normal_handle_text called")
+    print(">>> [DEBUG] normal_handle_text llamado")
     if context.chat_data.get('accessibility_mode', False):
-        print(">>> [DEBUG] accessibility_mode active, exiting")
+        print(">>> [DEBUG] modo accesibilidad activo, saliendo")
         return
     
-    text = update.message.text.strip()
-    print(f">>> [DEBUG] Original text: {text}")
+    texto = update.message.text.strip()
+    print(f">>> [DEBUG] Texto original: {texto}")
     
     import unicodedata
-    text_norm = unicodedata.normalize('NFKD', text.lower()).encode('ASCII', 'ignore').decode('ASCII')
-    print(f">>> [DEBUG] Normalized: {text_norm}")
+    # Normalizar: minúsculas + quitar tildes
+    texto_norm = unicodedata.normalize('NFKD', texto.lower()).encode('ASCII', 'ignore').decode('ASCII')
+    print(f">>> [DEBUG] Texto normalizado: {texto_norm}")
     
-    if not STATION_CONFIG:
-        print(">>> [DEBUG] STATION_CONFIG empty")
-        await update.message.reply_text("Configuración no cargada.")
+    # 1. Reconocer "galatea" en cualquier parte del mensaje
+    if "galatea" in texto_norm:
+        print(">>> [DEBUG] Coincidencia con 'galatea' en cualquier lugar")
+        await send_station_response(update, context, "galatea", return_to_main=True)
         return
     
-    for key, data in STATION_CONFIG.items():
-        nombre = data['nombre'].lower()
-        variantes = [v.lower() for v in data.get('variantes', [])]
-        prefijo = data.get('prefijo', '').lower()
-        reglas = data.get('reglas', {})
-        
-        # 1. Nombre completo en cualquier parte
-        if reglas.get('nombre_completo_en_cualquier_parte', False):
-            if nombre in text_norm:
-                print(f">>> [DEBUG] Matched by nombre '{nombre}' anywhere")
-                await send_station_response(update, context, key, return_to_main=True)
-                return
-        
-        # 2. Variante solo al inicio
-        if reglas.get('variante_solo_al_inicio', False):
-            for var in variantes:
-                if text_norm.startswith(var):
-                    print(f">>> [DEBUG] Matched by variante '{var}' at start")
-                    await send_station_response(update, context, key, return_to_main=True)
-                    return
-        
-        # 3. Prefijo solo al inicio
-        if reglas.get('prefijo_solo_al_inicio', False) and prefijo:
-            if text_norm.startswith(prefijo):
-                print(f">>> [DEBUG] Matched by prefijo '{prefijo}' at start")
-                await send_station_response(update, context, key, return_to_main=True)
-                return
+    # 2. Reconocer el prefijo secreto "gal" solo al inicio del mensaje
+    if texto_norm.startswith("gal"):
+        print(">>> [DEBUG] Coincidencia con prefijo 'gal' al inicio")
+        await send_station_response(update, context, "galatea", return_to_main=True)
+        return
     
-    print(">>> [DEBUG] No match")
+    # 3. Variante "galaxia" en cualquier parte
+    if "galaxia" in texto_norm:
+        print(">>> [DEBUG] Coincidencia con 'galaxia' en cualquier lugar")
+        await send_station_response(update, context, "galatea", return_to_main=True)
+        return
+    
+    # Si no hay coincidencia
+    print(">>> [DEBUG] Sin coincidencia")
     await update.message.reply_text(
-        "Stazione non riconosciuta. Prova con 'galatea'.",
+        "Estación no reconocida. Prueba con 'galatea'.",
         reply_markup=keyboard_main
     )
