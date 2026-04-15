@@ -322,7 +322,7 @@ async def send_messages_2_and_3(update: Update, estacion_key: str, now: datetime
         ])
         
         async def add_button_later():
-            await asyncio.sleep(5)
+            await asyncio.sleep(3)
             try:
                 await msg3_obj.edit_reply_markup(reply_markup=keyboard_inline)
             except Exception as e:
