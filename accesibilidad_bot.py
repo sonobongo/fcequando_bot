@@ -1,7 +1,7 @@
 import asyncio
 import time as time_module
 from datetime import datetime, timedelta
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update
 from telegram.ext import ContextTypes
 from horarios_logic import *
 from horarios_logic import CATANIA_TZ
@@ -40,61 +40,25 @@ def clean_for_accessibility(text: str) -> str:
     text = ' '.join(text.split())
     return text
 
-def get_station_by_prefix(text: str) -> tuple:
+def get_station_by_name(text: str) -> tuple:
     """
-    Devuelve (clave_estacion, nombre_mostrar) si el texto comienza con un prefijo conocido
-    o si coincide con el nombre completo. Los prefijos son secretos (no se muestran al usuario).
+    Busca el nombre completo de la estación en el texto (ignorando mayúsculas/minúsculas y tildes).
+    Devuelve (clave_estacion, nombre_mostrar) o (None, None).
     """
     text = text.lower().strip()
     import unicodedata
     text = unicodedata.normalize('NFKD', text).encode('ASCII', 'ignore').decode('ASCII')
     
-    # Prefijos (ordenados de más largo a más corto) - SECRETOS
-    prefijos = [
-        ("monte", "montepo"), ("mon", "montepo"),
-        ("fontana", "fontana"), ("font", "fontana"), ("fon", "fontana"),
-        ("nesima", "nesima"), ("nes", "nesima"),
-        ("san nullo", "sannullo"), ("san", "sannullo"), ("sann", "sannullo"),
-        ("cibali", "cibali"), ("cib", "cibali"),
-        ("milo", "milo"), ("mil", "milo"),
-        ("borgo", "borgo"), ("bor", "borgo"),
-        ("giuffrida", "giuffrida"), ("giu", "giuffrida"),
-        ("italia", "italia"), ("ita", "italia"),
-        ("galatea", "galatea"), ("gal", "galatea"),
-        ("giovanni", "giovanni"), ("gio", "giovanni"), ("giov", "giovanni"),
-        ("stesicoro", "stesicoro"), ("stes", "stesicoro"), ("ste", "stesicoro")
-    ]
-    
-    for prefijo, clave in prefijos:
-        if text.startswith(prefijo):
-            return clave, NOMBRE_MOSTRAR.get(clave, clave.capitalize())
-    
-    # Si no hay prefijo, intentar coincidencia exacta (nombre completo)
-    mapping = {
-        "monte po": "montepo", "montepo": "montepo",
-        "stesicoro": "stesicoro",
-        "fontana": "fontana",
-        "nesima": "nesima",
-        "san nullo": "sannullo", "sannullo": "sannullo",
-        "cibali": "cibali",
-        "milo": "milo",
-        "borgo": "borgo",
-        "giuffrida": "giuffrida",
-        "italia": "italia",
-        "galatea": "galatea",
-        "giovanni xxiii": "giovanni", "giovanni": "giovanni"
-    }
-    if text in mapping:
-        clave = mapping[text]
-        return clave, NOMBRE_MOSTRAR.get(clave, clave.capitalize())
-    
+    for key, nombre in NOMBRE_MOSTRAR.items():
+        if nombre.lower() == text:
+            return key, nombre
     return None, None
 
 # ============================================================================
 # FUNCIÓN PRINCIPAL PARA ENVIAR INFORMACIÓN DE ESTACIÓN (MODO ACCESIBLE)
 # ============================================================================
 async def acc_send_station_info(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str):
-    """Envía la información de una estación en modo accesibilidad (sin borrar mensajes anteriores)."""
+    """Envía la información de una estación en modo accesibilidad (sin botón)."""
     simulated = context.chat_data.get('test_time')
     if simulated:
         if simulated.tzinfo is None:
@@ -121,19 +85,22 @@ async def acc_send_station_info(update: Update, context: ContextTypes.DEFAULT_TY
     cache_buster = int(time_module.time())
     img_url = f"{img_url}?v={cache_buster}"
     
-    # Enviar mensajes
+    # Enviar foto (Mensaje 1)
     await update.message.reply_photo(photo=img_url, caption=f"Stazione {nombre}", parse_mode=None)
+    # Enviar descripción (Mensaje 1 bis, pero la foto ya lleva el nombre)
     await update.message.reply_text(descripcion, parse_mode=None)
+    # Enviar horarios (Mensaje 2 y 3) sin botón
     await update.message.reply_text(f"Prossimi treni verso Monte Po:\n{msg2_clean}", parse_mode=None)
     await update.message.reply_text(f"Prossimi treni verso Stesicoro:\n{msg3_clean}", parse_mode=None)
     
-    # Instrucciones finales (sin revelar el truco de los prefijos)
-    instrucciones = (
-        "Digita o detta la stazione che desideri controllare; se desideri aggiornare la stazione corrente, ripeti l'operazione.\n"
-        "Scegli: Monte Po, Fontana, Nesima, San Nullo, Cibali, Milo, Borgo, Giuffrida, Italia, Galatea, Giovanni XXIII, Stesicoro.\n"
-        "Per uscire dalla modalità accessibilità, scrivi /uscire."
+    # Mensaje 4: lista de estaciones e instrucción de salida
+    lista_estaciones = ", ".join(NOMBRE_MOSTRAR.values())
+    mensaje4 = (
+        f"Scegli la stazione che desideri consultare o aggiornare.\n"
+        f"{lista_estaciones}\n\n"
+        "Scrivi 'Uscire' per tornare alla modalità basica."
     )
-    await update.message.reply_text(instrucciones, parse_mode=None)
+    await update.message.reply_text(mensaje4, parse_mode=None)
 
 # ============================================================================
 # MANEJADOR DE TEXTO PARA MODO ACCESIBILIDAD
@@ -144,34 +111,35 @@ async def acc_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     text = update.message.text.strip()
-    # Salir si el usuario escribe /uscire o palabras similares
+    # Salir si el usuario escribe "Uscire" o "/uscire" (insensible a mayúsculas)
     if text.lower() in ["/uscire", "uscire", "exit", "salir"]:
         await cmd_uscire(update, context)
         return
     
-    # Buscar estación por prefijo o nombre
-    estacion_key, nombre_estacion = get_station_by_prefix(text)
+    # Buscar estación por nombre completo
+    estacion_key, nombre_estacion = get_station_by_name(text)
     if estacion_key:
         await update.message.reply_text(f"Hai scelto {nombre_estacion}. Ecco le informazioni:")
         await acc_send_station_info(update, context, estacion_key)
     else:
         await update.message.reply_text(
-            "Stazione non riconosciuta. Le stazioni disponibili sono:\n"
-            "Monte Po, Fontana, Nesima, San Nullo, Cibali, Milo, Borgo, Giuffrida, Italia, Galatea, Giovanni XXIII, Stesicoro\n\n"
-            "Per uscire dalla modalità accessibilità, scrivi /uscire"
+            "Stazione non riconosciuta. Le stazioni disponibili sono:\n" +
+            ", ".join(NOMBRE_MOSTRAR.values()) + "\n\nPer uscire, scrivi 'Uscire'."
         )
 
 # ============================================================================
-# COMANDO PARA ACTIVAR MODO ACCESIBILIDAD (SIN REVELAR PREFIJOS)
+# COMANDO PARA ACTIVAR MODO ACCESIBILIDAD
 # ============================================================================
 async def cmd_accesibilidad(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Activa el modo accesibilidad (entrada por texto con prefijos secretos)."""
+    """Activa el modo accesibilidad."""
     context.chat_data['accessibility_mode'] = True
+    lista_estaciones = ", ".join(NOMBRE_MOSTRAR.values())
     await update.message.reply_text(
         "♿ Modalità accessibilità attivata.\n\n"
-        "Puoi scrivere o dire in voce il nome della stazione che desideri consultare.\n"
-        "Esempio: scrivi 'Monte Po' o 'Galatea'.\n\n"
-        "Per uscire dalla modalità, scrivi /uscire.",
+        "Scrivi il nome della stazione che desideri consultare.\n"
+        f"Esempio: 'Monte Po' o 'Galatea'.\n\n"
+        f"Stazioni disponibili: {lista_estazioni}\n\n"
+        "Per uscire, scrivi 'Uscire'.",
         parse_mode=None
     )
 
@@ -179,7 +147,7 @@ async def cmd_accesibilidad(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # COMANDO PARA SALIR DEL MODO ACCESIBILIDAD
 # ============================================================================
 async def cmd_uscire(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Desactiva el modo accesibilidad y vuelve al modo normal (con teclado principal)."""
+    """Desactiva el modo accesibilidad y vuelve al modo normal."""
     if context.chat_data.get('accessibility_mode', False):
         context.chat_data['accessibility_mode'] = False
         await update.message.reply_text("✅ Modalità accessibilità disattivata. Sei tornato al menu principale.")
@@ -187,16 +155,12 @@ async def cmd_uscire(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⚠️ Non sei in modalità accessibilità.")
 
 # ============================================================================
-# ACTIVACIÓN RÁPIDA ESCRIBIENDO "ac..."
+# ACTIVACIÓN RÁPIDA ESCRIBIENDO "acces..."
 # ============================================================================
 async def acc_try_activate(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Si el texto empieza con 'ac' (case-insensitive) y la accesibilidad no está activa, la activa."""
+    """Si el texto empieza con 'acces' (case-insensitive) y la accesibilidad no está activa, la activa."""
     if context.chat_data.get('accessibility_mode', False):
         return
     text = update.message.text.strip().lower()
     if text.startswith("acces"):
         await cmd_accesibilidad(update, context)
-
-# ============================================================================
-# NOTA: La función build_temporary_messages y NOMBRE_MOSTRAR se importan de horarios_logic
-# ============================================================================
