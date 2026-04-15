@@ -76,7 +76,7 @@ def get_bus_message_montepo_advanced(now: datetime) -> str:
     return ""
 
 # ============================================================================
-# CONSTRUCCIÓN DE MENSAJES TEMPORALES (msg2 y msg3) - SIN CAMBIOS
+# CONSTRUCCIÓN DE MENSAJES TEMPORALES (msg2 y msg3)
 # ============================================================================
 def build_temporary_messages(now: datetime, estacion_key: str):
     info_mp, info_st = get_next_train_at_station(now, estacion_key)
@@ -230,19 +230,19 @@ async def send_gif(update: Update, msg: str, gif_url: str):
     try:
         return await update.message.reply_animation(animation=gif_url, caption=msg, parse_mode='Markdown')
     except Exception:
-                    return await send_default(update, msg, reply_markup=reply_markup)
+        return await send_default(update, msg)
 
 async def send_default(update: Update, msg: str, reply_markup=None):
     img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_default.png"
     cache_buster = int(time_module.time())
     img_url = f"{img_url}?v={cache_buster}"
     try:
-        return await update.message.reply_photo(photo=img_url, caption=msg, parse_mode='Markdown')
+        return await update.message.reply_photo(photo=img_url, caption=msg, parse_mode='Markdown', reply_markup=reply_markup)
     except Exception:
-        return await update.message.reply_text(msg, parse_mode='Markdown')
+        return await update.message.reply_text(msg, parse_mode='Markdown', reply_markup=reply_markup)
 
 # ============================================================================
-# ENVÍO DE MENSAJE 2 y 3 - PARA ESTACIONES INTERMEDIAS (SIN CAMBIOS)
+# ENVÍO DE MENSAJE 2 y 3 - PARA ESTACIONES INTERMEDIAS
 # ============================================================================
 async def send_message_2(update: Update, msg: str, current_station_key: str, tiempo_restante: int, mins: int, estacion_key: str):
     msg = clean_text_for_display(msg)
@@ -275,9 +275,9 @@ async def send_message_3(update: Update, msg: str, current_station_key: str, tie
         try:
             return await update.message.reply_animation(animation=gif_url, caption=msg, parse_mode='Markdown', reply_markup=reply_markup)
         except Exception:
-            return await send_default(update, msg)
+            return await send_default(update, msg, reply_markup=reply_markup)
     else:
-        return await send_default(update, msg)
+        return await send_default(update, msg, reply_markup=reply_markup)
 
 # ============================================================================
 # FUNCIÓN PARA ENVIAR msg2 y msg3 (con o sin botón) - PARA INTERMEDIAS
@@ -288,7 +288,7 @@ async def send_messages_2_and_3(update: Update, estacion_key: str, now: datetime
     msg2_obj = await send_message_2(update, msg2, key_mp, time_mp, mins_mp, estacion_key)
     await asyncio.sleep(0.1)
     
-    # SOLO para estaciones intermedias (excluye montepo y stesicoro) se muestra el botón en msg3
+    # El botón aparece en todas las estaciones que no son cabeceras
     if estacion_key not in ["montepo", "stesicoro"]:
         keyboard_inline = InlineKeyboardMarkup([
             [InlineKeyboardButton("🔄 Aggiornare", callback_data=f"aggiornare_{estacion_key}")]
@@ -377,7 +377,7 @@ async def refresh_messages_only(update: Update, context: ContextTypes.DEFAULT_TY
     schedule_cleanup(update, context)
 
 # ============================================================================
-# CALLBACK PARA EL BOTÓN "AGGIORNARE" (estaciones intermedias) - SIN CAMBIOS
+# CALLBACK PARA EL BOTÓN "AGGIORNARE" (estaciones intermedias)
 # ============================================================================
 async def aggiornare_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -555,7 +555,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
         return
 
     # ========================================================================
-    # ESTACIONES INTERMEDIAS (NESIMA, SAN NULLO, ETC.) - SIN CAMBIOS
+    # ESTACIONES INTERMEDIAS (NESIMA, SAN NULLO, ETC.)
     # ========================================================================
     closed, next_open, special_closing_msg = is_metro_closed(now, "Montepo")
     if closed:
@@ -839,26 +839,31 @@ async def cmd_stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("⚠️ L'auto-refresh non è più attivo. Non c'è nulla da fermare.")
 
 # ============================================================================
-# DETECCIÓN DE NOMBRE DE ESTACIÓN EN MODO NORMAL (FUERA DE ACCESIBILIDAD)
+# DETECCIÓN DE NOMBRE DE ESTACIÓN EN MODO NORMAL (SOLO GALATEA PARA PRUEBA)
 # ============================================================================
 async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Maneja mensajes de texto en modo normal: busca el nombre completo de una estación en el texto."""
+    """Maneja mensajes de texto en modo normal: SOLO RECONOCE GALATEA (modo prueba)."""
     if context.chat_data.get('accessibility_mode', False):
         return
     
-    text = update.message.text.strip()
-    nombres = list(NOMBRE_MOSTRAR.values())
-    nombres.sort(key=len, reverse=True)
+    text = update.message.text.strip().lower()
+    # Normalizar tildes
+    import unicodedata
+    text_norm = unicodedata.normalize('NFKD', text).encode('ASCII', 'ignore').decode('ASCII')
     
-    for nombre in nombres:
-        if nombre.lower() in text.lower():
-            for key, value in NOMBRE_MOSTRAR.items():
-                if value == nombre:
-                    estacion_key = key
-                    await send_station_response(update, context, estacion_key, return_to_main=True)
-                    return
+    # Palabras que se consideran variantes de Galatea
+    variantes_galatea = ["galatea", "galaxia", "galate", "galat"]
     
-    await update.message.reply_text(
-        "Stazione non riconosciuta. Le stazioni disponibili sono: Monte Po, Fontana, Nesima, San Nullo, Cibali, Milo, Borgo, Giuffrida, Italia, Galatea, Giovanni XXIII, Stesicoro.",
-        reply_markup=keyboard_main
-    )
+    encontrado = False
+    for variante in variantes_galatea:
+        if variante in text_norm:
+            encontrado = True
+            break
+    
+    if encontrado:
+        await send_station_response(update, context, "galatea", return_to_main=True)
+    else:
+        await update.message.reply_text(
+            "Stazione non riconosciuta. (Solo Galatea è riconosciuta in questa modalità di test).",
+            reply_markup=keyboard_main
+        )
