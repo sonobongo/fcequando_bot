@@ -222,13 +222,13 @@ def main():
     # 1. Activación rápida de accesibilidad (si el texto empieza con "ac")
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, acc.acc_try_activate))
 
-    # 2. Manejador de texto para modo normal (busca nombres completos de estación)
+    # 2. Manejador de texto para modo accesibilidad (prefijos y comandos especiales)
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, acc.acc_handle_text))
+
+    # 3. Manejador de texto para modo normal (busca nombres completos de estación)
     #    Este manejador comprueba internamente si accessibility_mode está activo
     if hasattr(dev_handlers, 'normal_handle_text'):
         app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, dev_handlers.normal_handle_text))
-
-    # 3. Manejador de texto para modo accesibilidad (prefijos y comandos especiales)
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, acc.acc_handle_text))
 
     logger.info("Bot avviato.")
     print("Bot funzionante... In attesa di messaggi.")
