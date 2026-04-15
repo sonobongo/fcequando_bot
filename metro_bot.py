@@ -7,6 +7,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, D
 from horarios_logic import *
 import handlers as normal_handlers
 import handlers_dev as dev_handlers
+import accesibilidad_bot as acc
 
 flask_app = Flask(__name__)
 
@@ -41,7 +42,7 @@ def main():
     def is_dev_mode(context):
         return context.chat_data.get('dev_mode', False)
 
-    # Comandos normales
+    # Comandos normales (modo normal / desarrollador)
     async def start_wrapper(update, context):
         if is_dev_mode(context):
             await dev_handlers.start_wrapper(update, context)
@@ -148,27 +149,12 @@ def main():
         else:
             await normal_handlers.stop_wrapper(update, context)
 
-    # Comandos accesibilidad
-    async def acc_wrapper(update, context):
-        if is_dev_mode(context):
-            await dev_handlers.acc_wrapper(update, context)
-        else:
-            await normal_handlers.acc_wrapper(update, context)
-    async def acc_station_wrapper(update, context):
-        if is_dev_mode(context):
-            await dev_handlers.acc_station_wrapper(update, context)
-        else:
-            await normal_handlers.acc_station_wrapper(update, context)
+    # Callbacks (los mismos para ambos módulos, pero se definen en cada uno)
     async def aggiornare_callback_wrapper(update, context):
         if is_dev_mode(context):
             await dev_handlers.aggiornare_callback(update, context)
         else:
             await normal_handlers.aggiornare_callback(update, context)
-    async def acc_aggiornare_callback_wrapper(update, context):
-        if is_dev_mode(context):
-            await dev_handlers.acc_aggiornare_callback(update, context)
-        else:
-            await normal_handlers.acc_aggiornare_callback(update, context)
 
     # Wrapper para el callback de cabeceras (Monte Po y Stesicoro)
     async def aggiornare_cabecera_callback_wrapper(update, context):
@@ -212,18 +198,10 @@ def main():
     for cmd, handler in commands:
         app.add_handler(CommandHandler(cmd, handler))
 
-    # Comandos accesibilidad
-    acc_commands = [
-        ("accessibilita", acc_wrapper), ("accesibilidad", acc_wrapper),
-        ("aMontepo", acc_station_wrapper), ("aStesicoro", acc_station_wrapper),
-        ("aFontana", acc_station_wrapper), ("aNesima", acc_station_wrapper),
-        ("aSanNullo", acc_station_wrapper), ("aCibali", acc_station_wrapper),
-        ("aMilo", acc_station_wrapper), ("aBorgo", acc_station_wrapper),
-        ("aGiuffrida", acc_station_wrapper), ("aItalia", acc_station_wrapper),
-        ("aGalatea", acc_station_wrapper), ("aGiovanni", acc_station_wrapper)
-    ]
-    for cmd, handler in acc_commands:
-        app.add_handler(CommandHandler(cmd, handler))
+    # Comandos de accesibilidad (siempre usan el módulo accesibilidad_bot)
+    app.add_handler(CommandHandler("accessibilita", acc.cmd_accesibilidad))
+    app.add_handler(CommandHandler("accesibilidad", acc.cmd_accesibilidad))
+    app.add_handler(CommandHandler("uscire", acc.cmd_uscire))
 
     # Comandos desarrollo
     app.add_handler(CommandHandler("dev", dev_mode_wrapper))
@@ -237,22 +215,20 @@ def main():
     # Callbacks
     app.add_handler(CallbackQueryHandler(aggiornare_callback_wrapper, pattern="^aggiornare_"))
     app.add_handler(CallbackQueryHandler(aggiornare_cabecera_callback_wrapper, pattern="^agg_cabecera_"))
-    app.add_handler(CallbackQueryHandler(acc_aggiornare_callback_wrapper, pattern="^acc_aggiornare_"))
 
     # ========================================================================
     # MANEJADORES DE TEXTO (en orden de prioridad)
     # ========================================================================
-    # 1. Activación de accesibilidad con "ac" (solo si existe)
-    if hasattr(dev_handlers, 'acc_try_activate'):
-        app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, dev_handlers.acc_try_activate))
+    # 1. Activación rápida de accesibilidad (si el texto empieza con "ac")
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, acc.acc_try_activate))
 
-    # 2. Modo normal: detección de nombres de estación en cualquier texto (solo si no está en modo accesibilidad)
+    # 2. Manejador de texto para modo normal (busca nombres completos de estación)
+    #    Este manejador comprueba internamente si accessibility_mode está activo
     if hasattr(dev_handlers, 'normal_handle_text'):
         app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, dev_handlers.normal_handle_text))
 
-    # 3. Modo accesibilidad: manejo de prefijos (solo si está activo)
-    if hasattr(dev_handlers, 'acc_handle_text'):
-        app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, dev_handlers.acc_handle_text))
+    # 3. Manejador de texto para modo accesibilidad (prefijos y comandos especiales)
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, acc.acc_handle_text))
 
     logger.info("Bot avviato.")
     print("Bot funzionante... In attesa di messaggi.")
