@@ -865,31 +865,51 @@ async def cmd_stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # DETECCIÓN DE NOMBRE DE ESTACIÓN EN MODO NORMAL (USANDO JSON)
 # ============================================================================
 async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Reconoce estaciones según el diccionario JSON (nombres, variantes, prefijos al inicio)."""
+    """Modo normal: aplica reglas según JSON (nombre completo en cualquier parte, variantes y prefijo solo al inicio)."""
     if context.chat_data.get('accessibility_mode', False):
         return
     
     text = update.message.text.strip()
-    # Normalizar: minúsculas, eliminar tildes
     import unicodedata
     text_norm = unicodedata.normalize('NFKD', text.lower()).encode('ASCII', 'ignore').decode('ASCII')
     
-    # Recorrer todas las estaciones definidas
-    for key, data in STATION_VARIANTS.items():
-        # 1. Buscar nombre completo o variantes en cualquier parte del texto
-        for nombre in [data['nombre'].lower()] + data.get('variantes', []):
+    # Cargar el JSON (debe estar en la misma carpeta)
+    import json, os
+    json_path = os.path.join(os.path.dirname(__file__), 'variantes_estaciones.json')
+    try:
+        with open(json_path, 'r', encoding='utf-8') as f:
+            estaciones = json.load(f)
+    except:
+        await update.message.reply_text("Errore interno di configurazione.")
+        return
+    
+    for key, data in estaciones.items():
+        nombre = data['nombre'].lower()
+        variantes = [v.lower() for v in data.get('variantes', [])]
+        prefijo = data.get('prefijo', '').lower()
+        reglas = data.get('reglas', {})
+        
+        # 1. Nombre completo en cualquier parte
+        if reglas.get('nombre_completo_en_cualquier_parte', False):
             if nombre in text_norm:
                 await send_station_response(update, context, key, return_to_main=True)
                 return
-        # 2. Buscar prefijo de 3 letras solo al inicio del texto
-        prefijo = data.get('prefijo', '')
-        if prefijo and text_norm.startswith(prefijo):
-            await send_station_response(update, context, key, return_to_main=True)
-            return
+        
+        # 2. Variantes solo al inicio del texto
+        if reglas.get('variantes_solo_al_inicio', False):
+            for var in variantes:
+                if text_norm.startswith(var):
+                    await send_station_response(update, context, key, return_to_main=True)
+                    return
+        
+        # 3. Prefijo solo al inicio
+        if reglas.get('prefijo_solo_al_inicio', False) and prefijo:
+            if text_norm.startswith(prefijo):
+                await send_station_response(update, context, key, return_to_main=True)
+                return
     
-    # No reconocido
+    # Si no se reconoce
     await update.message.reply_text(
-        "Stazione non riconosciuta. Le stazioni disponibili sono: " +
-        ", ".join([data['nombre'] for data in STATION_VARIANTS.values()]) + ".",
+        "Stazione non riconosciuta. Prova con 'galatea'.",
         reply_markup=keyboard_main
     )
