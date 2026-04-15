@@ -239,6 +239,21 @@ def main():
     app.add_handler(CallbackQueryHandler(aggiornare_cabecera_callback_wrapper, pattern="^agg_cabecera_"))
     app.add_handler(CallbackQueryHandler(acc_aggiornare_callback_wrapper, pattern="^acc_aggiornare_"))
 
+    # ========================================================================
+    # MANEJADORES DE TEXTO (en orden de prioridad)
+    # ========================================================================
+    # 1. Activación de accesibilidad con "ac" (solo si existe)
+    if hasattr(dev_handlers, 'acc_try_activate'):
+        app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, dev_handlers.acc_try_activate))
+
+    # 2. Modo normal: detección de nombres de estación en cualquier texto (solo si no está en modo accesibilidad)
+    if hasattr(dev_handlers, 'normal_handle_text'):
+        app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, dev_handlers.normal_handle_text))
+
+    # 3. Modo accesibilidad: manejo de prefijos (solo si está activo)
+    if hasattr(dev_handlers, 'acc_handle_text'):
+        app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, dev_handlers.acc_handle_text))
+
     logger.info("Bot avviato.")
     print("Bot funzionante... In attesa di messaggi.")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
