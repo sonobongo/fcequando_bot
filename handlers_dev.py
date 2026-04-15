@@ -12,19 +12,6 @@ from horarios_logic import CATANIA_TZ
 logger = logging.getLogger(__name__)
 
 # ============================================================================
-# CARGAR CONFIGURACIÓN DE ESTACIONES (solo Galatea)
-# ============================================================================
-def load_station_config():
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    json_path = os.path.join(script_dir, 'variantes_estaciones.json')
-    if os.path.exists(json_path):
-        with open(json_path, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    return {}
-
-STATION_CONFIG = load_station_config()
-
-# ============================================================================
 # TECLADOS
 # ============================================================================
 keyboard_main = ReplyKeyboardMarkup(
@@ -854,6 +841,15 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
         print(">>> [DEBUG] Matched prefix 'gal' at start")
         await send_station_response(update, context, "galatea", return_to_main=True)
         return
-    
-    
-  
+
+# 3. Variante "galaxia" en cualquier parte
+if "galaxia" in text_norm:
+    print(">>> [DEBUG] Matched 'galaxia' anywhere")
+    await send_station_response(update, context, "galatea", return_to_main=True)
+    return
+
+print(">>> [DEBUG] No match")
+await update.message.reply_text(
+    "Stazione non riconosciuta. Prova con 'galatea'.",
+    reply_markup=keyboard_main
+)
