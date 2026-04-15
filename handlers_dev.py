@@ -2,32 +2,30 @@ import asyncio
 import time as time_module
 import json
 import os
+import logging
 from datetime import datetime, timedelta
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove
 from telegram.ext import ContextTypes
 from horarios_logic import *
 from horarios_logic import CATANIA_TZ
 
+logger = logging.getLogger(__name__)
+
 # ============================================================================
-# CARGAR VARIANTES DE ESTACIONES DESDE JSON
+# CARGAR CONFIGURACIÓN DE ESTACIONES
 # ============================================================================
-def load_station_variants():
+def load_station_config():
     script_dir = os.path.dirname(os.path.abspath(__file__))
     json_path = os.path.join(script_dir, 'variantes_estaciones.json')
     if os.path.exists(json_path):
         with open(json_path, 'r', encoding='utf-8') as f:
             return json.load(f)
     else:
-        # Fallback: solo Galatea (modo prueba)
-        return {
-            "galatea": {
-                "nombre": "Galatea",
-                "variantes": ["galatea", "galaxia", "galate", "galat"],
-                "prefijo": "gal"
-            }
-        }
+        logger.warning(f"Archivo {json_path} no encontrado")
+        return {}
 
-STATION_VARIANTS = load_station_variants()
+STATION_CONFIG = load_station_config()
+print(f"DEBUG: STATION_CONFIG cargado: {STATION_CONFIG}")
 
 # ============================================================================
 # TECLADOS
@@ -83,7 +81,7 @@ def get_bus_message_nesima(now: datetime) -> str:
     return ""
 
 # ============================================================================
-# BUS GRATUITO MONTE PO → MISTERBIANCO (aviso 15 minutos antes)
+# BUS GRATUITO MONTE PO → MISTERBIANCO
 # ============================================================================
 def get_bus_message_montepo_advanced(now: datetime) -> str:
     if now.weekday() >= 5 or is_festivo_nazionale(now):
@@ -265,7 +263,7 @@ async def send_default(update: Update, msg: str, reply_markup=None):
         return await update.message.reply_text(msg, parse_mode='Markdown', reply_markup=reply_markup)
 
 # ============================================================================
-# ENVÍO DE MENSAJE 2 y 3 - PARA ESTACIONES INTERMEDIAS
+# ENVÍO DE MENSAJE 2 y 3
 # ============================================================================
 async def send_message_2(update: Update, msg: str, current_station_key: str, tiempo_restante: int, mins: int, estacion_key: str):
     msg = clean_text_for_display(msg)
@@ -302,16 +300,12 @@ async def send_message_3(update: Update, msg: str, current_station_key: str, tie
     else:
         return await send_default(update, msg, reply_markup=reply_markup)
 
-# ============================================================================
-# FUNCIÓN PARA ENVIAR msg2 y msg3 (con o sin botón) - PARA INTERMEDIAS
-# ============================================================================
 async def send_messages_2_and_3(update: Update, estacion_key: str, now: datetime, simulated: bool = False, show_button: bool = True):
     msg2, msg3, key_mp, time_mp, key_st, time_st, mins_mp, mins_st = build_temporary_messages(now, estacion_key)
     
     msg2_obj = await send_message_2(update, msg2, key_mp, time_mp, mins_mp, estacion_key)
     await asyncio.sleep(0.1)
     
-    # El botón aparece en todas las estaciones que no son cabeceras
     if estacion_key not in ["montepo", "stesicoro"]:
         keyboard_inline = InlineKeyboardMarkup([
             [InlineKeyboardButton("🔄 Aggiornare", callback_data=f"aggiornare_{estacion_key}")]
@@ -328,7 +322,7 @@ async def send_messages_2_and_3(update: Update, estacion_key: str, now: datetime
     return tuple(ids) if ids else None
 
 # ============================================================================
-# FUNCIÓN DE LIMPIEZA Y REINICIO AUTOMÁTICO (20 minutos, silencioso, conserva bienvenida)
+# FUNCIÓN DE LIMPIEZA Y REINICIO AUTOMÁTICO (20 minutos)
 # ============================================================================
 async def auto_clean_and_restart(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await asyncio.sleep(20 * 60)
@@ -343,7 +337,6 @@ async def auto_clean_and_restart(update: Update, context: ContextTypes.DEFAULT_T
         msg_ids.append(context.chat_data['bus_msg_id'])
     
     welcome_id = context.chat_data.get('welcome_msg_id')
-    
     for mid in msg_ids:
         if mid == welcome_id:
             continue
@@ -352,7 +345,6 @@ async def auto_clean_and_restart(update: Update, context: ContextTypes.DEFAULT_T
         except Exception:
             pass
     
-    # Conservar modo dev y el ID del mensaje de bienvenida
     dev_mode = context.chat_data.get('dev_mode', False)
     welcome_id = context.chat_data.get('welcome_msg_id')
     context.chat_data.clear()
@@ -371,11 +363,10 @@ def schedule_cleanup(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.chat_data['cleanup_task'] = task
 
 # ============================================================================
-# REFRESCAR SOLO MENSAJES 2 y 3 (sin foto) - PARA INTERMEDIAS
+# REFRESCAR SOLO MENSAJES 2 y 3
 # ============================================================================
 async def refresh_messages_only(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str):
     chat_id = update.effective_chat.id
-    
     old_ids = context.chat_data.get('refresh_msg_ids')
     if old_ids:
         for mid in old_ids:
@@ -396,7 +387,6 @@ async def refresh_messages_only(update: Update, context: ContextTypes.DEFAULT_TY
     new_ids = await send_messages_2_and_3(update, estacion_key, now, simulated is not None, show_button=True)
     if new_ids:
         context.chat_data['refresh_msg_ids'] = new_ids
-    
     schedule_cleanup(update, context)
 
 # ============================================================================
@@ -414,10 +404,9 @@ async def aggiornare_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     await refresh_messages_only(fake_update, context, estacion_key)
 
 # ============================================================================
-# FUNCIÓN AUXILIAR PARA ENVIAR RESPUESTA DE CABECERA (Monte Po / Stesicoro)
+# FUNCIÓN AUXILIAR PARA ENVIAR RESPUESTA DE CABECERA
 # ============================================================================
 async def send_header_response(chat_id, context, estacion_key):
-    """Envía la respuesta completa para una cabecera usando context.bot.send_*."""
     simulated = context.chat_data.get('test_time')
     if simulated:
         if simulated.tzinfo is None:
@@ -511,7 +500,6 @@ async def send_header_response(chat_id, context, estacion_key):
                     msg1 = await context.bot.send_message(chat_id=chat_id, text=msg, parse_mode='Markdown', reply_markup=keyboard_inline)
             context.chat_data['main_msg_id'] = msg1.message_id
     
-    # Manejar mensaje del autobús gratuito para Monte Po
     if estacion_key == "montepo":
         bus_text = get_bus_message_montepo_advanced(now)
         if bus_text:
@@ -521,21 +509,17 @@ async def send_header_response(chat_id, context, estacion_key):
             context.chat_data.pop('bus_msg_id', None)
 
 # ============================================================================
-# CALLBACK PARA EL BOTÓN EN CABECERAS (borra y reenvía)
+# CALLBACK PARA EL BOTÓN EN CABECERAS
 # ============================================================================
 async def aggiornare_cabecera_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    estacion_key = query.data.split("_")[2]  # "agg_cabecera_montepo"
+    estacion_key = query.data.split("_")[2]
     chat_id = query.message.chat_id
-    
-    # Borrar mensaje principal antiguo
     try:
         await query.message.delete()
     except Exception:
         pass
-    
-    # Borrar mensaje del autobús si existe (solo para Monte Po)
     bus_msg_id = context.chat_data.get('bus_msg_id')
     if bus_msg_id:
         try:
@@ -543,10 +527,7 @@ async def aggiornare_cabecera_callback(update: Update, context: ContextTypes.DEF
         except Exception:
             pass
         context.chat_data.pop('bus_msg_id', None)
-    
-    # Enviar nueva respuesta
     await send_header_response(chat_id, context, estacion_key)
-    
     schedule_cleanup(update, context)
 
 # ============================================================================
@@ -554,7 +535,6 @@ async def aggiornare_cabecera_callback(update: Update, context: ContextTypes.DEF
 # ============================================================================
 async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str, return_to_main: bool = True):
     context.chat_data['last_return_to_main'] = return_to_main
-    
     if 'refresh_task' in context.chat_data:
         task = context.chat_data['refresh_task']
         if not task.done():
@@ -571,15 +551,12 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
         now = datetime.now(CATANIA_TZ)
     test_indicator = "🧪 [TEST MODE] " if simulated else ""
 
-    # === CABECERAS: Monte Po o Stesicoro ===
     if estacion_key in ["montepo", "stesicoro"]:
         await send_header_response(update.message.chat_id, context, estacion_key)
         schedule_cleanup(update, context)
         return
 
-    # ========================================================================
-    # ESTACIONES INTERMEDIAS (NESIMA, SAN NULLO, ETC.)
-    # ========================================================================
+    # ESTACIONES INTERMEDIAS
     closed, next_open, special_closing_msg = is_metro_closed(now, "Montepo")
     if closed:
         if next_open.date() > now.date():
@@ -625,7 +602,6 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
             permanent_caption += f"\n\n{bus_msg}"
     
     img_station = get_station_image(estacion_key, now)
-
     if return_to_main:
         await update.message.reply_text("caricando informazione...", reply_markup=ReplyKeyboardRemove())
     
@@ -635,10 +611,8 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
         msg1 = await update.message.reply_text(permanent_caption, reply_markup=keyboard_main if return_to_main else keyboard_altri)
     context.chat_data['main_msg_id'] = msg1.message_id
 
-    # Enviar mensajes 2 y 3 CON botón para todas las estaciones intermedias
     ids = await send_messages_2_and_3(update, estacion_key, now, simulated is not None, show_button=True)
     context.chat_data['refresh_msg_ids'] = ids if ids else None
-
     schedule_cleanup(update, context)
 
 # ============================================================================
@@ -669,7 +643,6 @@ async def testfin_command_wrapper(update, context): await cancel_refresh_and_run
 async def auto_wrapper(update, context): await cancel_refresh_and_run(update, context, cmd_auto)
 async def stop_wrapper(update, context): await cancel_refresh_and_run(update, context, cmd_stop)
 
-# Funciones originales (modo normal)
 async def cmd_montepo(update, context):
     context.chat_data['last_station'] = "montepo"
     await send_station_response(update, context, "montepo", return_to_main=False)
@@ -865,25 +838,24 @@ async def cmd_stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # DETECCIÓN DE NOMBRE DE ESTACIÓN EN MODO NORMAL (USANDO JSON)
 # ============================================================================
 async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Modo normal: aplica reglas según JSON (nombre completo en cualquier parte, variantes y prefijo solo al inicio)."""
+    print(">>> [DEBUG] normal_handle_text called")
     if context.chat_data.get('accessibility_mode', False):
+        print(">>> [DEBUG] accessibility_mode active, exiting")
         return
     
     text = update.message.text.strip()
+    print(f">>> [DEBUG] Original text: {text}")
+    
     import unicodedata
     text_norm = unicodedata.normalize('NFKD', text.lower()).encode('ASCII', 'ignore').decode('ASCII')
+    print(f">>> [DEBUG] Normalized: {text_norm}")
     
-    # Cargar el JSON (debe estar en la misma carpeta)
-    import json, os
-    json_path = os.path.join(os.path.dirname(__file__), 'variantes_estaciones.json')
-    try:
-        with open(json_path, 'r', encoding='utf-8') as f:
-            estaciones = json.load(f)
-    except:
-        await update.message.reply_text("Errore interno di configurazione.")
+    if not STATION_CONFIG:
+        print(">>> [DEBUG] STATION_CONFIG empty")
+        await update.message.reply_text("Configuración no cargada.")
         return
     
-    for key, data in estaciones.items():
+    for key, data in STATION_CONFIG.items():
         nombre = data['nombre'].lower()
         variantes = [v.lower() for v in data.get('variantes', [])]
         prefijo = data.get('prefijo', '').lower()
@@ -892,23 +864,26 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
         # 1. Nombre completo en cualquier parte
         if reglas.get('nombre_completo_en_cualquier_parte', False):
             if nombre in text_norm:
+                print(f">>> [DEBUG] Matched by nombre '{nombre}' anywhere")
                 await send_station_response(update, context, key, return_to_main=True)
                 return
         
-        # 2. Variantes solo al inicio del texto
-        if reglas.get('variantes_solo_al_inicio', False):
+        # 2. Variante solo al inicio
+        if reglas.get('variante_solo_al_inicio', False):
             for var in variantes:
                 if text_norm.startswith(var):
+                    print(f">>> [DEBUG] Matched by variante '{var}' at start")
                     await send_station_response(update, context, key, return_to_main=True)
                     return
         
         # 3. Prefijo solo al inicio
         if reglas.get('prefijo_solo_al_inicio', False) and prefijo:
             if text_norm.startswith(prefijo):
+                print(f">>> [DEBUG] Matched by prefijo '{prefijo}' at start")
                 await send_station_response(update, context, key, return_to_main=True)
                 return
     
-    # Si no se reconoce
+    print(">>> [DEBUG] No match")
     await update.message.reply_text(
         "Stazione non riconosciuta. Prova con 'galatea'.",
         reply_markup=keyboard_main
