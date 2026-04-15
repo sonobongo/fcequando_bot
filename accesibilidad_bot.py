@@ -1,262 +1,221 @@
-import os
 import asyncio
 import time as time_module
 from datetime import datetime, timedelta
-from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
-from horarios_logic import *  # Asegúrate de que horarios_logic.py esté accesible
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import ContextTypes
+from horarios_logic import *
 from horarios_logic import CATANIA_TZ
 
 # ============================================================================
-# TECLADOS
+# DESCRIPCIONES DE ESTACIONES (texto plano, sin emojis ni asteriscos)
 # ============================================================================
-keyboard_exit = ReplyKeyboardMarkup(
-    [[KeyboardButton("USCIRE DAL MODO ACCESSIBILITÀ")]],
-    resize_keyboard=True, one_time_keyboard=False
-)
-
-# Diccionario de nombres de estaciones para mostrar
-NOMBRE_MOSTRAR = {
-    "montepo": "Monte Po",
-    "stesicoro": "Stesicoro",
-    "fontana": "Fontana",
-    "nesima": "Nesima",
-    "sannullo": "San Nullo",
-    "cibali": "Cibali",
-    "milo": "Milo",
-    "borgo": "Borgo",
-    "giuffrida": "Giuffrida",
-    "italia": "Italia",
-    "galatea": "Galatea",
-    "giovanni": "Giovanni XXIII"
-}
-
-# Descripciones de estaciones (texto plano, con puntos)
 DESCRIPCION_ESTACION = {
-    "montepo": "· Stazione capolinea con ascensore e servizi igienici.",
-    "stesicoro": "· Stazione centrale con ascensore e collegamento autobus.",
-    "fontana": "· La stazione è dotata di pavimento podotattile, scale mobili e Ascensore.\n· Sul marciapiede 1, partono i treni in direzione Monte Po. Alla testa del treno si trova l'uscita per: Via Felice Fontana.\n· Sul marciapiede 2 partono i treni in direzione Stesicoro. Alla testa del treno si trovano le uscite per: Via Felice Fontana e l'Ospedale Garibaldi-Nesima.\n· Al centro della piattaforma si trovano gli ascensori con tastiere Braille, che raggiungono la strada.",
-    "nesima": "· La stazione è dotata di pavimento podotattile, scale mobili e Ascensore.\n· Sul marciapiede 1, partono i treni in direzione Monte Po. Alla testa del treno si trovano le uscite per: Viale Lorenzo Bolano e Via Filippo Eredia.\n· Sul marciapiede 2 partono i treni in direzione Stesicoro. Alla testa del treno si trova l'uscita per: Viale Lorenzo Bolano.\n· Al centro della piattaforma si trovano gli ascensori con tastiere Braille, che raggiungono la strada.",
-    "sannullo": "· La stazione è dotata di pavimento podotattile, scale mobili e Ascensore.\n· Sul marciapiede 1, partono i treni in direzione Monte Po. Alla testa del treno si trovano le uscite per: Viale Antoniotto Usodimare e Via Sebastiano Catania.\n· Sul marciapiede 2 partono i treni in direzione Stesicoro. Alla testa del treno si trovano anche le uscite per: Viale Antoniotto Usodimare e Via Sebastiano Catania.\n· Al centro della piattaforma si trovano gli ascensori con tastiere Braille, che raggiungono la strada.",
-    "cibali": "· La stazione è dotata di pavimento podotattile, scale mobili e Ascensore.\n· Sul marciapiede 1, partono i treni in direzione Monte Po. Alla testa del treno si trovano le uscite per: Via Bergamo, Via Galermo e lo stadio di Calcio, Angelo Massimino.\n· Sul marciapiede 2 partono i treni in direzione Stesicoro. Alla testa del treno si trovano anche le uscite per: Via Bergamo, Via Galermo e lo stadio di Calcio.\n· Al centro della piattaforma si trovano gli ascensori con tastiere Braille, che raggiungono la strada.",
-    "milo": "· La stazione è dotata di pavimento podotattile, scale mobili e Ascensore.\n· Sul marciapiede 1, partono i treni in direzione Monte Po. Alla testa del treno si trovano le uscite per: Via Bronte e Viale Fleming.\n· Sul marciapiede 2 partono i treni in direzione Stesicoro. Alla testa del treno si trovano anche le uscite per: Via Bronte e Viale Fleming.\n· Al centro della piattaforma si trovano gli ascensori con tastiere Braille, che raggiungono la strada.",
-    "borgo": "· La stazione è dotata di pavimento podotattile e scale mobili.\n· Sul marciapiede 1, partono i treni in direzione Monte Po. Alla testa del treno si trovano le uscite per: Via Empedocle e Via Etnea.\n· Sul marciapiede 2 partono i treni in direzione Stesicoro. Alla testa del treno si trovano le uscite per: I treni della FCE, Via Signorelli e Via Caronda.",
-    "giuffrida": "· La stazione è dotata di pavimento podotattile e scale mobili.\n· Sul marciapiede 1, partono i treni in direzione Monte Po. Alla testa del treno si trovano le uscite per: Via Guardia della Carvana e Piazza Abraham Lincoln.\n· Sul marciapiede 2 partono i treni in direzione Stesicoro. Alla testa del treno si trovano le uscite per: Via Caronda e Via Vincenzo Giuffrida.",
-    "italia": "· La stazione è dotata di pavimento podotattile e scale mobili.\n· Sul marciapiede 1, partono i treni in direzione Monte Po. Alla testa del treno si trovano le uscite per: Via Firenze, Via Ramondetta e Via Oliveto Scammacca.\n· Sul marciapiede 2 partono i treni in direzione Stesicoro. Alla testa del treno si trovano le uscite per: Viale Vittorio Veneto e Corso Italia.",
-    "galatea": "· La stazione è dotata di pavimento podotattile e scale mobili.\n· Sul marciapiede 1, partono i treni in direzione Monte Po. Alla testa del treno si trovano le uscite per: Viale Jonio, Via Pasubio e via Palmanova.\n· Sul marciapiede 2 partono i treni in direzione Stesicoro.\n· Alla testa del treno si trovano le uscite per: Piazza Galatea, Viale Africa e Via Messina.",
-    "giovanni": "· La stazione è dotata di pavimento podotattile, scale mobili e Ascensore.\n· Sul marciapiede 1, partono i treni in direzione Monte Po. Alla testa del treno si trova l'uscita per: Piazza Giovanni XXIII e Viale Africa.\n· Sul marciapiede 2 partono i treni in direzione Stesicoro. Alla testa del treno si trovano le uscite per: Via Archimede, Viale della Libertà e Stazione di Trenitalia Catania Centrale.\n· Al centro della piattaforma si trovano gli ascensori con tastiere Braille, che raggiungono la strada."
+    "montepo": "Stazione capolinea con ascensore e servizi igienici.",
+    "stesicoro": "Stazione centrale con ascensore e collegamento autobus.",
+    "fontana": "La stazione è dotata di Percorso tattile, scale mobili e Ascensore.\nSul marciapiede 1, partono i treni in direzione Monte Po. Alla testa del treno si trova l'uscita per: Via Felice Fontana.\nSul marciapiede 2 partono i treni in direzione Stesicoro. Alla testa del treno si trovano le uscite per: Via Felice Fontana e l'Ospedale Garibaldi-Nesima.\nAl centro della piattaforma si trovano gli ascensori con tastiere Braille, che raggiungono la strada.",
+    "nesima": "La stazione è dotata di Percorso tattile, scale mobili e Ascensore.\nSul marciapiede 1, partono i treni in direzione Monte Po. Alla testa del treno si trovano le uscite per: Viale Lorenzo Bolano e Via Filippo Eredia.\nSul marciapiede 2 partono i treni in direzione Stesicoro. Alla testa del treno si trova l'uscita per: Viale Lorenzo Bolano.\nAl centro della piattaforma si trovano gli ascensori con tastiere Braille, che raggiungono la strada.",
+    "sannullo": "La stazione è dotata di Percorso tattile, scale mobili e Ascensore.\nSul marciapiede 1, partono i treni in direzione Monte Po. Alla testa del treno si trovano le uscite per: Viale Antoniotto Usodimare e Via Sebastiano Catania.\nSul marciapiede 2 partono i treni in direzione Stesicoro. Alla testa del treno si trovano anche le uscite per: Viale Antoniotto Usodimare e Via Sebastiano Catania.\nAl centro della piattaforma si trovano gli ascensori con tastiere Braille, che raggiungono la strada.",
+    "cibali": "La stazione è dotata di Percorso tattile, scale mobili e Ascensore.\nSul marciapiede 1, partono i treni in direzione Monte Po. Alla testa del treno si trovano le uscite per: Via Bergamo, Via Galermo e lo stadio di Calcio, Angelo Massimino.\nSul marciapiede 2 partono i treni in direzione Stesicoro. Alla testa del treno si trovano anche le uscite per: Via Bergamo, Via Galermo e lo stadio di Calcio.\nAl centro della piattaforma si trovano gli ascensori con tastiere Braille, che raggiungono la strada.",
+    "milo": "La stazione è dotata di Percorso tattile, scale mobili e Ascensore.\nSul marciapiede 1, partono i treni in direzione Monte Po. Alla testa del treno si trovano le uscite per: Via Bronte e Viale Fleming.\nSul marciapiede 2 partono i treni in direzione Stesicoro. Alla testa del treno si trovano anche le uscite per: Via Bronte e Viale Fleming.\nAl centro della piattaforma si trovano gli ascensori con tastiere Braille, che raggiungono la strada.",
+    "borgo": "La stazione è dotata di Percorso tattile e scale mobili.\nSul marciapiede 1, partono i treni in direzione Monte Po. Alla testa del treno si trovano le uscite per: Via Empedocle e Via Etnea.\nSul marciapiede 2 partono i treni in direzione Stesicoro. Alla testa del treno si trovano le uscite per: I treni della FCE, Via Signorelli e Via Caronda.",
+    "giuffrida": "La stazione è dotata di Percorso tattile e scale mobili.\nSul marciapiede 1, partono i treni in direzione Monte Po. Alla testa del treno si trovano le uscite per: Via Guardia della Carvana e Piazza Abraham Lincoln.\nSul marciapiede 2 partono i treni in direzione Stesicoro. Alla testa del treno si trovano le uscite per: Via Caronda e Via Vincenzo Giuffrida.",
+    "italia": "La stazione è dotata di Percorso tattile e scale mobili.\nSul marciapiede 1, partono i treni in direzione Monte Po. Alla testa del treno si trovano le uscite per: Via Firenze, Via Ramondetta e Via Oliveto Scammacca.\nSul marciapiede 2 partono i treni in direzione Stesicoro. Alla testa del treno si trovano le uscite per: Viale Vittorio Veneto e Corso Italia.",
+    "galatea": "La stazione è dotata di Percorso tattile e scale mobili.\nSul marciapiede 1, partono i treni in direzione Monte Po. Alla testa del treno si trovano le uscite per: Viale Jonio, Via Pasubio e via Palmanova.\nSul marciapiede 2 partono i treni in direzione Stesicoro.\nAlla testa del treno si trovano le uscite per: Piazza Galatea, Viale Africa e Via Messina.",
+    "giovanni": "La stazione è dotata di Percorso tattile, scale mobili e Ascensore.\nSul marciapiede 1, partono i treni in direzione Monte Po. Alla testa del treno si trova l'uscita per: Piazza Giovanni XXIII e Viale Africa.\nSul marciapiede 2 partono i treni in direzione Stesicoro. Alla testa del treno si trovano le uscite per: Via Archimede, Viale della Libertà e Stazione di Trenitalia Catania Centrale.\nAl centro della piattaforma si trovano gli ascensori con tastiere Braille, che raggiungono la strada."
 }
 
 # ============================================================================
-# FUNCIONES AUXILIARES
+# FUNCIONES AUXILIARES PARA LIMPIAR TEXTO
 # ============================================================================
-def clean_text(text: str) -> str:
-    """Reemplaza emojis por · y elimina formato Markdown."""
+def clean_for_accessibility(text: str) -> str:
+    """Elimina emojis, asteriscos, negritas y caracteres no deseados para TalkBack."""
+    if not text:
+        return ""
     replacements = {
-        "🔺": "·", "🔻": "·", "🚇": "·", "🕐": "·", "🕙": "·", "📌": "·",
-        "**": "", "*": "", "__": "", "`": ""
+        "🔺": "", "🔻": "", "🚇": "", "🕐": "", "🕙": "", "📌": "",
+        "**": "", "*": "", "__": "", "`": "", "🔹": "", "▪️": ""
     }
     for old, new in replacements.items():
         text = text.replace(old, new)
-    return ' '.join(text.split())
+    text = ' '.join(text.split())
+    return text
 
-async def acc_send_station_info(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str):
-    """Envía la información de una estación en modo accesibilidad."""
-    # Obtener hora actual (simulada si está en test)
-    simulated = context.chat_data.get('test_time')
-    if simulated:
-        if simulated.tzinfo is None:
-            simulated = CATANIA_TZ.localize(simulated)
-        now = simulated
-    else:
-        now = datetime.now(CATANIA_TZ)
+def get_station_by_prefix(text: str) -> tuple:
+    """
+    Devuelve (clave_estacion, nombre_mostrar) si el texto comienza con un prefijo conocido
+    o si coincide con el nombre completo. Los prefijos son secretos (no se muestran al usuario).
+    """
+    text = text.lower().strip()
+    import unicodedata
+    text = unicodedata.normalize('NFKD', text).encode('ASCII', 'ignore').decode('ASCII')
     
-    # Obtener mensajes 2 y 3 (sin emojis ni formato)
-    info_mp, info_st = get_next_train_at_station(now, estacion_key)
-    # Construir msg2 y msg3 usando las funciones existentes de horarios_logic
-    # (Reutilizamos build_temporary_messages, pero necesitamos tenerla disponible)
-    # Para no duplicar código, asumimos que build_temporary_messages está en horarios_logic.
-    # Si no, tendrías que copiarla. En tu proyecto ya existe.
-    from horarios_logic import build_temporary_messages
-    msg2, msg3, _, _, _, _, _, _ = build_temporary_messages(now, estacion_key)
-    msg2_clean = clean_text(msg2)
-    msg3_clean = clean_text(msg3)
+    # Prefijos (ordenados de más largo a más corto)
+    prefijos = [
+        ("monte", "montepo"), ("mon", "montepo"),
+        ("fontana", "fontana"), ("font", "fontana"), ("fon", "fontana"),
+        ("nesima", "nesima"), ("nes", "nesima"),
+        ("san nullo", "sannullo"), ("san", "sannullo"), ("sann", "sannullo"),
+        ("cibali", "cibali"), ("cib", "cibali"),
+        ("milo", "milo"), ("mil", "milo"),
+        ("borgo", "borgo"), ("bor", "borgo"),
+        ("giuffrida", "giuffrida"), ("giu", "giuffrida"),
+        ("italia", "italia"), ("ita", "italia"),
+        ("galatea", "galatea"), ("gal", "galatea"),
+        ("giovanni", "giovanni"), ("gio", "giovanni"), ("giov", "giovanni"),
+        ("stesicoro", "stesicoro"), ("stes", "stesicoro"), ("ste", "stesicoro")
+    ]
     
-    nombre = NOMBRE_MOSTRAR.get(estacion_key, estacion_key.capitalize())
-    descripcion = DESCRIPCION_ESTACION.get(estacion_key, "· Stazione accessibile.")
+    for prefijo, clave in prefijos:
+        if text.startswith(prefijo):
+            return clave, NOMBRE_MOSTRAR.get(clave, clave.capitalize())
     
-    # Enviar mensaje 1: descripción
-    await update.message.reply_text(descripcion, parse_mode=None)
-    
-    # Enviar mensaje 2
-    msg2_obj = await update.message.reply_text(msg2_clean, parse_mode=None)
-    
-    # Enviar mensaje 3 con botón inline
-    keyboard_inline = InlineKeyboardMarkup([
-        [InlineKeyboardButton("· Aggiornare", callback_data=f"acc_aggiornare_{estacion_key}")]
-    ])
-    msg3_obj = await update.message.reply_text(msg3_clean, parse_mode=None, reply_markup=keyboard_inline)
-    
-    # Enviar mensaje 4: lista de comandos
-    lista_comandos = (
-        "Scegli la stazione che desideri consultare:\n"
-        "/aMontepo, /aFontana, /aNesima, /aSanNullo, /aCibali, /aMilo, "
-        "/aBorgo, /aGiuffrida, /aItalia, /aGalatea, /aGiovanni, /aStesicoro"
-    )
-    msg4_obj = await update.message.reply_text(lista_comandos, parse_mode=None)
-    
-    # Guardar IDs de los mensajes 2,3,4 para poder borrarlos al actualizar
-    context.chat_data['acc_msg_ids'] = (msg2_obj.message_id, msg3_obj.message_id, msg4_obj.message_id)
-    context.chat_data['acc_last_station'] = estacion_key
-
-async def acc_aggiornare_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Callback del botón '· Aggiornare' (refresca mensajes 2,3,4)."""
-    query = update.callback_query
-    await query.answer()
-    estacion_key = query.data.split("_")[2]  # formato "acc_aggiornare_fontana"
-    
-    # Borrar mensajes anteriores
-    msg_ids = context.chat_data.get('acc_msg_ids')
-    if msg_ids:
-        for mid in msg_ids:
-            try:
-                await context.bot.delete_message(chat_id=query.message.chat_id, message_id=mid)
-            except Exception:
-                pass
-        context.chat_data.pop('acc_msg_ids', None)
-    
-    # Obtener hora actual
-    simulated = context.chat_data.get('test_time')
-    if simulated:
-        if simulated.tzinfo is None:
-            simulated = CATANIA_TZ.localize(simulated)
-        now = simulated
-    else:
-        now = datetime.now(CATANIA_TZ)
-    
-    from horarios_logic import build_temporary_messages
-    msg2, msg3, _, _, _, _, _, _ = build_temporary_messages(now, estacion_key)
-    msg2_clean = clean_text(msg2)
-    msg3_clean = clean_text(msg3)
-    
-    # Enviar nuevos mensajes
-    msg2_obj = await query.message.reply_text(msg2_clean, parse_mode=None)
-    keyboard_inline = InlineKeyboardMarkup([
-        [InlineKeyboardButton("· Aggiornare", callback_data=f"acc_aggiornare_{estacion_key}")]
-    ])
-    msg3_obj = await query.message.reply_text(msg3_clean, parse_mode=None, reply_markup=keyboard_inline)
-    
-    lista_comandos = (
-        "Scegli la stazione che desideri consultare:\n"
-        "/aMontepo, /aFontana, /aNesima, /aSanNullo, /aCibali, /aMilo, "
-        "/aBorgo, /aGiuffrida, /aItalia, /aGalatea, /aGiovanni, /aStesicoro"
-    )
-    msg4_obj = await query.message.reply_text(lista_comandos, parse_mode=None)
-    
-    context.chat_data['acc_msg_ids'] = (msg2_obj.message_id, msg3_obj.message_id, msg4_obj.message_id)
-
-# ============================================================================
-# MANEJADORES DE COMANDOS
-# ============================================================================
-async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    await update.message.reply_text(
-        f"Ciao {user.first_name}! 👋\n\n"
-        "Questo è il bot in **modalità accessibilità**.\n"
-        "Usa /accessibilita per attivare la modalità.\n\n"
-        "I comandi disponibili sono:\n"
-        "/accessibilita - Attiva la modalità accessibile\n"
-        "/aMontepo, /aStesicoro, /aFontana, /aNesima, /aSanNullo, /aCibali, /aMilo, /aBorgo, /aGiuffrida, /aItalia, /aGalatea, /aGiovanni",
-        parse_mode='Markdown'
-    )
-
-async def cmd_accesibilidad(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Activa el modo accesibilidad."""
-    context.chat_data['accessibility_mode'] = True
-    await update.message.reply_text(
-        "♿ Modalità accessibilità attivata.\n\n"
-        "Scegli la stazione che desideri consultare:\n"
-        "/aMontepo, /aFontana, /aNesima, /aSanNullo, /aCibali, /aMilo, /aBorgo, /aGiuffrida, /aItalia, /aGalatea, /aGiovanni, /aStesicoro\n\n"
-        "Per uscire, premi il pulsante qui sotto.",
-        reply_markup=keyboard_exit
-    )
-
-async def cmd_exit(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Desactiva el modo accesibilidad."""
-    context.chat_data['accessibility_mode'] = False
-    context.chat_data.pop('acc_msg_ids', None)
-    context.chat_data.pop('acc_last_station', None)
-    await update.message.reply_text(
-        "✅ Modalità accessibilità disattivata. Puoi tornare a usare il bot normale.",
-        reply_markup=ReplyKeyboardMarkup(
-            [[KeyboardButton("/start")]],
-            resize_keyboard=True
-        )
-    )
-
-async def acc_station_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Maneja los comandos /aEstacion."""
-    if not context.chat_data.get('accessibility_mode', False):
-        await update.message.reply_text("⚠️ Per prima cosa attiva la modalità accessibilità con /accessibilita.")
-        return
-    
-    full_command = update.message.text.split()[0]
-    command = full_command.split('@')[0]  # elimina mención de bot
-    if not command.startswith('/a'):
-        await update.message.reply_text("Comando non valido. Usa /aMontepo, /aFontana, ecc.")
-        return
-    estacion_nombre = command[2:].lower()
-    
-    mapeo = {
-        "montepo": "montepo",
+    # Si no hay prefijo, intentar coincidencia exacta (nombre completo)
+    mapping = {
+        "monte po": "montepo", "montepo": "montepo",
         "stesicoro": "stesicoro",
         "fontana": "fontana",
         "nesima": "nesima",
-        "sannullo": "sannullo",
+        "san nullo": "sannullo", "sannullo": "sannullo",
         "cibali": "cibali",
         "milo": "milo",
         "borgo": "borgo",
         "giuffrida": "giuffrida",
         "italia": "italia",
         "galatea": "galatea",
-        "giovanni": "giovanni"
+        "giovanni xxiii": "giovanni", "giovanni": "giovanni"
     }
-    estacion_key = mapeo.get(estacion_nombre)
-    if not estacion_key or estacion_key not in NOMBRE_MOSTRAR:
-        await update.message.reply_text(f"Stazione '{estacion_nombre}' non valida.")
-        return
+    if text in mapping:
+        clave = mapping[text]
+        return clave, NOMBRE_MOSTRAR.get(clave, clave.capitalize())
     
-    await acc_send_station_info(update, context, estacion_key)
+    return None, None
 
 # ============================================================================
-# MAIN
+# FUNCIÓN PRINCIPAL PARA ENVIAR INFORMACIÓN DE ESTACIÓN (MODO ACCESIBLE)
 # ============================================================================
-def main():
-    TOKEN = os.environ.get('TELEGRAM_TOKEN')
-    if not TOKEN:
-        print("Errore: Imposta la variabile d'ambiente TELEGRAM_TOKEN")
+async def acc_send_station_info(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str):
+    """Envía la información de una estación en modo accesibilidad (sin borrar mensajes anteriores)."""
+    simulated = context.chat_data.get('test_time')
+    if simulated:
+        if simulated.tzinfo is None:
+            simulated = CATANIA_TZ.localize(simulated)
+        now = simulated
+    else:
+        now = datetime.now(CATANIA_TZ)
+    
+    # Obtener mensajes de horarios (msg2 y msg3) y limpiarlos
+    msg2, msg3, _, _, _, _, _, _ = build_temporary_messages(now, estacion_key)
+    msg2_clean = clean_for_accessibility(msg2) or "Nessun treno in arrivo verso Monte Po."
+    msg3_clean = clean_for_accessibility(msg3) or "Nessun treno in arrivo verso Stesicoro."
+    
+    nombre = NOMBRE_MOSTRAR.get(estacion_key, estacion_key.capitalize())
+    descripcion = DESCRIPCION_ESTACION.get(estacion_key, "Stazione accessibile.")
+    
+    # Imagen de la estación (prefijo st_a)
+    nombre_imagen = nombre.replace(" ", "").replace("XXIII", "XXIII")
+    if nombre_imagen == "SanNullo":
+        nombre_imagen = "SanNullo"
+    elif nombre_imagen == "GiovanniXXIII":
+        nombre_imagen = "GiovanniXXIII"
+    img_url = f"https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/st_a{nombre_imagen}.png"
+    cache_buster = int(time_module.time())
+    img_url = f"{img_url}?v={cache_buster}"
+    
+    # Enviar mensajes
+    await update.message.reply_photo(photo=img_url, caption=f"Stazione {nombre}", parse_mode=None)
+    await update.message.reply_text(descripcion, parse_mode=None)
+    await update.message.reply_text(f"Prossimi treni verso Monte Po:\n{msg2_clean}", parse_mode=None)
+    await update.message.reply_text(f"Prossimi treni verso Stesicoro:\n{msg3_clean}", parse_mode=None)
+    
+    # Instrucciones finales (sin revelar el truco de los prefijos)
+    instrucciones = (
+        "Digita o detta la stazione che desideri controllare; se desideri aggiornare la stazione corrente, ripeti l'operazione.\n"
+        "Scegli: Monte Po, Fontana, Nesima, San Nullo, Cibali, Milo, Borgo, Giuffrida, Italia, Galatea, Giovanni XXIII, Stesicoro.\n"
+        "Per uscire dalla modalità accessibilità, scrivi /uscire."
+    )
+    await update.message.reply_text(instrucciones, parse_mode=None)
+
+# ============================================================================
+# MANEJADOR DE TEXTO PARA MODO ACCESIBILIDAD
+# ============================================================================
+async def acc_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Maneja los mensajes de texto cuando el modo accesibilidad está activo."""
+    if not context.chat_data.get('accessibility_mode', False):
         return
     
-    app = Application.builder().token(TOKEN).build()
+    text = update.message.text.strip()
+    # Salir si el usuario escribe /uscire o palabras similares
+    if text.lower() in ["/uscire", "uscire", "exit", "salir"]:
+        await cmd_uscire(update, context)
+        return
     
-    # Comandos
-    app.add_handler(CommandHandler("start", cmd_start))
-    app.add_handler(CommandHandler("accessibilita", cmd_accesibilidad))
-    app.add_handler(CommandHandler("accesibilidad", cmd_accesibilidad))
-    # Comandos /a...
-    acc_commands = ["aMontepo", "aStesicoro", "aFontana", "aNesima", "aSanNullo",
-                    "aCibali", "aMilo", "aBorgo", "aGiuffrida", "aItalia", "aGalatea", "aGiovanni"]
-    for cmd in acc_commands:
-        app.add_handler(CommandHandler(cmd, acc_station_command))
-    
-    # Manejador para el botón de salida (ReplyKeyboardMarkup)
-    app.add_handler(MessageHandler(filters.Text("USCIRE DAL MODO ACCESSIBILITÀ"), cmd_exit))
-    
-    # Callback para el botón inline
-    app.add_handler(CallbackQueryHandler(acc_aggiornare_callback, pattern="^acc_aggiornare_"))
-    
-    print("Bot accessibilità avviato. In attesa di messaggi...")
-    app.run_polling(allowed_updates=[Update.MESSAGE, Update.CALLBACK_QUERY])
+    # Buscar estación por prefijo o nombre
+    estacion_key, nombre_estacion = get_station_by_prefix(text)
+    if estacion_key:
+        await update.message.reply_text(f"Hai scelto {nombre_estacion}. Ecco le informazioni:")
+        await acc_send_station_info(update, context, estacion_key)
+    else:
+        await update.message.reply_text(
+            "Stazione non riconosciuta. Le stazioni disponibili sono:\n"
+            "Monte Po, Fontana, Nesima, San Nullo, Cibali, Milo, Borgo, Giuffrida, Italia, Galatea, Giovanni XXIII, Stesicoro\n\n"
+            "Per uscire dalla modalità accessibilità, scrivi /uscire"
+        )
 
-if __name__ == '__main__':
-    main()
+# ============================================================================
+# COMANDO PARA ACTIVAR MODO ACCESIBILIDAD
+# ============================================================================
+async def cmd_accesibilidad(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Activa el modo accesibilidad (entrada por texto con prefijos secretos)."""
+    context.chat_data['accessibility_mode'] = True
+    await update.message.reply_text(
+        "♿ Modalità accessibilità attivata.\n\n"
+        "Puoi scrivere o dire in voce il nome della stazione o anche solo l'inizio:\n"
+        "• 'mon' per Monte Po\n"
+        "• 'fon' per Fontana\n"
+        "• 'nes' per Nesima\n"
+        "• 'san' per San Nullo\n"
+        "• 'cib' per Cibali\n"
+        "• 'mil' per Milo\n"
+        "• 'bor' per Borgo\n"
+        "• 'giu' per Giuffrida\n"
+        "• 'ita' per Italia\n"
+        "• 'gal' per Galatea\n"
+        "• 'gio' per Giovanni XXIII\n"
+        "• 'ste' per Stesicoro\n\n"
+        "Esempio: scrivi 'mon' e ti mostrerò le informazioni di Monte Po.\n\n"
+        "Per uscire dalla modalità, scrivi /uscire.",
+        parse_mode=None
+    )
+
+# ============================================================================
+# COMANDO PARA SALIR DEL MODO ACCESIBILIDAD
+# ============================================================================
+async def cmd_uscire(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Desactiva el modo accesibilidad y vuelve al modo normal (con teclado principal)."""
+    if context.chat_data.get('accessibility_mode', False):
+        context.chat_data['accessibility_mode'] = False
+        # El teclado principal se define en el bot principal, pero podemos enviar un mensaje de confirmación
+        await update.message.reply_text(
+            "✅ Modalità accessibilità disattivata. Sei tornato al menu principale."
+        )
+        # Opcional: aquí podrías enviar el teclado normal si lo tienes importado
+        # from handlers import keyboard_main
+        # await update.message.reply_text("Menu principale:", reply_markup=keyboard_main)
+    else:
+        await update.message.reply_text("⚠️ Non sei in modalità accessibilità.")
+
+# ============================================================================
+# ACTIVACIÓN RÁPIDA ESCRIBIENDO "ac..."
+# ============================================================================
+async def acc_try_activate(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Si el texto empieza con 'ac' (case-insensitive) y la accesibilidad no está activa, la activa."""
+    if context.chat_data.get('accessibility_mode', False):
+        return
+    text = update.message.text.strip().lower()
+    if text.startswith("ac"):
+        await cmd_accesibilidad(update, context)
+
+# ============================================================================
+# NOTA: La función build_temporary_messages y NOMBRE_MOSTRAR se importan de horarios_logic
+# Asegúrate de que horarios_logic.py contenga esas definiciones.
+# ============================================================================
