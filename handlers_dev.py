@@ -230,9 +230,9 @@ async def send_gif(update: Update, msg: str, gif_url: str):
     try:
         return await update.message.reply_animation(animation=gif_url, caption=msg, parse_mode='Markdown')
     except Exception:
-        return await send_default(update, msg)
+                    return await send_default(update, msg, reply_markup=reply_markup)
 
-async def send_default(update: Update, msg: str):
+async def send_default(update: Update, msg: str, reply_markup=None):
     img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_default.png"
     cache_buster = int(time_module.time())
     img_url = f"{img_url}?v={cache_buster}"
