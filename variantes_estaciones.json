@@ -1,62 +1,7 @@
 {
-  "montepo": {
-    "nombre": "Monte Po",
-    "variantes": ["monte po", "montepo", "montep"],
-    "prefijo": "mon"
-  },
-  "fontana": {
-    "nombre": "Fontana",
-    "variantes": ["fontana", "font"],
-    "prefijo": "fon"
-  },
-  "nesima": {
-    "nombre": "Nesima",
-    "variantes": ["nesima", "nes"],
-    "prefijo": "nes"
-  },
-  "sannullo": {
-    "nombre": "San Nullo",
-    "variantes": ["san nullo", "sannullo", "san"],
-    "prefijo": "san"
-  },
-  "cibali": {
-    "nombre": "Cibali",
-    "variantes": ["cibali", "cib"],
-    "prefijo": "cib"
-  },
-  "milo": {
-    "nombre": "Milo",
-    "variantes": ["milo", "mil"],
-    "prefijo": "mil"
-  },
-  "borgo": {
-    "nombre": "Borgo",
-    "variantes": ["borgo", "bor"],
-    "prefijo": "bor"
-  },
-  "giuffrida": {
-    "nombre": "Giuffrida",
-    "variantes": ["giuffrida", "giu"],
-    "prefijo": "giu"
-  },
-  "italia": {
-    "nombre": "Italia",
-    "variantes": ["italia", "ita"],
-    "prefijo": "ita"
-  },
   "galatea": {
     "nombre": "Galatea",
     "variantes": ["galatea", "galaxia", "galate", "galat"],
     "prefijo": "gal"
-  },
-  "giovanni": {
-    "nombre": "Giovanni XXIII",
-    "variantes": ["giovanni xxiii", "giovanni", "gio"],
-    "prefijo": "gio"
-  },
-  "stesicoro": {
-    "nombre": "Stesicoro",
-    "variantes": ["stesicoro", "stes"],
-    "prefijo": "ste"
   }
 }
