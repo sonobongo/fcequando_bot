@@ -12,7 +12,7 @@ from horarios_logic import CATANIA_TZ
 logger = logging.getLogger(__name__)
 
 # ============================================================================
-# CARGAR CONFIGURACIÓN DE ESTACIONES
+# CARGAR CONFIGURACIÓN DE ESTACIONES (solo Galatea)
 # ============================================================================
 def load_station_config():
     script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -20,12 +20,9 @@ def load_station_config():
     if os.path.exists(json_path):
         with open(json_path, 'r', encoding='utf-8') as f:
             return json.load(f)
-    else:
-        logger.warning(f"Archivo {json_path} no encontrado")
-        return {}
+    return {}
 
 STATION_CONFIG = load_station_config()
-print(f"DEBUG: STATION_CONFIG cargado: {STATION_CONFIG}")
 
 # ============================================================================
 # TECLADOS
@@ -300,29 +297,43 @@ async def send_message_3(update: Update, msg: str, current_station_key: str, tie
     else:
         return await send_default(update, msg, reply_markup=reply_markup)
 
+# ============================================================================
+# FUNCIÓN PARA ENVIAR msg2 y msg3 (con botón retardado 5 segundos en intermedias)
+# ============================================================================
 async def send_messages_2_and_3(update: Update, estacion_key: str, now: datetime, simulated: bool = False, show_button: bool = True):
     msg2, msg3, key_mp, time_mp, key_st, time_st, mins_mp, mins_st = build_temporary_messages(now, estacion_key)
     
     msg2_obj = await send_message_2(update, msg2, key_mp, time_mp, mins_mp, estacion_key)
     await asyncio.sleep(0.1)
     
-    if estacion_key not in ["montepo", "stesicoro"]:
-        keyboard_inline = InlineKeyboardMarkup([
-            [InlineKeyboardButton("🔄 Aggiornare", callback_data=f"aggiornare_{estacion_key}")]
-        ])
-        msg3_obj = await send_message_3(update, msg3, key_st, time_st, mins_st, estacion_key, reply_markup=keyboard_inline)
-    else:
-        msg3_obj = await send_message_3(update, msg3, key_st, time_st, mins_st, estacion_key, reply_markup=None)
+    # Enviar msg3 sin botón primero
+    msg3_obj = await send_message_3(update, msg3, key_st, time_st, mins_st, estacion_key, reply_markup=None)
     
     ids = []
     if msg2_obj:
         ids.append(msg2_obj.message_id)
     if msg3_obj:
         ids.append(msg3_obj.message_id)
+    
+    # Para estaciones intermedias, añadir botón después de 5 segundos
+    if estacion_key not in ["montepo", "stesicoro"] and show_button:
+        keyboard_inline = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🔄 Aggiornare", callback_data=f"aggiornare_{estacion_key}")]
+        ])
+        
+        async def add_button_later():
+            await asyncio.sleep(5)
+            try:
+                await msg3_obj.edit_reply_markup(reply_markup=keyboard_inline)
+            except Exception as e:
+                print(f"Error al añadir botón: {e}")
+        
+        asyncio.create_task(add_button_later())
+    
     return tuple(ids) if ids else None
 
 # ============================================================================
-# FUNCIÓN DE LIMPIEZA Y REINICIO AUTOMÁTICO (20 minutos)
+# FUNCIÓN DE LIMPIEZA Y REINICIO AUTOMÁTICO (20 minutos, silencioso)
 # ============================================================================
 async def auto_clean_and_restart(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await asyncio.sleep(20 * 60)
@@ -363,7 +374,7 @@ def schedule_cleanup(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.chat_data['cleanup_task'] = task
 
 # ============================================================================
-# REFRESCAR SOLO MENSAJES 2 y 3
+# REFRESCAR SOLO MENSAJES 2 y 3 (sin foto)
 # ============================================================================
 async def refresh_messages_only(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str):
     chat_id = update.effective_chat.id
@@ -404,7 +415,7 @@ async def aggiornare_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     await refresh_messages_only(fake_update, context, estacion_key)
 
 # ============================================================================
-# FUNCIÓN AUXILIAR PARA ENVIAR RESPUESTA DE CABECERA
+# FUNCIÓN AUXILIAR PARA ENVIAR RESPUESTA DE CABECERA (Monte Po / Stesicoro)
 # ============================================================================
 async def send_header_response(chat_id, context, estacion_key):
     simulated = context.chat_data.get('test_time')
@@ -835,43 +846,41 @@ async def cmd_stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("⚠️ L'auto-refresh non è più attivo. Non c'è nulla da fermare.")
 
 # ============================================================================
-# DETECCIÓN DE NOMBRE DE ESTACIÓN EN MODO NORMAL (USANDO JSON)
+# DETECCIÓN DE NOMBRE DE ESTACIÓN EN MODO NORMAL (SOLO GALATEA PARA PRUEBA)
 # ============================================================================
 async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    print(">>> [DEBUG] normal_handle_text llamado")
+    print(">>> [DEBUG] normal_handle_text called")
     if context.chat_data.get('accessibility_mode', False):
-        print(">>> [DEBUG] modo accesibilidad activo, saliendo")
+        print(">>> [DEBUG] accessibility_mode active, exiting")
         return
     
-    texto = update.message.text.strip()
-    print(f">>> [DEBUG] Texto original: {texto}")
+    text = update.message.text.strip()
+    print(f">>> [DEBUG] Original text: {text}")
     
     import unicodedata
-    # Normalizar: minúsculas + quitar tildes
-    texto_norm = unicodedata.normalize('NFKD', texto.lower()).encode('ASCII', 'ignore').decode('ASCII')
-    print(f">>> [DEBUG] Texto normalizado: {texto_norm}")
+    text_norm = unicodedata.normalize('NFKD', text.lower()).encode('ASCII', 'ignore').decode('ASCII')
+    print(f">>> [DEBUG] Normalized: {text_norm}")
     
     # 1. Reconocer "galatea" en cualquier parte del mensaje
-    if "galatea" in texto_norm:
-        print(">>> [DEBUG] Coincidencia con 'galatea' en cualquier lugar")
+    if "galatea" in text_norm:
+        print(">>> [DEBUG] Matched 'galatea' anywhere")
         await send_station_response(update, context, "galatea", return_to_main=True)
         return
     
-    # 2. Reconocer el prefijo secreto "gal" solo al inicio del mensaje
-    if texto_norm.startswith("gal"):
-        print(">>> [DEBUG] Coincidencia con prefijo 'gal' al inicio")
+    # 2. Reconocer prefijo "gal" al inicio
+    if text_norm.startswith("gal"):
+        print(">>> [DEBUG] Matched prefix 'gal' at start")
         await send_station_response(update, context, "galatea", return_to_main=True)
         return
     
-    # 3. Variante "galaxia" en cualquier parte
-    if "galaxia" in texto_norm:
-        print(">>> [DEBUG] Coincidencia con 'galaxia' en cualquier lugar")
+    # 3. Variante "galaxia"
+    if "galaxia" in text_norm:
+        print(">>> [DEBUG] Matched 'galaxia' anywhere")
         await send_station_response(update, context, "galatea", return_to_main=True)
         return
     
-    # Si no hay coincidencia
-    print(">>> [DEBUG] Sin coincidencia")
+    print(">>> [DEBUG] No match")
     await update.message.reply_text(
-        "Estación no reconocida. Prueba con 'galatea'.",
+        "Stazione non riconosciuta. Prova con 'galatea'.",
         reply_markup=keyboard_main
     )
