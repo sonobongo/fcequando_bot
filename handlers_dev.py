@@ -311,8 +311,10 @@ async def send_messages_2_and_3(update: Update, estacion_key: str, now: datetime
     # Para estaciones intermedias, añadir botón después de 5 segundos
     if estacion_key not in ["montepo", "stesicoro"] and show_button:
         keyboard_inline = InlineKeyboardMarkup([
-            [InlineKeyboardButton("🔄 Aggiornare", callback_data=f"aggiornare_{estacion_key}")]
-        ])
+        [InlineKeyboardButton("🔄 Aggiornare", callback_data=f"agg_cabecera_{estacion_key}")]
+    ])
+    boton_msg = await context.bot.send_message(chat_id=chat_id, text="Premi per aggiornare:", reply_markup=keyboard_inline)
+    context.chat_data['boton_msg_id'] = boton_msg.message_id
         
         async def add_button_later():
             await asyncio.sleep(1)
