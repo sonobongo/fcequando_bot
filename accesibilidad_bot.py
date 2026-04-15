@@ -138,7 +138,7 @@ async def cmd_accesibilidad(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "♿ Modalità accessibilità attivata.\n\n"
         "Scrivi il nome della stazione che desideri consultare.\n"
         f"Esempio: 'Monte Po' o 'Galatea'.\n\n"
-        f"Stazioni disponibili: {lista_estazioni}\n\n"
+        f"Stazioni disponibili: {lista_estaciones}\n\n"
         "Per uscire, scrivi 'Uscire'.",
         parse_mode=None
     )
