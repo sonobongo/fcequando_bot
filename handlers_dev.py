@@ -60,9 +60,9 @@ def get_bus_message_nesima(now: datetime) -> str:
     return ""
 
 # ============================================================================
-# BUS GRATUITO MONTE PO → MISTERBIANCO
+# BUS GRATUITO MONTE PO → MISTERBIANCO (aviso 15 minutos antes)
 # ============================================================================
-def get_bus_message_montepo(now: datetime) -> str:
+def get_bus_message_montepo_advanced(now: datetime) -> str:
     if now.weekday() >= 5 or is_festivo_nazionale(now):
         return ""
     ahora_min = now.hour * 60 + now.minute
@@ -70,14 +70,9 @@ def get_bus_message_montepo(now: datetime) -> str:
               ("8:00", 8*60), ("8:15", 8*60+15), ("8:30", 8*60+30)]
     tarde = [("13:00", 13*60), ("13:15", 13*60+15), ("13:30", 13*60+30), ("13:45", 13*60+45),
              ("14:00", 14*60), ("14:15", 14*60+15), ("14:30", 14*60+30)]
-    if 6*60+45 <= ahora_min <= 8*60+31:
-        for hora_str, hora_min in manana:
-            if hora_min > ahora_min:
-                return f"🚌 Autobus gratuito per Misterbianco alle {hora_str}"
-    elif 12*60+45 <= ahora_min <= 14*60+31:
-        for hora_str, hora_min in tarde:
-            if hora_min > ahora_min:
-                return f"🚌 Autobus gratuito per Misterbianco alle {hora_str}"
+    for hora_str, hora_min in manana + tarde:
+        if hora_min > ahora_min and (hora_min - ahora_min) <= 15:
+            return f"🚌 **Autobus gratuito per Misterbianco** alle {hora_str} (partenza da Monte Po)"
     return ""
 
 # ============================================================================
@@ -309,13 +304,12 @@ async def send_messages_2_and_3(update: Update, estacion_key: str, now: datetime
     return tuple(ids) if ids else None
 
 # ============================================================================
-# FUNCIÓN DE LIMPIEZA Y REINICIO AUTOMÁTICO (20 minutos)
+# FUNCIÓN DE LIMPIEZA Y REINICIO AUTOMÁTICO (20 minutos, silencioso, conserva bienvenida)
 # ============================================================================
 async def auto_clean_and_restart(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await asyncio.sleep(20 * 60)
     chat_id = update.effective_chat.id
     
-    # IDs de mensajes a borrar (todos excepto el de bienvenida)
     msg_ids = []
     if 'main_msg_id' in context.chat_data:
         msg_ids.append(context.chat_data['main_msg_id'])
@@ -342,8 +336,6 @@ async def auto_clean_and_restart(update: Update, context: ContextTypes.DEFAULT_T
         context.chat_data['dev_mode'] = True
     if welcome_id:
         context.chat_data['welcome_msg_id'] = welcome_id
-    
-    # NO se envía ningún mensaje de aviso
 
 def schedule_cleanup(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if 'cleanup_task' in context.chat_data:
@@ -384,7 +376,7 @@ async def refresh_messages_only(update: Update, context: ContextTypes.DEFAULT_TY
     schedule_cleanup(update, context)
 
 # ============================================================================
-# CALLBACK PARA EL BOTÓN "AGGIORNARE"
+# CALLBACK PARA EL BOTÓN "AGGIORNARE" (estaciones intermedias)
 # ============================================================================
 async def aggiornare_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -396,6 +388,108 @@ async def aggiornare_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         'callback_query': query
     })()
     await refresh_messages_only(fake_update, context, estacion_key)
+
+# ============================================================================
+# CALLBACK PARA EL BOTÓN EN CABECERAS (Monte Po y Stesicoro) - actualiza editando y mantiene el botón
+# ============================================================================
+async def aggiornare_cabecera_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    estacion_key = query.data.split("_")[2]  # "agg_cabecera_montepo"
+    
+    simulated = context.chat_data.get('test_time')
+    if simulated:
+        if simulated.tzinfo is None:
+            simulated = CATANIA_TZ.localize(simulated)
+        now = simulated
+    else:
+        now = datetime.now(CATANIA_TZ)
+    
+    station = "Montepo" if estacion_key == "montepo" else "Stesicoro"
+    closed, next_open, special_closing_msg = is_metro_closed(now, station)
+    if closed:
+        if next_open.date() > now.date():
+            msg = f"{special_closing_msg}\n🚇 La metropolitana è chiusa in questo momento. Riaprirà domani alle {next_open.strftime('%H:%M')}."
+        else:
+            mins_to_open = int((next_open - now).total_seconds() // 60)
+            if mins_to_open <= 60:
+                first_train, _, _, has_first = get_next_departure(station, now)
+                if not has_first:
+                    first_train, _, _, _ = get_next_departure(station, now + timedelta(days=1))
+                station_display = "Monte Po" if station == "Montepo" else "Stesicoro"
+                msg = f"{special_closing_msg}\n🚇 La metropolitana è chiusa in questo momento. Il primo treno da {station_display} partirà alle {first_train.strftime('%H:%M')}."
+            else:
+                msg = f"{special_closing_msg}\n🚇 La metropolitana è chiusa in questo momento.\n🕒 Riaprirà alle {next_open.strftime('%H:%M')}."
+    else:
+        next_dep, minutes, seconds, has_trains = get_next_departure(station, now)
+        if not has_trains:
+            close_h, close_m = get_closing_time(now, station)
+            msg = f"🚇 Non ci sono più treni oggi. Il servizio termina alle {close_h:02d}:{close_m:02d}."
+        else:
+            dest = "Stesicoro" if station == "Montepo" else "Monte Po"
+            remaining = next_dep - now
+            mins_rest = int(remaining.total_seconds() // 60)
+            secs_rest = int(remaining.total_seconds() % 60)
+            time_str_rest = format_time(mins_rest, secs_rest)
+            if mins_rest <= 4:
+                msg = f"🚇 Il treno è in binario. Partirà tra **{time_str_rest}**."
+                if mins_rest <= 1:
+                    next2, min2, sec2, has2 = get_next_departure_after(station, now, next_dep.time())
+                    if has2:
+                        msg += f"\n\n🚆 Il prossimo treno successivo partirà tra {format_time(min2, sec2)}, alle {next2.strftime('%H:%M')}."
+                    else:
+                        msg += f"\n\n🚆 Questo è l'ultimo treno della giornata."
+            else:
+                time_str = format_time(minutes, seconds)
+                if minutes < SHORT_TIME_THRESHOLD:
+                    msg = f"🚇 Prossimo treno per {dest} parte tra **{time_str}**."
+                else:
+                    msg = f"🚇 Prossimo treno per {dest} parte tra **{time_str}**, alle {next_dep.strftime('%H:%M')}."
+                if minutes <= 1:
+                    next2, min2, sec2, has2 = get_next_departure_after(station, now, next_dep.time())
+                    if has2:
+                        msg += f"\n\n🚆 Il prossimo treno successivo partirà tra {format_time(min2, sec2)}, alle {next2.strftime('%H:%M')}."
+                    else:
+                        msg += f"\n\n🚆 Questo è l'ultimo treno della giornata."
+        last_msg = get_last_train_message(now)
+        if last_msg and not is_sant_agata(now):
+            if "01:00" in last_msg:
+                last_msg = last_msg.replace("📌", "🕐")
+            elif "22:30" in last_msg:
+                last_msg = last_msg.replace("📌", "🕙")
+            msg += f"\n\n{last_msg}"
+    
+    keyboard_inline = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🔄 Aggiornare", callback_data=f"agg_cabecera_{estacion_key}")]
+    ])
+    
+    if query.message.photo:
+        await query.edit_message_caption(caption=msg, parse_mode='Markdown', reply_markup=keyboard_inline)
+    else:
+        await query.edit_message_text(text=msg, parse_mode='Markdown', reply_markup=keyboard_inline)
+    
+    # Manejar mensaje del autobús gratuito para Monte Po
+    if estacion_key == "montepo":
+        bus_text = get_bus_message_montepo_advanced(now)
+        bus_msg_id = context.chat_data.get('bus_msg_id')
+        if bus_text:
+            if bus_msg_id:
+                try:
+                    await context.bot.edit_message_text(chat_id=query.message.chat_id, message_id=bus_msg_id, text=bus_text, parse_mode='Markdown')
+                except Exception:
+                    pass
+            else:
+                bus_msg = await query.message.reply_text(bus_text, parse_mode='Markdown')
+                context.chat_data['bus_msg_id'] = bus_msg.message_id
+        else:
+            if bus_msg_id:
+                try:
+                    await context.bot.delete_message(chat_id=query.message.chat_id, message_id=bus_msg_id)
+                except Exception:
+                    pass
+                context.chat_data.pop('bus_msg_id', None)
+    
+    schedule_cleanup(update, context)
 
 # ============================================================================
 # RESPUESTA PRINCIPAL (foto + msg2/msg3)
@@ -423,6 +517,11 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
     if estacion_key in ["montepo", "stesicoro"]:
         station = "Montepo" if estacion_key == "montepo" else "Stesicoro"
         closed, next_open, special_closing_msg = is_metro_closed(now, station)
+        
+        keyboard_inline = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🔄 Aggiornare", callback_data=f"agg_cabecera_{estacion_key}")]
+        ])
+        
         if closed:
             if next_open.date() > now.date():
                 msg = f"{special_closing_msg}\n🚇 La metropolitana è chiusa in questo momento. Riaprirà domani alle {next_open.strftime('%H:%M')}."
@@ -438,10 +537,19 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
                     msg = f"{special_closing_msg}\n🚇 La metropolitana è chiusa in questo momento.\n🕒 Riaprirà alle {next_open.strftime('%H:%M')}."
             img = get_station_image(estacion_key, now)
             if img:
-                msg1 = await update.message.reply_photo(photo=img, caption=msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
+                msg1 = await update.message.reply_photo(photo=img, caption=msg, reply_markup=keyboard_inline)
             else:
-                msg1 = await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
+                msg1 = await update.message.reply_text(msg, reply_markup=keyboard_inline)
             context.chat_data['main_msg_id'] = msg1.message_id
+            
+            if estacion_key == "montepo":
+                bus_text = get_bus_message_montepo_advanced(now)
+                if bus_text:
+                    bus_msg = await update.message.reply_text(bus_text, parse_mode='Markdown')
+                    context.chat_data['bus_msg_id'] = bus_msg.message_id
+                else:
+                    context.chat_data.pop('bus_msg_id', None)
+            
             schedule_cleanup(update, context)
             return
 
@@ -451,10 +559,19 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
             msg = f"🚇 Non ci sono più treni oggi. Il servizio termina alle {close_h:02d}:{close_m:02d}."
             img = get_station_image(estacion_key, now)
             if img:
-                msg1 = await update.message.reply_photo(photo=img, caption=msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
+                msg1 = await update.message.reply_photo(photo=img, caption=msg, reply_markup=keyboard_inline)
             else:
-                msg1 = await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
+                msg1 = await update.message.reply_text(msg, reply_markup=keyboard_inline)
             context.chat_data['main_msg_id'] = msg1.message_id
+            
+            if estacion_key == "montepo":
+                bus_text = get_bus_message_montepo_advanced(now)
+                if bus_text:
+                    bus_msg = await update.message.reply_text(bus_text, parse_mode='Markdown')
+                    context.chat_data['bus_msg_id'] = bus_msg.message_id
+                else:
+                    context.chat_data.pop('bus_msg_id', None)
+            
             schedule_cleanup(update, context)
             return
 
@@ -495,13 +612,24 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
 
         total_seconds_rest = int(remaining.total_seconds())
         if total_seconds_rest <= 90 or mins_rest <= 1:
-            await send_treno_arrivo_cabecera(update, msg)
+            msg1 = await send_treno_arrivo_cabecera(update, msg)
+            await msg1.edit_reply_markup(reply_markup=keyboard_inline)
         else:
             img = get_station_image(estacion_key, now)
             if img:
-                await update.message.reply_photo(photo=img, caption=msg, reply_markup=keyboard_main if return_to_main else keyboard_altri, parse_mode='Markdown')
+                msg1 = await update.message.reply_photo(photo=img, caption=msg, reply_markup=keyboard_inline, parse_mode='Markdown')
             else:
-                await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri, parse_mode='Markdown')
+                msg1 = await update.message.reply_text(msg, reply_markup=keyboard_inline, parse_mode='Markdown')
+        context.chat_data['main_msg_id'] = msg1.message_id
+        
+        if estacion_key == "montepo":
+            bus_text = get_bus_message_montepo_advanced(now)
+            if bus_text:
+                bus_msg = await update.message.reply_text(bus_text, parse_mode='Markdown')
+                context.chat_data['bus_msg_id'] = bus_msg.message_id
+            else:
+                context.chat_data.pop('bus_msg_id', None)
+        
         schedule_cleanup(update, context)
         return
 
@@ -549,10 +677,6 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
     
     if estacion_key == "nesima":
         bus_msg = get_bus_message_nesima(now)
-        if bus_msg:
-            permanent_caption += f"\n\n{bus_msg}"
-    if estacion_key == "montepo":
-        bus_msg = get_bus_message_montepo(now)
         if bus_msg:
             permanent_caption += f"\n\n{bus_msg}"
     
@@ -639,6 +763,7 @@ async def cmd_giovanni(update, context):
     await send_station_response(update, context, "giovanni", return_to_main=False)
 async def cmd_altri(update, context):
     await update.message.reply_text("⬇️ Altre stazioni:", reply_markup=keyboard_altri)
+
 async def start(update, context):
     user = update.effective_user
     now = datetime.now(CATANIA_TZ)
@@ -653,8 +778,8 @@ async def start(update, context):
         f"{last_msg}",
         reply_markup=keyboard_main
     )
-    # Guardar el ID del mensaje de bienvenida para no borrarlo después
     context.chat_data['welcome_msg_id'] = msg.message_id
+
 async def help_command(update, context):
     await update.message.reply_text(
         "Comandi disponibili:\n"
@@ -675,6 +800,7 @@ async def help_command(update, context):
         "Oppure premi i pulsanti.",
         reply_markup=keyboard_main
     )
+
 async def handle_button(update, context):
     text = update.message.text
     if text == "Altri":
