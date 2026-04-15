@@ -507,26 +507,31 @@ async def send_header_response(chat_id, context, estacion_key):
             context.chat_data.pop('bus_msg_id', None)
 
 # ============================================================================
-# CALLBACK PARA EL BOTÓN EN CABECERAS
+# CALLBACK PARA EL BOTÓN "AGGIORNARE" (estaciones intermedias) - CON COOLDOWN
 # ============================================================================
-async def aggiornare_cabecera_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def aggiornare_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
+    estacion_key = query.data.split("_")[1]
+    
+    # Cooldown por estación (2 segundos)
+    cooldown_key = f"cooldown_{estacion_key}"
+    last_update = context.chat_data.get(cooldown_key, 0)
+    now = time_module.time()
+    if now - last_update < 2:
+        # Ignorar pulsación (sin respuesta para no molestar)
+        await query.answer()
+        return
+    
+    # Registrar el momento de esta pulsación
+    context.chat_data[cooldown_key] = now
     await query.answer()
-    estacion_key = query.data.split("_")[2]
-    chat_id = query.message.chat_id
-    try:
-        await query.message.delete()
-    except Exception:
-        pass
-    bus_msg_id = context.chat_data.get('bus_msg_id')
-    if bus_msg_id:
-        try:
-            await context.bot.delete_message(chat_id=chat_id, message_id=bus_msg_id)
-        except Exception:
-            pass
-        context.chat_data.pop('bus_msg_id', None)
-    await send_header_response(chat_id, context, estacion_key)
-    schedule_cleanup(update, context)
+    
+    fake_update = type('Update', (), {
+        'message': query.message,
+        'effective_chat': query.message.chat,
+        'callback_query': query
+    })()
+    await refresh_messages_only(fake_update, context, estacion_key)
 
 # ============================================================================
 # RESPUESTA PRINCIPAL (foto + msg2/msg3)
