@@ -825,10 +825,39 @@ async def cmd_stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # DETECCIÓN DE NOMBRE DE ESTACIÓN EN MODO NORMAL (SOLO GALATEA PARA PRUEBA)
 # ============================================================================
 async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Solo actuar si NO estamos en modo accesibilidad (por si acaso)
+    # Salir si estamos en modo accesibilidad (por si acaso)
     if context.chat_data.get('accessibility_mode', False):
         return
-    
-    texto = update.message.text.strip().lower()
-    if "galatea" in texto:
+
+    texto = update.message.text.strip()
+    # Normalizar: minúsculas y sin tildes
+    import unicodedata
+    texto_norm = unicodedata.normalize('NFKD', texto.lower()).encode('ASCII', 'ignore').decode('ASCII')
+
+    # Obtener lista de estaciones (clave, nombre) y ordenar por longitud descendente
+    estaciones = list(NOMBRE_MOSTRAR.items())
+    estaciones.sort(key=lambda x: len(x[1]), reverse=True)  # "Giovanni XXIII" antes que "Giovanni"
+
+    # 1. Buscar nombre completo de cualquier estación en el texto
+    for clave, nombre in estaciones:
+        nombre_norm = unicodedata.normalize('NFKD', nombre.lower()).encode('ASCII', 'ignore').decode('ASCII')
+        if nombre_norm in texto_norm:
+            await send_station_response(update, context, clave, return_to_main=True)
+            return
+
+    # 2. (Opcional) Truco secreto: prefijo "gal" al inicio solo para Galatea
+    if texto_norm.startswith("gal"):
         await send_station_response(update, context, "galatea", return_to_main=True)
+        return
+
+    # 3. (Opcional) Variante "galaxia" para Galatea
+    if "galaxia" in texto_norm:
+        await send_station_response(update, context, "galatea", return_to_main=True)
+        return
+
+    # Si no se reconoce ninguna estación, responder con mensaje de error
+    await update.message.reply_text(
+        "Estación no reconocida. Las estaciones disponibles son: " +
+        ", ".join(NOMBRE_MOSTRAR.values()) + ".",
+        reply_markup=keyboard_main
+    )
