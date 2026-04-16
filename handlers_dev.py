@@ -309,7 +309,7 @@ async def send_messages_2_and_3(update: Update, estacion_key: str, now: datetime
         ids.append(msg3_obj.message_id)
     
     # Para estaciones intermedias, añadir botón después de 1 segundo
-    if estacion_key not in ["montepo", "stesicoro"] and show_button:
+        if estacion_key not in ["montepo", "stesicoro"] and show_button:
         keyboard_inline = InlineKeyboardMarkup([
             [InlineKeyboardButton("🔄 Aggiornare", callback_data=f"aggiornare_{estacion_key}")]
         ])
@@ -436,9 +436,19 @@ async def send_header_response(chat_id, context, estacion_key):
     closed, next_open, special_closing_msg = is_metro_closed(now, station)
     
     keyboard_inline = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔄 Aggiornare", callback_data=f"agg_cabecera_{estacion_key}")]
+        [InlineKeyboardButton("🔄 Aggiornare", callback_data=f"aggiornare_{estacion_key}")]
     ])
     
+    # ========== 1. Enviar mensaje del autobús (solo Monte Po) ==========
+    if estacion_key == "montepo":
+        bus_text = get_bus_message_montepo_advanced(now)
+        if bus_text:
+            bus_msg = await context.bot.send_message(chat_id=chat_id, text=bus_text, parse_mode='Markdown')
+            context.chat_data['bus_msg_id'] = bus_msg.message_id
+        else:
+            context.chat_data.pop('bus_msg_id', None)
+    
+    # ========== 2. Enviar mensaje principal con botón ==========
     if closed:
         if next_open.date() > now.date():
             msg = f"{special_closing_msg}\n🚇 La metropolitana è chiusa in questo momento. Riaprirà domani alle {next_open.strftime('%H:%M')}."
@@ -516,12 +526,6 @@ async def send_header_response(chat_id, context, estacion_key):
                 else:
                     msg1 = await context.bot.send_message(chat_id=chat_id, text=msg, parse_mode='Markdown', reply_markup=keyboard_inline)
             context.chat_data['main_msg_id'] = msg1.message_id
-    
-    if estacion_key == "montepo":
-        bus_text = get_bus_message_montepo_advanced(now)
-        if bus_text:
-            bus_msg = await context.bot.send_message(chat_id=chat_id, text=bus_text, parse_mode='Markdown')
-            context.chat_data['bus_msg_id'] = bus_msg.message_id
         else:
             context.chat_data.pop('bus_msg_id', None)
 
