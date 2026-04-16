@@ -419,7 +419,25 @@ async def aggiornare_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         'callback_query': query
     })()
     await refresh_messages_only(fake_update, context, estacion_key)
-
+# ============================================================================
+# CALLBACK PARA EL BOTÓN EN CABECERAS (Monte Po y Stesicoro)
+# ============================================================================
+async def aggiornare_cabecera_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    estacion_key = query.data.split("_")[2]
+    chat_id = query.message.chat_id
+    
+    # Elimina el mensaje principal viejo
+    try:
+        await query.message.delete()
+    except Exception:
+        pass
+    
+    # Regenera todo (incluirá el bus si está presente)
+    await send_header_response(chat_id, context, estacion_key)
+    
+    schedule_cleanup(update, context)
 # ============================================================================
 # FUNCIÓN AUXILIAR PARA ENVIAR RESPUESTA DE CABECERA (Monte Po / Stesicoro)
 # ============================================================================
@@ -436,19 +454,10 @@ async def send_header_response(chat_id, context, estacion_key):
     closed, next_open, special_closing_msg = is_metro_closed(now, station)
     
     keyboard_inline = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔄 Aggiornare", callback_data=f"aggiornare_{estacion_key}")]
+        [InlineKeyboardButton("🔄 Aggiornare", callback_data=f"agg_cabecera_{estacion_key}")]
     ])
     
-    # ========== 1. Enviar mensaje del autobús (solo Monte Po) ==========
-    if estacion_key == "montepo":
-        bus_text = get_bus_message_montepo_advanced(now)
-        if bus_text:
-            bus_msg = await context.bot.send_message(chat_id=chat_id, text=bus_text, parse_mode='Markdown')
-            context.chat_data['bus_msg_id'] = bus_msg.message_id
-        else:
-            context.chat_data.pop('bus_msg_id', None)
-    
-    # ========== 2. Enviar mensaje principal con botón ==========
+    # Costruisci il messaggio principale
     if closed:
         if next_open.date() > now.date():
             msg = f"{special_closing_msg}\n🚇 La metropolitana è chiusa in questo momento. Riaprirà domani alle {next_open.strftime('%H:%M')}."
@@ -462,23 +471,11 @@ async def send_header_response(chat_id, context, estacion_key):
                 msg = f"{special_closing_msg}\n🚇 La metropolitana è chiusa in questo momento. Il primo treno da {station_display} partirà alle {first_train.strftime('%H:%M')}."
             else:
                 msg = f"{special_closing_msg}\n🚇 La metropolitana è chiusa in questo momento.\n🕒 Riaprirà alle {next_open.strftime('%H:%M')}."
-        img = get_station_image(estacion_key, now)
-        if img:
-            msg1 = await context.bot.send_photo(chat_id=chat_id, photo=img, caption=msg, reply_markup=keyboard_inline)
-        else:
-            msg1 = await context.bot.send_message(chat_id=chat_id, text=msg, reply_markup=keyboard_inline)
-        context.chat_data['main_msg_id'] = msg1.message_id
     else:
         next_dep, minutes, seconds, has_trains = get_next_departure(station, now)
         if not has_trains:
             close_h, close_m = get_closing_time(now, station)
             msg = f"🚇 Non ci sono più treni oggi. Il servizio termina alle {close_h:02d}:{close_m:02d}."
-            img = get_station_image(estacion_key, now)
-            if img:
-                msg1 = await context.bot.send_photo(chat_id=chat_id, photo=img, caption=msg, reply_markup=keyboard_inline)
-            else:
-                msg1 = await context.bot.send_message(chat_id=chat_id, text=msg, reply_markup=keyboard_inline)
-            context.chat_data['main_msg_id'] = msg1.message_id
         else:
             dest = "Stesicoro" if station == "Montepo" else "Monte Po"
             remaining = next_dep - now
@@ -505,27 +502,37 @@ async def send_header_response(chat_id, context, estacion_key):
                         msg += f"\n\n🚆 Il prossimo treno successivo partirà tra {format_time(min2, sec2)}, alle {next2.strftime('%H:%M')}."
                     else:
                         msg += f"\n\n🚆 Questo è l'ultimo treno della giornata."
-            last_msg = get_last_train_message(now)
-            if last_msg and not is_sant_agata(now):
-                if "01:00" in last_msg:
-                    last_msg = last_msg.replace("📌", "🕐")
-                elif "22:30" in last_msg:
-                    last_msg = last_msg.replace("📌", "🕙")
-                msg += f"\n\n{last_msg}"
-            total_seconds_rest = int(remaining.total_seconds())
-            if total_seconds_rest <= 90 or mins_rest <= 1:
-                img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_trenoarriva_cabeceras.png"
-                cache_buster = int(time_module.time())
-                img_url = f"{img_url}?v={cache_buster}"
-                msg1 = await context.bot.send_photo(chat_id=chat_id, photo=img_url, caption=msg, parse_mode='Markdown')
-                await msg1.edit_reply_markup(reply_markup=keyboard_inline)
-            else:
-                img = get_station_image(estacion_key, now)
-                if img:
-                    msg1 = await context.bot.send_photo(chat_id=chat_id, photo=img, caption=msg, parse_mode='Markdown', reply_markup=keyboard_inline)
-                else:
-                    msg1 = await context.bot.send_message(chat_id=chat_id, text=msg, parse_mode='Markdown', reply_markup=keyboard_inline)
-            context.chat_data['main_msg_id'] = msg1.message_id
+        last_msg = get_last_train_message(now)
+        if last_msg and not is_sant_agata(now):
+            if "01:00" in last_msg:
+                last_msg = last_msg.replace("📌", "🕐")
+            elif "22:30" in last_msg:
+                last_msg = last_msg.replace("📌", "🕙")
+            msg += f"\n\n{last_msg}"
+    
+    # Aggiungi il messaggio del bus (solo per Monte Po) direttamente nel caption
+    if estacion_key == "montepo":
+        bus_text = get_bus_message_montepo_advanced(now)
+        if bus_text:
+            # Rimuove eventuali ** (grassetto) e lascia solo il testo
+            bus_text_clean = bus_text.replace("**", "")
+            msg += f"\n\n{bus_text_clean}"
+    
+    # Ora invia il messaggio principale (foto + caption) con il bottone
+    total_seconds_rest = int(remaining.total_seconds()) if not closed and has_trains else 0
+    if not closed and has_trains and (total_seconds_rest <= 90 or mins_rest <= 1):
+        img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_trenoarriva_cabeceras.png"
+        cache_buster = int(time_module.time())
+        img_url = f"{img_url}?v={cache_buster}"
+        msg1 = await context.bot.send_photo(chat_id=chat_id, photo=img_url, caption=msg, parse_mode='Markdown')
+        await msg1.edit_reply_markup(reply_markup=keyboard_inline)
+    else:
+        img = get_station_image(estacion_key, now)
+        if img:
+            msg1 = await context.bot.send_photo(chat_id=chat_id, photo=img, caption=msg, parse_mode='Markdown', reply_markup=keyboard_inline)
+        else:
+            msg1 = await context.bot.send_message(chat_id=chat_id, text=msg, parse_mode='Markdown', reply_markup=keyboard_inline)
+    context.chat_data['main_msg_id'] = msg1.message_id
         else:
             context.chat_data.pop('bus_msg_id', None)
 
