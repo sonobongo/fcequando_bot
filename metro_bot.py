@@ -42,7 +42,7 @@ def main():
     def is_dev_mode(context):
         return context.chat_data.get('dev_mode', False)
 
-    # Comandos normales (modo normal / desarrollador)
+    # Comandos normales (wrappers)
     async def start_wrapper(update, context):
         if is_dev_mode(context):
             await dev_handlers.start_wrapper(update, context)
@@ -149,27 +149,18 @@ def main():
         else:
             await normal_handlers.stop_wrapper(update, context)
 
-    # Callbacks (los mismos para ambos módulos, pero se definen en cada uno)
+    # Callbacks
     async def aggiornare_callback_wrapper(update, context):
         if is_dev_mode(context):
             await dev_handlers.aggiornare_callback(update, context)
         else:
             await normal_handlers.aggiornare_callback(update, context)
 
-    # Wrapper para el callback de cabeceras (Monte Po y Stesicoro)
     async def aggiornare_cabecera_callback_wrapper(update, context):
         if is_dev_mode(context):
-            if hasattr(dev_handlers, 'aggiornare_cabecera_callback'):
-                await dev_handlers.aggiornare_cabecera_callback(update, context)
-            elif hasattr(normal_handlers, 'aggiornare_cabecera_callback'):
-                await normal_handlers.aggiornare_cabecera_callback(update, context)
-            else:
-                logger.warning("aggiornare_cabecera_callback non trovato")
+            await dev_handlers.aggiornare_cabecera_callback(update, context)
         else:
-            if hasattr(normal_handlers, 'aggiornare_cabecera_callback'):
-                await normal_handlers.aggiornare_cabecera_callback(update, context)
-            else:
-                logger.warning("aggiornare_cabecera_callback non trovato")
+            await normal_handlers.aggiornare_cabecera_callback(update, context)
 
     # Comandos desarrollo
     async def dev_mode_wrapper(update, context):
@@ -182,7 +173,6 @@ def main():
     # ========================================================================
     # REGISTRO DE COMANDOS
     # ========================================================================
-    # Comandos normales
     commands = [
         ("start", start_wrapper), ("help", help_command_wrapper),
         ("montepo", cmd_montepo_wrapper), ("stesicoro", cmd_stesicoro_wrapper),
@@ -198,7 +188,7 @@ def main():
     for cmd, handler in commands:
         app.add_handler(CommandHandler(cmd, handler))
 
-    # Comandos de accesibilidad (siempre usan el módulo accesibilidad_bot)
+    # Comandos de accesibilidad
     app.add_handler(CommandHandler("accessibilita", acc.cmd_accesibilidad))
     app.add_handler(CommandHandler("accesibilidad", acc.cmd_accesibilidad))
     app.add_handler(CommandHandler("uscire", acc.cmd_uscire))
@@ -217,18 +207,13 @@ def main():
     app.add_handler(CallbackQueryHandler(aggiornare_cabecera_callback_wrapper, pattern="^agg_cabecera_"))
 
     # ========================================================================
-    # MANEJADORES DE TEXTO (en orden de prioridad)
+    # MANEJADORES DE TEXTO
     # ========================================================================
-    # 1. Activación rápida de accesibilidad (si el texto empieza con "ac")
+    # 1. Activación rápida de accesibilidad (si el texto empieza con "acces")
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, acc.acc_try_activate))
 
-    # 2. Manejador de texto para modo accesibilidad (prefijos y comandos especiales)
+    # 2. Manejador de texto único (modo normal + accesibilidad)
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, acc.acc_handle_text))
-
-    # 3. Manejador de texto para modo normal (busca nombres completos de estación)
-    #    Este manejador comprueba internamente si accessibility_mode está activo
-    if hasattr(dev_handlers, 'normal_handle_text'):
-        app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, dev_handlers.normal_handle_text))
 
     logger.info("Bot avviato.")
     print("Bot funzionante... In attesa di messaggi.")
