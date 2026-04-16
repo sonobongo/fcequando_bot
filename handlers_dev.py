@@ -825,7 +825,7 @@ async def cmd_stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # DETECCIÓN DE NOMBRE DE ESTACIÓN EN MODO NORMAL (SOLO GALATEA PARA PRUEBA)
 # ============================================================================
 async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Salir si estamos en modo accesibilidad (por si acaso)
+    # Salir si estamos en modo accesibilidad
     if context.chat_data.get('accessibility_mode', False):
         return
 
@@ -833,29 +833,58 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
     # Normalizar: minúsculas y sin tildes
     import unicodedata
     texto_norm = unicodedata.normalize('NFKD', texto.lower()).encode('ASCII', 'ignore').decode('ASCII')
+    # Eliminar espacios extra y unir palabras (para comparar frases)
+    texto_limpio = ' '.join(texto_norm.split())
 
-    # Obtener lista de estaciones (clave, nombre) y ordenar por longitud descendente
+    # Lista de estaciones (clave, nombre) ordenadas por longitud descendente
     estaciones = list(NOMBRE_MOSTRAR.items())
-    estaciones.sort(key=lambda x: len(x[1]), reverse=True)  # "Giovanni XXIII" antes que "Giovanni"
+    estaciones.sort(key=lambda x: len(x[1]), reverse=True)
 
-    # 1. Buscar nombre completo de cualquier estación en el texto
+    # 1. Coincidencia exacta (nombre completo en cualquier parte)
     for clave, nombre in estaciones:
         nombre_norm = unicodedata.normalize('NFKD', nombre.lower()).encode('ASCII', 'ignore').decode('ASCII')
-        if nombre_norm in texto_norm:
+        if nombre_norm in texto_limpio:
             await send_station_response(update, context, clave, return_to_main=True)
             return
 
-    # 2. (Opcional) Truco secreto: prefijo "gal" al inicio solo para Galatea
-    if texto_norm.startswith("gal"):
+    # 2. Coincidencia aproximada (distancia de Levenshtein <= 2)
+    #    Se compara el texto completo del usuario con el nombre de la estación
+    from functools import lru_cache
+
+    def levenshtein_distance(a: str, b: str) -> int:
+        "Calcula la distancia de edición entre dos cadenas."
+        if len(a) < len(b):
+            return levenshtein_distance(b, a)
+        if len(b) == 0:
+            return len(a)
+        previous_row = list(range(len(b) + 1))
+        for i, ca in enumerate(a):
+            current_row = [i + 1]
+            for j, cb in enumerate(b):
+                insertions = previous_row[j + 1] + 1
+                deletions = current_row[j] + 1
+                substitutions = previous_row[j] + (ca != cb)
+                current_row.append(min(insertions, deletions, substitutions))
+            previous_row = current_row
+        return previous_row[-1]
+
+    for clave, nombre in estaciones:
+        nombre_norm = unicodedata.normalize('NFKD', nombre.lower()).encode('ASCII', 'ignore').decode('ASCII')
+        # Distancia entre el texto completo del usuario y el nombre de la estación
+        dist = levenshtein_distance(texto_limpio, nombre_norm)
+        if dist <= 2:  # Permitir hasta 2 errores
+            await send_station_response(update, context, clave, return_to_main=True)
+            return
+
+    # 3. Trucos secretos para Galatea (prefijo "gal" al inicio y "galaxia")
+    if texto_limpio.startswith("gal"):
+        await send_station_response(update, context, "galatea", return_to_main=True)
+        return
+    if "galaxia" in texto_limpio:
         await send_station_response(update, context, "galatea", return_to_main=True)
         return
 
-    # 3. (Opcional) Variante "galaxia" para Galatea
-    if "galaxia" in texto_norm:
-        await send_station_response(update, context, "galatea", return_to_main=True)
-        return
-
-    # Si no se reconoce ninguna estación, responder con mensaje de error
+    # No reconocido
     await update.message.reply_text(
         "Estación no reconocida. Las estaciones disponibles son: " +
         ", ".join(NOMBRE_MOSTRAR.values()) + ".",
