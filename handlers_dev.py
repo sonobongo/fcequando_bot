@@ -826,13 +826,17 @@ async def cmd_stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("⚠️ L'auto-refresh non è più attivo. Non c'è nulla da fermare.")
 
 # ============================================================================
-# MODO NONNA: DETECCIÓN DE NOMBRE DE ESTACIÓN CON ERRORES TIPOGRÁFICOS Y ALIAS
+# MODO NONNA: DETECCIÓN DE ESTACIÓN CON ERRORES TIPOGRÁFICOS, ALIAS Y PRIORIDAD
 # ============================================================================
 async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     texto = update.message.text.strip()
     import unicodedata
+    import re
+
+    # Normalizar: minúsculas, sin acentos, eliminar puntuación
     texto_norm = unicodedata.normalize('NFKD', texto.lower()).encode('ASCII', 'ignore').decode('ASCII')
-    texto_limpio = ' '.join(texto_norm.split())
+    texto_limpio = re.sub(r'[^\w\s]', '', texto_norm)  # eliminar puntuación
+    palabras = texto_limpio.split()
 
     # ========== ALIAS (sinónimos de estaciones) ==========
     ALIASES = {
@@ -843,13 +847,21 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
         "mister bianco": "montepo",
         "mr bianco": "montepo",
         "mr. bianco": "montepo",
+        "giovanni": "giovanni",        # <-- NUEVO: "Giovanni" a secas
+        "giovanni xxiii": "giovanni",
+        "stesicoro": "stesicoro",
+        "monte po": "montepo",
+        "monte": "montepo",            # prefijo, pero cuidado con falsos
+        "san nullo": "sannullo",
+        "nullo": "sannullo",
     }
+    # Normalizar claves de alias también
     alias_norm = {}
     for alias, clave in ALIASES.items():
         alias_clean = unicodedata.normalize('NFKD', alias.lower()).encode('ASCII', 'ignore').decode('ASCII')
         alias_norm[alias_clean] = clave
 
-    # Función de distancia Levenshtein
+    # Función de distancia Levenshtein (solo para palabras de más de 3 letras)
     def levenshtein_distance(a: str, b: str) -> int:
         if len(a) < len(b):
             return levenshtein_distance(b, a)
@@ -869,88 +881,124 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
     # Lista para guardar (posición, clave)
     matches = []
 
-    # 1. Coincidencia exacta de alias en el texto
-    for alias, clave in alias_norm.items():
-        if alias in texto_limpio:
-            matches.append((texto_limpio.find(alias), clave))
-
-    # 2. Excepción especial: "giovanni x"
-    if not matches:
-        giovanni_x_prefix = "giovanni x"
-        if texto_limpio.startswith(giovanni_x_prefix):
-            matches.append((0, "giovanni"))
-
-    # 3. Coincidencia aproximada de alias: buscar palabra por palabra
-    if not matches:
-        palabras = texto_limpio.split()
-        for alias, clave in alias_norm.items():
-            for i, palabra in enumerate(palabras):
-                dist = levenshtein_distance(palabra, alias)
-                if dist <= 2:
-                    pos = sum(len(p) + 1 for p in palabras[:i])
-                    matches.append((pos, clave))
-                    break
-            if matches:
+    # ========== DETECCIÓN DE "da X a Y" (priorizar estación después de "da") ==========
+    estacion_origen = None
+    # Buscar "da" en las palabras
+    for i, palabra in enumerate(palabras):
+        if palabra == "da" and i + 1 < len(palabras):
+            posible_estacion = palabras[i+1]
+            # Verificar si esa palabra (o combinación con la siguiente) es una estación
+            # Primero probar como alias
+            if posible_estacion in alias_norm:
+                estacion_origen = alias_norm[posible_estacion]
                 break
+            # Probar como nombre completo
+            for clave, nombre in NOMBRE_MOSTRAR.items():
+                nombre_norm = unicodedata.normalize('NFKD', nombre.lower()).encode('ASCII', 'ignore').decode('ASCII')
+                if posible_estacion == nombre_norm:
+                    estacion_origen = clave
+                    break
+            if estacion_origen:
+                break
+            # Si no, probar con dos palabras (ej. "monte po")
+            if i + 2 < len(palabras):
+                dos_palabras = f"{posible_estacion} {palabras[i+2]}"
+                if dos_palabras in alias_norm:
+                    estacion_origen = alias_norm[dos_palabras]
+                    break
+                for clave, nombre in NOMBRE_MOSTRAR.items():
+                    nombre_norm = unicodedata.normalize('NFKD', nombre.lower()).encode('ASCII', 'ignore').decode('ASCII')
+                    if dos_palabras == nombre_norm:
+                        estacion_origen = clave
+                        break
+                if estacion_origen:
+                    break
 
-    # 4. Coincidencia exacta del nombre completo de la estación (subcadena)
+    # ========== 1. Coincidencia exacta de alias en el texto (como subcadena) ==========
+    for alias, clave in alias_norm.items():
+        # Buscar alias como palabra completa o subcadena? Mejor como subcadena (ej. "giovanni" dentro de "giovanni xxiii")
+        pos = texto_limpio.find(alias)
+        if pos != -1:
+            matches.append((pos, clave))
+
+    # ========== 2. Coincidencia exacta del nombre completo de la estación (subcadena) ==========
     estaciones = list(NOMBRE_MOSTRAR.items())
-    estaciones.sort(key=lambda x: len(x[1]), reverse=True)
+    estaciones.sort(key=lambda x: len(x[1]), reverse=True)  # las más largas primero
     for clave, nombre in estaciones:
         nombre_norm = unicodedata.normalize('NFKD', nombre.lower()).encode('ASCII', 'ignore').decode('ASCII')
-        start = 0
-        while True:
-            pos = texto_limpio.find(nombre_norm, start)
-            if pos == -1:
-                break
+        pos = texto_limpio.find(nombre_norm)
+        if pos != -1:
             matches.append((pos, clave))
-            start = pos + 1
 
-    # 5. Coincidencia aproximada de nombres de estación: buscar palabra por palabra
+    # ========== 3. Coincidencia aproximada solo para palabras de más de 3 letras ==========
     if not matches:
-        palabras = texto_limpio.split()
         for clave, nombre in estaciones:
             nombre_norm = unicodedata.normalize('NFKD', nombre.lower()).encode('ASCII', 'ignore').decode('ASCII')
-            for i, palabra in enumerate(palabras):
-                dist = levenshtein_distance(palabra, nombre_norm)
-                if dist <= 2:
-                    pos = sum(len(p) + 1 for p in palabras[:i])
-                    matches.append((pos, clave))
+            # Dividir nombre en palabras (ej. "monte po" -> ["monte","po"])
+            palabras_nombre = nombre_norm.split()
+            for palabra_usuario in palabras:
+                if len(palabra_usuario) <= 3:
+                    continue  # ignorar palabras muy cortas (como "mio")
+                # Buscar coincidencia con cada palabra del nombre
+                for palabra_nombre in palabras_nombre:
+                    if len(palabra_nombre) <= 3:
+                        continue
+                    dist = levenshtein_distance(palabra_usuario, palabra_nombre)
+                    if dist <= 2:
+                        pos = texto_limpio.find(palabra_usuario)
+                        matches.append((pos, clave))
+                        break
+                if matches:
                     break
             if matches:
                 break
 
-    # 6. Prefijos (ej. "monte" -> "Monte Po")
+    # ========== 4. Prefijos (ej. "monte" -> "Monte Po") solo si no hay matches ==========
     if not matches:
         for clave, nombre in estaciones:
             nombre_norm = unicodedata.normalize('NFKD', nombre.lower()).encode('ASCII', 'ignore').decode('ASCII')
+            # Si el nombre comienza con el texto limpio (ej. "monte" es prefijo de "monte po")
             if nombre_norm.startswith(texto_limpio) and len(texto_limpio) >= 3:
                 matches.append((0, clave))
                 break
+            # Si el texto limpio comienza con el nombre (ej. "montepo" -> "monte po"? No es exacto)
             if texto_limpio.startswith(nombre_norm) and len(nombre_norm) >= 3:
                 matches.append((0, clave))
                 break
 
-    # 7. Trucos secretos para Galatea
+    # ========== 5. Trucos secretos ==========
     if not matches:
         if texto_limpio.startswith("gal"):
             matches.append((0, "galatea"))
         elif "galaxia" in texto_limpio:
             matches.append((0, "galatea"))
 
-    # 8. Excepción especial: "monte" a secas
+    # ========== 6. Excepción especial: "monte" a secas ==========
     if not matches and texto_limpio == "monte":
         matches.append((0, "montepo"))
 
+    # ========== DECIDIR ESTACIÓN ==========
     if matches:
+        # Ordenar por posición (primera aparición)
         matches.sort(key=lambda x: x[0])
         mejor_clave = matches[0][1]
+
+        # Si se detectó un origen con "da", y ese origen es diferente, darle prioridad
+        if estacion_origen and estacion_origen != mejor_clave:
+            # Verificar si la estación origen también está en matches (por si acaso)
+            for pos, clave in matches:
+                if clave == estacion_origen:
+                    mejor_clave = estacion_origen
+                    break
+            # Si no está, la añadimos como la mejor (posición -1 para que sea antes)
+            mejor_clave = estacion_origen
+
         await send_station_response(update, context, mejor_clave, return_to_main=True)
         return
 
     # No reconocido
     await update.message.reply_text(
         "Stazione non riconosciuta. Le stazioni disponibili sono: " +
-        ", ".join(NOMBRE_MOSTRAR.values()) + ".",
+        ", ".join(NOMBRE_MOSTRAR.values()) + ".\nPuoi anche usare alias come 'Misterbianco' (Monte Po) o 'Humanitas' (Nesima).",
         reply_markup=keyboard_main
     )
