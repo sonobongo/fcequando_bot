@@ -886,6 +886,12 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
         "humanitas": "nesima",
         "centro sicilia": "nesima",
         "centrosicilia": "nesima",
+        # Nuevas excepciones
+        "mister bianco": "montepo",
+        "mr bianco": "montepo",
+        "mr. bianco": "montepo",
+        "giovani": "giovanni",          # error tipográfico
+        "giovanni x": "giovanni",       # cualquier texto que empiece con "giovanni x" (se manejará aparte)
     }
     alias_norm = {}
     for alias, clave in ALIASES.items():
@@ -917,7 +923,14 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
         if alias in texto_limpio:
             matches.append((texto_limpio.find(alias), clave))
 
-    # 2. Coincidencia aproximada de alias: buscar palabra por palabra
+    # 2. Excepción especial: "giovanni x" (cualquier texto que empiece con "giovanni x")
+    if not matches:
+        # Buscamos si el texto normalizado empieza con "giovanni x"
+        giovanni_x_prefix = "giovanni x"
+        if texto_limpio.startswith(giovanni_x_prefix):
+            matches.append((0, "giovanni"))
+
+    # 3. Coincidencia aproximada de alias: buscar palabra por palabra
     if not matches:
         palabras = texto_limpio.split()
         for alias, clave in alias_norm.items():
@@ -930,7 +943,7 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
             if matches:
                 break
 
-    # 3. Coincidencia exacta del nombre completo de la estación (subcadena)
+    # 4. Coincidencia exacta del nombre completo de la estación (subcadena)
     estaciones = list(NOMBRE_MOSTRAR.items())
     estaciones.sort(key=lambda x: len(x[1]), reverse=True)
     for clave, nombre in estaciones:
@@ -943,7 +956,7 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
             matches.append((pos, clave))
             start = pos + 1
 
-    # 4. Coincidencia aproximada de nombres de estación: buscar palabra por palabra
+    # 5. Coincidencia aproximada de nombres de estación: buscar palabra por palabra
     if not matches:
         palabras = texto_limpio.split()
         for clave, nombre in estaciones:
@@ -957,7 +970,7 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
             if matches:
                 break
 
-    # 5. Prefijos (ej. "monte" -> "Monte Po")
+    # 6. Prefijos (ej. "monte" -> "Monte Po")
     if not matches:
         for clave, nombre in estaciones:
             nombre_norm = unicodedata.normalize('NFKD', nombre.lower()).encode('ASCII', 'ignore').decode('ASCII')
@@ -968,14 +981,14 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 matches.append((0, clave))
                 break
 
-    # 6. Trucos secretos para Galatea
+    # 7. Trucos secretos para Galatea
     if not matches:
         if texto_limpio.startswith("gal"):
             matches.append((0, "galatea"))
         elif "galaxia" in texto_limpio:
             matches.append((0, "galatea"))
 
-    # 7. Excepción especial: "monte" a secas
+    # 8. Excepción especial: "monte" a secas
     if not matches and texto_limpio == "monte":
         matches.append((0, "montepo"))
 
