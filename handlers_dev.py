@@ -291,7 +291,7 @@ async def send_message_3(update: Update, msg: str, current_station_key: str, tie
         return await send_default(update, msg, reply_markup=reply_markup)
 
 # ============================================================================
-# FUNCIÓN PARA ENVIAR msg2 y msg3 (con botón retardado 5 segundos en intermedias)
+# FUNCIÓN PARA ENVIAR msg2 y msg3 (con botón retardado 1 segundo en intermedias)
 # ============================================================================
 async def send_messages_2_and_3(update: Update, estacion_key: str, now: datetime, simulated: bool = False, show_button: bool = True):
     msg2, msg3, key_mp, time_mp, key_st, time_st, mins_mp, mins_st = build_temporary_messages(now, estacion_key)
@@ -299,7 +299,7 @@ async def send_messages_2_and_3(update: Update, estacion_key: str, now: datetime
     msg2_obj = await send_message_2(update, msg2, key_mp, time_mp, mins_mp, estacion_key)
     await asyncio.sleep(0.1)
     
-       # Enviar msg3 sin botón primero
+    # Enviar msg3 sin botón primero
     msg3_obj = await send_message_3(update, msg3, key_st, time_st, mins_st, estacion_key, reply_markup=None)
     
     ids = []
@@ -309,7 +309,7 @@ async def send_messages_2_and_3(update: Update, estacion_key: str, now: datetime
         ids.append(msg3_obj.message_id)
     
     # Para estaciones intermedias, añadir botón después de 1 segundo
-        if estacion_key not in ["montepo", "stesicoro"] and show_button:
+    if estacion_key not in ["montepo", "stesicoro"] and show_button:
         keyboard_inline = InlineKeyboardMarkup([
             [InlineKeyboardButton("🔄 Aggiornare", callback_data=f"aggiornare_{estacion_key}")]
         ])
@@ -394,22 +394,20 @@ async def refresh_messages_only(update: Update, context: ContextTypes.DEFAULT_TY
     schedule_cleanup(update, context)
 
 # ============================================================================
-# CALLBACK PARA EL BOTÓN "AGGIORNARE" (estaciones intermedias) - CON COOLDOWN DI 2 SECONDI
+# CALLBACK PARA EL BOTÓN "AGGIORNARE" (estaciones intermedias) - CON COOLDOWN
 # ============================================================================
 async def aggiornare_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     estacion_key = query.data.split("_")[1]
     
-    # Cooldown di 2 secondi per questa stazione
+    # Cooldown de 2 segundos por estación
     cooldown_key = f"cooldown_{estacion_key}"
     last_update = context.chat_data.get(cooldown_key, 0)
     now = time_module.time()
     if now - last_update < 2:
-        # Pulsazione ignorata (silenziosa)
         await query.answer()
         return
     
-    # Registra il momento di questa pulsazione
     context.chat_data[cooldown_key] = now
     await query.answer()
     
@@ -419,6 +417,7 @@ async def aggiornare_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         'callback_query': query
     })()
     await refresh_messages_only(fake_update, context, estacion_key)
+
 # ============================================================================
 # CALLBACK PARA EL BOTÓN EN CABECERAS (Monte Po y Stesicoro)
 # ============================================================================
@@ -438,6 +437,7 @@ async def aggiornare_cabecera_callback(update: Update, context: ContextTypes.DEF
     await send_header_response(chat_id, context, estacion_key)
     
     schedule_cleanup(update, context)
+
 # ============================================================================
 # FUNCIÓN AUXILIAR PARA ENVIAR RESPUESTA DE CABECERA (Monte Po / Stesicoro)
 # ============================================================================
@@ -514,12 +514,17 @@ async def send_header_response(chat_id, context, estacion_key):
     if estacion_key == "montepo":
         bus_text = get_bus_message_montepo_advanced(now)
         if bus_text:
-            # Rimuove eventuali ** (grassetto) e lascia solo il testo
             bus_text_clean = bus_text.replace("**", "")
             msg += f"\n\n{bus_text_clean}"
     
     # Ora invia il messaggio principale (foto + caption) con il bottone
-    total_seconds_rest = int(remaining.total_seconds()) if not closed and has_trains else 0
+    if not closed and has_trains:
+        total_seconds_rest = int(remaining.total_seconds())
+        mins_rest = int(remaining.total_seconds() // 60)
+    else:
+        total_seconds_rest = 0
+        mins_rest = 0
+    
     if not closed and has_trains and (total_seconds_rest <= 90 or mins_rest <= 1):
         img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_trenoarriva_cabeceras.png"
         cache_buster = int(time_module.time())
@@ -533,35 +538,6 @@ async def send_header_response(chat_id, context, estacion_key):
         else:
             msg1 = await context.bot.send_message(chat_id=chat_id, text=msg, parse_mode='Markdown', reply_markup=keyboard_inline)
     context.chat_data['main_msg_id'] = msg1.message_id
-        else:
-            context.chat_data.pop('bus_msg_id', None)
-
-# ============================================================================
-# CALLBACK PARA EL BOTÓN "AGGIORNARE" (estaciones intermedias) - CON COOLDOWN
-# ============================================================================
-async def aggiornare_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    estacion_key = query.data.split("_")[1]
-    
-    # Cooldown por estación (2 segundos)
-    cooldown_key = f"cooldown_{estacion_key}"
-    last_update = context.chat_data.get(cooldown_key, 0)
-    now = time_module.time()
-    if now - last_update < 2:
-        # Ignorar pulsación (sin respuesta para no molestar)
-        await query.answer()
-        return
-    
-    # Registrar el momento de esta pulsación
-    context.chat_data[cooldown_key] = now
-    await query.answer()
-    
-    fake_update = type('Update', (), {
-        'message': query.message,
-        'effective_chat': query.message.chat,
-        'callback_query': query
-    })()
-    await refresh_messages_only(fake_update, context, estacion_key)
 
 # ============================================================================
 # RESPUESTA PRINCIPAL (foto + msg2/msg3)
@@ -758,8 +734,6 @@ async def handle_button(update, context):
     else:
         await update.message.reply_text("Scelta non valida. Usa i pulsanti.", reply_markup=keyboard_main)
 
-
-
 async def test_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     args = context.args
     if not args:
@@ -833,8 +807,6 @@ async def test_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await send_station_response(update, context, station, return_to_main=False)
         return
     await update.message.reply_text("Comando non riconosciuto. Usa /test DDMMYYYY HHMM o /test DDMMYYYY HHMM X")
-
-
 
 async def testfin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if context.chat_data and 'test_time' in context.chat_data:
