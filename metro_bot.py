@@ -35,17 +35,16 @@ def main():
     app = Application.builder().token(TOKEN).defaults(defaults).build()
 
     # ========================================================================
-    # WRAPPERS QUE DECIDEN QUÉ MÓDULO USAR SEGÚN MODO DEV
+    # WRAPPERS (delegano a handlers_dev)
     # ========================================================================
     def is_dev_mode(context):
         return context.chat_data.get('dev_mode', False)
 
-    # Comandos normales (wrappers)
     async def start_wrapper(update, context):
         if is_dev_mode(context):
             await dev_handlers.start_wrapper(update, context)
         else:
-            await dev_handlers.start_wrapper(update, context)  # ambos usan el mismo por ahora
+            await dev_handlers.start_wrapper(update, context)
     async def help_command_wrapper(update, context):
         await dev_handlers.help_command_wrapper(update, context)
     async def cmd_montepo_wrapper(update, context):
@@ -101,20 +100,19 @@ def main():
         context.chat_data['dev_mode'] = False
         await update.message.reply_text("✅ Modalità sviluppatore disattivata. Tornato alla versione stabile.")
 
-    # Comandos para about y grazie (responden igual que el modo nonna)
-    async def about_cmd(update, context):
-        # Simula un mensaje de texto "about" para que lo procese normal_handle_text
-        class FakeUpdate:
-            def __init__(self, msg):
-                self.message = msg
-        fake_msg = type('obj', (object,), {'text': 'about', 'reply_text': update.message.reply_text, 'reply_photo': update.message.reply_photo})()
-        fake_update = FakeUpdate(fake_msg)
-        await dev_handlers.normal_handle_text(fake_update, context)
+    # ========================================================================
+    # COMANDOS PARA /about Y /grazie (responden como si fuera texto plano)
+    # ========================================================================
+    async def about_cmd(update: Update, context):
+        # Forzamos el texto a "about" para que lo procese el modo nonna
+        original_text = update.message.text
+        update.message.text = "about"
+        await dev_handlers.normal_handle_text(update, context)
+        update.message.text = original_text
 
-    async def grazie_cmd(update, context):
-        fake_msg = type('obj', (object,), {'text': 'grazie', 'reply_text': update.message.reply_text, 'reply_photo': update.message.reply_photo})()
-        fake_update = FakeUpdate(fake_msg)
-        await dev_handlers.normal_handle_text(fake_update, context)
+    async def grazie_cmd(update: Update, context):
+        update.message.text = "grazie"
+        await dev_handlers.normal_handle_text(update, context)
 
     # ========================================================================
     # REGISTRO DE COMANDOS
@@ -130,7 +128,7 @@ def main():
         ("giovanni", cmd_giovanni_wrapper), ("test", test_command_wrapper),
         ("testfin", testfin_command_wrapper), ("testgif", cmd_testgif_wrapper),
         ("auto", auto_wrapper), ("stop", stop_wrapper),
-        ("about", about_cmd), ("grazie", grazie_cmd)   # <--- AÑADIDO
+        ("about", about_cmd), ("grazie", grazie_cmd)
     ]
     for cmd, handler in commands:
         app.add_handler(CommandHandler(cmd, handler))
@@ -139,7 +137,7 @@ def main():
     app.add_handler(CommandHandler("dev", dev_mode_wrapper))
     app.add_handler(CommandHandler("devfin", dev_fin_wrapper))
 
-    # Teclados (ReplyKeyboardMarkup) para modo normal
+    # Teclados (ReplyKeyboardMarkup)
     button_texts = ["Monte Po", "Stesicoro", "Altri", "← Menu", "Fontana", "Nesima", "San Nullo",
                     "Cibali", "Milo", "Borgo", "Giuffrida", "Italia", "Galatea", "Giovanni XXIII"]
     app.add_handler(MessageHandler(filters.Text(button_texts), handle_button_wrapper))
@@ -149,7 +147,7 @@ def main():
     app.add_handler(CallbackQueryHandler(aggiornare_cabecera_callback_wrapper, pattern="^agg_cabecera_"))
 
     # ========================================================================
-    # MANEJADOR DE TEXTO PARA MODO NONNA
+    # MANEJADOR DE TEXTO PARA MODO NONNA (todo lo que no sea comando)
     # ========================================================================
     if hasattr(dev_handlers, 'normal_handle_text'):
         app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, dev_handlers.normal_handle_text))
