@@ -188,7 +188,7 @@ def main():
     for cmd, handler in commands:
         app.add_handler(CommandHandler(cmd, handler))
 
-    # Comandos de accesibilidad (reactivados)
+    # Comandos de accesibilidad
     app.add_handler(CommandHandler("accessibilita", acc.cmd_accesibilidad))
     app.add_handler(CommandHandler("accesibilidad", acc.cmd_accesibilidad))
     app.add_handler(CommandHandler("uscire", acc.cmd_uscire))
@@ -208,17 +208,11 @@ def main():
     app.add_handler(CallbackQueryHandler(acc.acc_aggiornare_callback, pattern="^acc_aggiornare_"))
 
     # ========================================================================
-    # MANEJADORES DE TEXTO (orden de prioridad)
+    # MANEJADORES DE TEXTO (solo modo normal, accesibilidad no procesa texto)
     # ========================================================================
-    # 1. Activación rápida de accesibilidad (si el texto empieza con "acces")
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, acc.acc_try_activate))
-
-    # 2. Modo normal (reconocimiento de estaciones) - solo si NO está en accesibilidad
+    # Manejador de texto para modo normal (reconocimiento de estaciones con alias)
     if hasattr(dev_handlers, 'normal_handle_text'):
         app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, dev_handlers.normal_handle_text))
-
-    # 3. Modo accesibilidad (solo actúa si el flag está activo)
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, acc.acc_handle_text))
 
     logger.info("Bot avviato.")
     print("Bot funzionante... In attesa di messaggi.")
