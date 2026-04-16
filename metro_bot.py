@@ -101,18 +101,22 @@ def main():
         await update.message.reply_text("✅ Modalità sviluppatore disattivata. Tornato alla versione stabile.")
 
     # ========================================================================
-    # COMANDOS PARA /about Y /grazie (responden como si fuera texto plano)
+    # COMANDOS PARA /about Y /grazie (directos, sin depender del modo nonna)
     # ========================================================================
+    FOTO_CREDITI_URL = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/FOTOMASTER.jpg"
+    CREDITI_MSG = "Chatbot sviluppato con grande impegno da Àlex Naranjo. Se ti piace, condividilo con i tuoi amici e familiari. https://t.me/FCEQuando_bot"
+
     async def about_cmd(update: Update, context):
-        # Forzamos el texto a "about" para que lo procese el modo nonna
-        original_text = update.message.text
-        update.message.text = "about"
-        await dev_handlers.normal_handle_text(update, context)
-        update.message.text = original_text
+        try:
+            await update.message.reply_photo(photo=FOTO_CREDITI_URL, caption=CREDITI_MSG, parse_mode='Markdown')
+        except Exception:
+            await update.message.reply_text(CREDITI_MSG, parse_mode='Markdown')
 
     async def grazie_cmd(update: Update, context):
-        update.message.text = "grazie"
-        await dev_handlers.normal_handle_text(update, context)
+        try:
+            await update.message.reply_photo(photo=FOTO_CREDITI_URL, caption=CREDITI_MSG, parse_mode='Markdown')
+        except Exception:
+            await update.message.reply_text(CREDITI_MSG, parse_mode='Markdown')
 
     # ========================================================================
     # REGISTRO DE COMANDOS
