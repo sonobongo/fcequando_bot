@@ -2,6 +2,7 @@ import asyncio
 import time as time_module
 import unicodedata
 import logging
+import re
 from datetime import datetime, timedelta
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove
 from telegram.ext import ContextTypes
@@ -34,6 +35,63 @@ BOTON_TO_KEY = {
     "Milo": "milo", "Borgo": "borgo", "Giuffrida": "giuffrida",
     "Italia": "italia", "Galatea": "galatea", "Giovanni XXIII": "giovanni"
 }
+
+# ============================================================================
+# PALABRAS CLAVE (calles cercanas) para cada estación
+# ============================================================================
+KEYWORDS = {
+    # Stesicoro
+    "corso sicilia": "stesicoro",
+    "repubblica": "stesicoro",
+    # Giovanni XXIII
+    "archimede": "giovanni",
+    "liberta": "giovanni",
+    "centrale": "giovanni",
+    # Galatea
+    "jonio": "galatea",
+    "pasubio": "galatea",
+    "palmanova": "galatea",
+    "messina": "galatea",
+    # Italia
+    "firenze": "italia",
+    "ramondetta": "italia",
+    "scammacca": "italia",
+    "veneto": "italia",
+    # Giuffrida
+    "carvana": "giuffrida",
+    "abraham": "giuffrida",
+    "lincoln": "giuffrida",
+    # Borgo
+    "empedocle": "borgo",
+    "signorelli": "borgo",
+    # Milo
+    "bronte": "milo",
+    "fleming": "milo",
+    # Cibali
+    "bergamo": "cibali",
+    "galermo": "cibali",
+    "massimino": "cibali",
+    "stadio": "cibali",
+    # San Nullo
+    "usodimare": "sannullo",
+    "sebastiano": "sannullo",
+    # Nesima
+    "lorenzo": "nesima",
+    "bolano": "nesima",
+    "filippo": "nesima",
+    "eredia": "nesima",
+    # Fontana
+    "garibaldi": "fontana",
+    # Monte Po
+    "carlo": "montepo",
+    "marx": "montepo",
+}
+
+# Normalizar las claves (minúsculas, sin acentos) para búsqueda
+KEYWORDS_NORM = {}
+for kw, station in KEYWORDS.items():
+    kw_norm = unicodedata.normalize('NFKD', kw.lower()).encode('ASCII', 'ignore').decode('ASCII')
+    KEYWORDS_NORM[kw_norm] = station
 
 # ============================================================================
 # FUNCIÓN PARA ELIMINAR "[]"
@@ -585,7 +643,7 @@ async def send_header_response(chat_id, context, estacion_key):
 # ============================================================================
 # RESPUESTA PRINCIPAL (foto + msg2/msg3)
 # ============================================================================
-async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str, return_to_main: bool = True):
+async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str, return_to_main: bool = True, keyword_mode: bool = False):
     context.chat_data['last_return_to_main'] = return_to_main
     if 'refresh_task' in context.chat_data:
         task = context.chat_data['refresh_task']
@@ -658,8 +716,11 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
     
     img_station = get_station_image(estacion_key, now)
     if return_to_main:
-        # Envía un mensaje temporal que también se borrará después
-        temp_msg = await update.message.reply_text("caricando informazione...", reply_markup=ReplyKeyboardRemove())
+        if keyword_mode:
+            loading_msg = "Questa è la stazione più vicina alla via selezionata"
+        else:
+            loading_msg = "caricando informazione..."
+        temp_msg = await update.message.reply_text(loading_msg, reply_markup=ReplyKeyboardRemove())
         if 'all_msg_ids' not in context.chat_data:
             context.chat_data['all_msg_ids'] = []
         context.chat_data['all_msg_ids'].append(temp_msg.message_id)
@@ -896,7 +957,6 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
     texto = update.message.text.strip()
     
     # ========== RESPUESTA A PALABRAS CLAVE (about, grazie) ==========
-    import re
     texto_lower = texto.lower()
     texto_normalized = re.sub(r'^/', '', texto_lower)
     texto_normalized = re.sub(r'\.$', '', texto_normalized)
@@ -922,6 +982,59 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
     texto_norm = unicodedata.normalize('NFKD', texto.lower()).encode('ASCII', 'ignore').decode('ASCII')
     texto_limpio = ' '.join(texto_norm.split())
     palabras = texto_limpio.split()
+
+    # ========== DETECCIÓN DE PALABRAS CLAVE (calles cercanas) con 1 error ==========
+    from_keyword = False
+    mejor_clave_kw = None
+    
+    # Función de distancia Levenshtein (definida aquí para usarla en keywords)
+    def levenshtein_distance(a: str, b: str) -> int:
+        if len(a) < len(b):
+            return levenshtein_distance(b, a)
+        if len(b) == 0:
+            return len(a)
+        previous_row = list(range(len(b) + 1))
+        for i, ca in enumerate(a):
+            current_row = [i + 1]
+            for j, cb in enumerate(b):
+                insertions = previous_row[j + 1] + 1
+                deletions = current_row[j] + 1
+                substitutions = previous_row[j] + (ca != cb)
+                current_row.append(min(insertions, deletions, substitutions))
+            previous_row = current_row
+        return previous_row[-1]
+    
+    # 1. Búsqueda de frases exactas (ej. "corso sicilia")
+    for kw_norm, station in KEYWORDS_NORM.items():
+        if kw_norm in texto_limpio:
+            mejor_clave_kw = station
+            from_keyword = True
+            break
+    
+    # 2. Si no hay frase exacta, buscar palabra por palabra con distancia ≤ 1
+    if not mejor_clave_kw:
+        palabras_limpio = texto_limpio.split()
+        for kw_norm, station in KEYWORDS_NORM.items():
+            # Dividir la keyword en palabras (por si es una frase)
+            kw_palabras = kw_norm.split()
+            # Si la keyword tiene más de una palabra, saltar (ya se buscó como frase exacta)
+            if len(kw_palabras) > 1:
+                continue
+            # Buscar coincidencia con distancia 1
+            for palabra in palabras_limpio:
+                if len(palabra) <= 2:
+                    continue  # ignorar palabras muy cortas para evitar falsos
+                dist = levenshtein_distance(palabra, kw_norm)
+                if dist <= 1:
+                    mejor_clave_kw = station
+                    from_keyword = True
+                    break
+            if mejor_clave_kw:
+                break
+    
+    if mejor_clave_kw:
+        await send_station_response(update, context, mejor_clave_kw, return_to_main=True, keyword_mode=True)
+        return
 
     # ========== REGLA ESPECIAL: palabras que empiezan por ESTE/STE o terminan en CORO/COLO/COMO ==========
     for palabra in palabras:
@@ -952,22 +1065,6 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
         alias_clean = unicodedata.normalize('NFKD', alias.lower()).encode('ASCII', 'ignore').decode('ASCII')
         alias_norm[alias_clean] = clave
 
-    def levenshtein_distance(a: str, b: str) -> int:
-        if len(a) < len(b):
-            return levenshtein_distance(b, a)
-        if len(b) == 0:
-            return len(a)
-        previous_row = list(range(len(b) + 1))
-        for i, ca in enumerate(a):
-            current_row = [i + 1]
-            for j, cb in enumerate(b):
-                insertions = previous_row[j + 1] + 1
-                deletions = current_row[j] + 1
-                substitutions = previous_row[j] + (ca != cb)
-                current_row.append(min(insertions, deletions, substitutions))
-            previous_row = current_row
-        return previous_row[-1]
-
     matches = []
 
     # 1. Coincidencia exacta de alias
@@ -981,15 +1078,16 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
         if texto_limpio.startswith(giovanni_x_prefix):
             matches.append((0, "giovanni"))
 
-    # 3. Coincidencia aproximada de alias (solo palabras >3 letras)
+    # 3. Coincidencia aproximada de alias (solo palabras >3 letras, y para borgo distancia 1)
     if not matches:
         palabras = texto_limpio.split()
         for alias, clave in alias_norm.items():
+            max_dist = 1 if clave == "borgo" else 2
             for i, palabra in enumerate(palabras):
                 if len(palabra) <= 3:
                     continue
                 dist = levenshtein_distance(palabra, alias)
-                if dist <= 2:
+                if dist <= max_dist:
                     pos = sum(len(p) + 1 for p in palabras[:i])
                     matches.append((pos, clave))
                     break
@@ -1009,16 +1107,17 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
             matches.append((pos, clave))
             start = pos + 1
 
-    # 5. Coincidencia aproximada de nombres (solo palabras >3 letras)
+    # 5. Coincidencia aproximada de nombres (solo palabras >3 letras, y para borgo distancia 1)
     if not matches:
         palabras = texto_limpio.split()
         for clave, nombre in estaciones:
             nombre_norm = unicodedata.normalize('NFKD', nombre.lower()).encode('ASCII', 'ignore').decode('ASCII')
+            max_dist = 1 if clave == "borgo" else 2
             for i, palabra in enumerate(palabras):
                 if len(palabra) <= 3:
                     continue
                 dist = levenshtein_distance(palabra, nombre_norm)
-                if dist <= 2:
+                if dist <= max_dist:
                     pos = sum(len(p) + 1 for p in palabras[:i])
                     matches.append((pos, clave))
                     break
@@ -1064,7 +1163,7 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
     context.chat_data['all_msg_ids'].append(msg.message_id)
 
 # ============================================================================
-# FUNCIONES PARA "SUPER": mostrar trenes inminentes (≤30 segundos)
+# FUNCIONES PARA "SUPER": mostrar trenes inminentes (≤30 secondi)
 # ============================================================================
 async def get_super_status(now: datetime) -> str:
     lines = []
