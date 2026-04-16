@@ -74,7 +74,7 @@ KEYWORDS = {
     "stadio": "cibali",
     # San Nullo
     "usodimare": "sannullo",
-    "uso di mare": "sannullo",   # Añadido para detectar "uso di mare"
+    "uso di mare": "sannullo",
     "sebastiano": "sannullo",
     # Nesima
     "lorenzo": "nesima",
@@ -507,7 +507,7 @@ async def aggiornare_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     await refresh_messages_only(fake_update, context, estacion_key)
 
 # ============================================================================
-# CALLBACK PARA EL BOTÓN EN CABECERAS (Monte Po y Stesicoro)
+# CALLBACK PARA EL BOTÓN EN CABECERAS (Monte Po y Stesicoro) - ACTUALIZA SOLO MENSAJE2
 # ============================================================================
 async def aggiornare_cabecera_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -515,18 +515,22 @@ async def aggiornare_cabecera_callback(update: Update, context: ContextTypes.DEF
     estacion_key = query.data.split("_")[2]
     chat_id = query.message.chat_id
     
+    # El mensaje que tiene el botón es el MENSAJE2 (el del tren)
+    # Lo eliminamos y luego llamamos a send_header_response con update_mode=True
+    # para que solo envíe el nuevo MENSAJE2 (sin volver a enviar la foto de la estación)
     try:
         await query.message.delete()
     except Exception:
         pass
     
-    await send_header_response(chat_id, context, estacion_key)
-    schedule_cleanup(update, context)
+    await send_header_response(chat_id, context, estacion_key, is_update=True)
+    # No programamos otra limpieza porque ya existe la tarea anterior
 
 # ============================================================================
 # FUNCIÓN AUXILIAR PARA ENVIAR RESPUESTA DE CABECERA (Monte Po / Stesicoro)
+# is_update: si es True, solo envía el MENSAJE2 (el del tren) y no la foto de la estación
 # ============================================================================
-async def send_header_response(chat_id, context, estacion_key):
+async def send_header_response(chat_id, context, estacion_key, is_update=False):
     simulated = context.chat_data.get('test_time')
     if simulated:
         if simulated.tzinfo is None:
@@ -536,10 +540,27 @@ async def send_header_response(chat_id, context, estacion_key):
         now = datetime.now(CATANIA_TZ)
     
     station = "Montepo" if estacion_key == "montepo" else "Stesicoro"
-    station_display = "Monte Po" if estacion_key == "montepo" else "Stesicoro"
     closed, next_open, special_closing_msg = is_metro_closed(now, station)
     
-    # Caso cerrado o sin trenes: comportamiento original (un solo mensaje)
+    keyboard_inline = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🔄 Aggiornare", callback_data=f"agg_cabecera_{estacion_key}")]
+    ])
+    
+    # Si no es update, enviamos la foto de la estación (MENSAJE1)
+    if not is_update:
+        # Obtener imagen de la estación (con cache buster)
+        img_station = get_station_image(estacion_key, now)
+        caption_station = f"🚇 {NOMBRE_MOSTRAR.get(estacion_key, estacion_key.capitalize())}"
+        if img_station:
+            msg1 = await context.bot.send_photo(chat_id=chat_id, photo=img_station, caption=caption_station, parse_mode='Markdown')
+        else:
+            msg1 = await context.bot.send_message(chat_id=chat_id, text=caption_station, parse_mode='Markdown')
+        context.chat_data['main_msg_id'] = msg1.message_id
+        if 'all_msg_ids' not in context.chat_data:
+            context.chat_data['all_msg_ids'] = []
+        context.chat_data['all_msg_ids'].append(msg1.message_id)
+    
+    # Construir el mensaje del tren (MENSAJE2)
     if closed:
         if next_open.date() > now.date():
             msg = f"{special_closing_msg}\n🚇 La metropolitana è chiusa in questo momento. Riaprirà domani alle {next_open.strftime('%H:%M')}."
@@ -549,135 +570,112 @@ async def send_header_response(chat_id, context, estacion_key):
                 first_train, _, _, has_first = get_next_departure(station, now)
                 if not has_first:
                     first_train, _, _, _ = get_next_departure(station, now + timedelta(days=1))
+                station_display = "Monte Po" if station == "Montepo" else "Stesicoro"
                 msg = f"{special_closing_msg}\n🚇 La metropolitana è chiusa in questo momento. Il primo treno da {station_display} partirà alle {first_train.strftime('%H:%M')}."
             else:
                 msg = f"{special_closing_msg}\n🚇 La metropolitana è chiusa in questo momento.\n🕒 Riaprirà alle {next_open.strftime('%H:%M')}."
-        img = get_station_image(estacion_key, now)
-        keyboard_inline = InlineKeyboardMarkup([[InlineKeyboardButton("🔄 Aggiornare", callback_data=f"agg_cabecera_{estacion_key}")]])
-        if img:
-            msg1 = await context.bot.send_photo(chat_id=chat_id, photo=img, caption=msg, reply_markup=keyboard_inline)
-        else:
-            msg1 = await context.bot.send_message(chat_id=chat_id, text=msg, reply_markup=keyboard_inline)
-        context.chat_data['main_msg_id'] = msg1.message_id
+        # Enviar mensaje con imagen por defecto o sin imagen
+        img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_default.png"
+        cache_buster = int(time_module.time())
+        img_url = f"{img_url}?v={cache_buster}"
+        msg2 = await context.bot.send_photo(chat_id=chat_id, photo=img_url, caption=msg, parse_mode='Markdown', reply_markup=keyboard_inline)
         if 'all_msg_ids' not in context.chat_data:
             context.chat_data['all_msg_ids'] = []
-        context.chat_data['all_msg_ids'].append(msg1.message_id)
+        context.chat_data['all_msg_ids'].append(msg2.message_id)
         return
     
     next_dep, minutes, seconds, has_trains = get_next_departure(station, now)
     if not has_trains:
         close_h, close_m = get_closing_time(now, station)
         msg = f"🚇 Non ci sono più treni oggi. Il servizio termina alle {close_h:02d}:{close_m:02d}."
-        img = get_station_image(estacion_key, now)
-        keyboard_inline = InlineKeyboardMarkup([[InlineKeyboardButton("🔄 Aggiornare", callback_data=f"agg_cabecera_{estacion_key}")]])
-        if img:
-            msg1 = await context.bot.send_photo(chat_id=chat_id, photo=img, caption=msg, reply_markup=keyboard_inline)
-        else:
-            msg1 = await context.bot.send_message(chat_id=chat_id, text=msg, reply_markup=keyboard_inline)
-        context.chat_data['main_msg_id'] = msg1.message_id
+        # Enviar mensaje con imagen por defecto
+        img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_default.png"
+        cache_buster = int(time_module.time())
+        img_url = f"{img_url}?v={cache_buster}"
+        msg2 = await context.bot.send_photo(chat_id=chat_id, photo=img_url, caption=msg, parse_mode='Markdown', reply_markup=keyboard_inline)
         if 'all_msg_ids' not in context.chat_data:
             context.chat_data['all_msg_ids'] = []
-        context.chat_data['all_msg_ids'].append(msg1.message_id)
+        context.chat_data['all_msg_ids'].append(msg2.message_id)
         return
     
-    # Aquí hay trenes
     dest = "Stesicoro" if station == "Montepo" else "Monte Po"
     remaining = next_dep - now
     mins_rest = int(remaining.total_seconds() // 60)
     secs_rest = int(remaining.total_seconds() % 60)
     time_str_rest = format_time(mins_rest, secs_rest)
     
-    # Determinar si el tren está en binario (4 minutos o menos)
-    is_in_binario = mins_rest <= 4
-    
-    # Construir el mensaje del tren en binario o normal
-    if is_in_binario:
-        train_msg = f"🚇 Il treno è in binario. Partirà tra **{time_str_rest}**."
+    # Construir mensaje principal del tren
+    if mins_rest <= 4:
+        # Tren en binario: usar imagen específica
+        if estacion_key == "montepo":
+            img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_binario_montepo.jpg"
+        else:
+            img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_binario_stesicoro.jpg"
+        cache_buster = int(time_module.time())
+        img_url = f"{img_url}?v={cache_buster}"
+        msg = f"Il treno è in binario. Partirà tra **{time_str_rest}**."
         if mins_rest <= 1:
             next2, min2, sec2, has2 = get_next_departure_after(station, now, next_dep.time())
             if has2:
-                train_msg += f"\n\n🚆 Il prossimo treno successivo partirà tra {format_time(min2, sec2)}, alle {next2.strftime('%H:%M')}."
+                msg += f"\n\n🚆 Il prossimo treno successivo partirà tra {format_time(min2, sec2)}, alle {next2.strftime('%H:%M')}."
             else:
-                train_msg += f"\n\n🚆 Questo è l'ultimo treno della giornata."
-    else:
-        time_str = format_time(minutes, seconds)
-        if minutes < SHORT_TIME_THRESHOLD:
-            train_msg = f"🚇 Prossimo treno per {dest} parte tra **{time_str}**."
-        else:
-            train_msg = f"🚇 Prossimo treno per {dest} parte tra **{time_str}**, alle {next_dep.strftime('%H:%M')}."
-        if minutes <= 1:
-            next2, min2, sec2, has2 = get_next_departure_after(station, now, next_dep.time())
-            if has2:
-                train_msg += f"\n\n🚆 Il prossimo treno successivo partirà tra {format_time(min2, sec2)}, alle {next2.strftime('%H:%M')}."
-            else:
-                train_msg += f"\n\n🚆 Questo è l'ultimo treno della giornata."
-    
-    # Añadir mensaje de último tren (si aplica)
-    last_msg = get_last_train_message(now)
-    if last_msg and not is_sant_agata(now):
-        if "01:00" in last_msg:
-            last_msg = last_msg.replace("📌", "🕐")
-        elif "22:30" in last_msg:
-            last_msg = last_msg.replace("📌", "🕙")
-        train_msg += f"\n\n{last_msg}"
-    
-    # Añadir bus si es Monte Po
-    if estacion_key == "montepo":
-        bus_text = get_bus_message_montepo_advanced(now)
-        if bus_text:
-            bus_text_clean = bus_text.replace("**", "")
-            train_msg += f"\n\n{bus_text_clean}"
-    
-    keyboard_inline = InlineKeyboardMarkup([[InlineKeyboardButton("🔄 Aggiornare", callback_data=f"agg_cabecera_{estacion_key}")]])
-    
-    # Enviar según si está en binario o no
-    if is_in_binario:
-        # MENSAJE1: foto de la estación con solo el nombre
-        station_img = get_station_image(estacion_key, now)
-        caption1 = f"🚇 {station_display}"
-        if station_img:
-            msg1 = await context.bot.send_photo(chat_id=chat_id, photo=station_img, caption=caption1, parse_mode='Markdown')
-        else:
-            msg1 = await context.bot.send_message(chat_id=chat_id, text=caption1, parse_mode='Markdown')
-        context.chat_data['main_msg_id'] = msg1.message_id
-        if 'all_msg_ids' not in context.chat_data:
-            context.chat_data['all_msg_ids'] = []
-        context.chat_data['all_msg_ids'].append(msg1.message_id)
-        
-        # MENSAJE2: foto de binario con el mensaje del tren y botón
+                msg += f"\n\n🚆 Questo è l'ultimo treno della giornata."
+        # Añadir mensaje de último tren si procede
+        last_msg = get_last_train_message(now)
+        if last_msg and not is_sant_agata(now):
+            if "01:00" in last_msg:
+                last_msg = last_msg.replace("📌", "🕐")
+            elif "22:30" in last_msg:
+                last_msg = last_msg.replace("📌", "🕙")
+            msg += f"\n\n{last_msg}"
+        # Añadir bus si es Monte Po
         if estacion_key == "montepo":
-            binario_img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_binario_montepo.jpg"
-        else:
-            binario_img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_binario_stesicoro.jpg"
-        cache_buster = int(time_module.time())
-        binario_img_url = f"{binario_img_url}?v={cache_buster}"
-        try:
-            msg2 = await context.bot.send_photo(chat_id=chat_id, photo=binario_img_url, caption=train_msg, parse_mode='Markdown', reply_markup=keyboard_inline)
-        except Exception:
-            msg2 = await context.bot.send_message(chat_id=chat_id, text=train_msg, parse_mode='Markdown', reply_markup=keyboard_inline)
+            bus_text = get_bus_message_montepo_advanced(now)
+            if bus_text:
+                bus_text_clean = bus_text.replace("**", "")
+                msg += f"\n\n{bus_text_clean}"
+        # Enviar MENSAJE2 con la imagen de binario
+        msg2 = await context.bot.send_photo(chat_id=chat_id, photo=img_url, caption=msg, parse_mode='Markdown', reply_markup=keyboard_inline)
         if 'all_msg_ids' not in context.chat_data:
             context.chat_data['all_msg_ids'] = []
         context.chat_data['all_msg_ids'].append(msg2.message_id)
+        return
     else:
-        # Comportamiento original: un solo mensaje con foto de estación y toda la info
-        # Elegir imagen según si el tren está muy cerca (≤90 segundos o ≤1 minuto) - esto ya estaba
-        total_seconds_rest = int(remaining.total_seconds())
-        if total_seconds_rest <= 90 or mins_rest <= 1:
-            img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_trenoarriva_cabeceras.png"
-            cache_buster = int(time_module.time())
-            img_url = f"{img_url}?v={cache_buster}"
-            msg1 = await context.bot.send_photo(chat_id=chat_id, photo=img_url, caption=train_msg, parse_mode='Markdown')
-            await msg1.edit_reply_markup(reply_markup=keyboard_inline)
+        # Tren no está en binario: usar imagen normal de la estación para el MENSAJE2? O la imagen por defecto?
+        # Según el comportamiento anterior, se usaba la imagen de la estación también para el mensaje de tren.
+        # Pero para mantener consistencia, usaremos la imagen de la estación.
+        img = get_station_image(estacion_key, now)
+        time_str = format_time(minutes, seconds)
+        if minutes < SHORT_TIME_THRESHOLD:
+            msg = f"🚇 Prossimo treno per {dest} parte tra **{time_str}**."
         else:
-            img = get_station_image(estacion_key, now)
-            if img:
-                msg1 = await context.bot.send_photo(chat_id=chat_id, photo=img, caption=train_msg, parse_mode='Markdown', reply_markup=keyboard_inline)
+            msg = f"🚇 Prossimo treno per {dest} parte tra **{time_str}**, alle {next_dep.strftime('%H:%M')}."
+        if minutes <= 1:
+            next2, min2, sec2, has2 = get_next_departure_after(station, now, next_dep.time())
+            if has2:
+                msg += f"\n\n🚆 Il prossimo treno successivo partirà tra {format_time(min2, sec2)}, alle {next2.strftime('%H:%M')}."
             else:
-                msg1 = await context.bot.send_message(chat_id=chat_id, text=train_msg, parse_mode='Markdown', reply_markup=keyboard_inline)
-        context.chat_data['main_msg_id'] = msg1.message_id
+                msg += f"\n\n🚆 Questo è l'ultimo treno della giornata."
+        last_msg = get_last_train_message(now)
+        if last_msg and not is_sant_agata(now):
+            if "01:00" in last_msg:
+                last_msg = last_msg.replace("📌", "🕐")
+            elif "22:30" in last_msg:
+                last_msg = last_msg.replace("📌", "🕙")
+            msg += f"\n\n{last_msg}"
+        if estacion_key == "montepo":
+            bus_text = get_bus_message_montepo_advanced(now)
+            if bus_text:
+                bus_text_clean = bus_text.replace("**", "")
+                msg += f"\n\n{bus_text_clean}"
+        # Enviar MENSAJE2
+        if img:
+            msg2 = await context.bot.send_photo(chat_id=chat_id, photo=img, caption=msg, parse_mode='Markdown', reply_markup=keyboard_inline)
+        else:
+            msg2 = await context.bot.send_message(chat_id=chat_id, text=msg, parse_mode='Markdown', reply_markup=keyboard_inline)
         if 'all_msg_ids' not in context.chat_data:
             context.chat_data['all_msg_ids'] = []
-        context.chat_data['all_msg_ids'].append(msg1.message_id)
+        context.chat_data['all_msg_ids'].append(msg2.message_id)
 
 # ============================================================================
 # RESPUESTA PRINCIPAL (foto + msg2/msg3)
@@ -701,7 +699,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
     test_indicator = "🧪 [TEST MODE] " if simulated else ""
 
     if estacion_key in ["montepo", "stesicoro"]:
-        await send_header_response(update.message.chat_id, context, estacion_key)
+        await send_header_response(update.message.chat_id, context, estacion_key, is_update=False)
         schedule_cleanup(update, context)
         return
 
@@ -907,7 +905,8 @@ async def test_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Per tornare alla realtà: `/testfin`\n\n"
             "Per una simulazione con aggiornamenti automatici (3 cicli):\n"
             "`/test DDMMYYYY HHMM stazione` (M, S, ML)\n"
-            "Esempio: `/test 09042026 0815 ML`",
+            "Esempio: `/test 09042026 0815 ML`\n\n"
+            "In modalità test, scrivi +NUM per avanzare di NUM minuti (es. +5).",
             parse_mode='Markdown'
         )
         if 'all_msg_ids' not in context.chat_data:
@@ -935,7 +934,7 @@ async def test_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         simulated = CATANIA_TZ.localize(simulated)
         context.chat_data['test_time'] = simulated
         msg = await update.message.reply_text(
-            f"🧪 **Modalità test attivata**\nOra simulata: {simulated.strftime('%d/%m/%Y %H:%M')}\nUsa i bottoni. Per uscire: `/testfin`",
+            f"🧪 **Modalità test attivata**\nOra simulata: {simulated.strftime('%d/%m/%Y %H:%M')}\nUsa i bottoni. Per uscire: `/testfin`\nPer avanzare scrivi +NUM minuti (es. +5).",
             parse_mode='Markdown'
         )
         if 'all_msg_ids' not in context.chat_data:
@@ -1016,6 +1015,29 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if texto_normalized == "super":
         await send_super_response(update, context)
         return
+    
+    # ========== AVANCE DE TIEMPO EN MODO TEST (+NUM) ==========
+    if 'test_time' in context.chat_data and texto_normalized.startswith('+'):
+        try:
+            minutos = int(texto_normalized[1:])
+            if 1 <= minutos <= 99:
+                simulated = context.chat_data['test_time']
+                if simulated.tzinfo is None:
+                    simulated = CATANIA_TZ.localize(simulated)
+                nueva_simulacion = simulated + timedelta(minutes=minutos)
+                context.chat_data['test_time'] = nueva_simulacion
+                # Obtener la última estación consultada
+                last_station = context.chat_data.get('last_station')
+                if last_station:
+                    await send_station_response(update, context, last_station, return_to_main=False)
+                else:
+                    await update.message.reply_text(f"⏩ Avanzati {minutos} minuti. Nuovo orario simulato: {nueva_simulacion.strftime('%d/%m/%Y %H:%M')}")
+                return
+            else:
+                await update.message.reply_text("Puoi avanzare da 1 a 99 minuti. Esempio: +5")
+                return
+        except ValueError:
+            pass  # no es un número válido, seguir con la detección normal
     
     import unicodedata
     texto_norm = unicodedata.normalize('NFKD', texto.lower()).encode('ASCII', 'ignore').decode('ASCII')
