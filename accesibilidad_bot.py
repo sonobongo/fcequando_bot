@@ -97,11 +97,11 @@ async def acc_send_station_info(update: Update, context: ContextTypes.DEFAULT_TY
     nombre = NOMBRE_MOSTRAR.get(estacion_key, estacion_key.capitalize())
     descripcion = DESCRIPCION_ESTACION.get(estacion_key, "Stazione accessibile.")
     
-    # 0. Mensaje de introducción (sin foto)
+    # 0. Mensaje de introducción (sin foto) - MENSAJE0
     intro = f"Informazioni sulla stazione {nombre}.\n\n{descripcion}"
     await update.message.reply_text(intro, parse_mode=None)
     
-    # 1. Foto de la estación (mensaje 1) - con manejo de errores
+    # 1. Foto de la estación (mensaje 1)
     nombre_imagen = nombre.replace(" ", "").replace("XXIII", "XXIII")
     if nombre_imagen == "SanNullo":
         nombre_imagen = "SanNullo"
@@ -113,14 +113,13 @@ async def acc_send_station_info(update: Update, context: ContextTypes.DEFAULT_TY
     try:
         await update.message.reply_photo(photo=img_url, caption=f"Stazione {nombre}", parse_mode=None)
     except Exception as e:
-        # Si falla la foto, enviamos solo el nombre como texto
         print(f"Error al enviar foto para {nombre}: {e}")
         await update.message.reply_text(f"Stazione {nombre}", parse_mode=None)
     
     # 2. Horarios (msg2 y msg3 con botón)
     await acc_send_horarios(update, context, estacion_key)
     
-    # 3. Mensaje 4: lista de estaciones
+    # 3. Mensaje 4: lista de estaciones e instrucciones de salida - MENSAJE4
     lista_estaciones = ", ".join(NOMBRE_MOSTRAR.values())
     mensaje4 = (
         "Scegli un'altra stazione scrivendo:\n"
@@ -189,6 +188,7 @@ async def cmd_accesibilidad(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Per uscire, scrivi 'Uscire'.",
         parse_mode=None
     )
+    # Mostrar información de Monte Po por defecto
     await acc_send_station_info(update, context, "montepo")
 
 # ============================================================================
