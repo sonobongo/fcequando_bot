@@ -7,7 +7,6 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, D
 from horarios_logic import *
 import handlers as normal_handlers
 import handlers_dev as dev_handlers
-import accesibilidad_bot as acc
 
 flask_app = Flask(__name__)
 
@@ -188,11 +187,6 @@ def main():
     for cmd, handler in commands:
         app.add_handler(CommandHandler(cmd, handler))
 
-    # Comandos de accesibilidad
-    app.add_handler(CommandHandler("accessibilita", acc.cmd_accesibilidad))
-    app.add_handler(CommandHandler("accesibilidad", acc.cmd_accesibilidad))
-    app.add_handler(CommandHandler("uscire", acc.cmd_uscire))
-
     # Comandos desarrollo
     app.add_handler(CommandHandler("dev", dev_mode_wrapper))
     app.add_handler(CommandHandler("devfin", dev_fin_wrapper))
@@ -205,21 +199,12 @@ def main():
     # Callbacks
     app.add_handler(CallbackQueryHandler(aggiornare_callback_wrapper, pattern="^aggiornare_"))
     app.add_handler(CallbackQueryHandler(aggiornare_cabecera_callback_wrapper, pattern="^agg_cabecera_"))
-    app.add_handler(CallbackQueryHandler(acc.acc_aggiornare_callback, pattern="^acc_aggiornare_"))
 
     # ========================================================================
-    # MANEJADORES DE TEXTO (orden de prioridad)
+    # MANEJADOR DE TEXTO PARA MODO NORMAL (MODO NONNA)
     # ========================================================================
-    # 1. Activación rápida de accesibilidad (opcional, si existe)
-    if hasattr(acc, 'acc_try_activate'):
-        app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, acc.acc_try_activate))
-
-    # 2. Modo normal (reconocimiento de estaciones con alias, errores tipográficos, etc.)
     if hasattr(dev_handlers, 'normal_handle_text'):
         app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, dev_handlers.normal_handle_text))
-
-    # 3. Modo accesibilidad (solo actúa si el flag accessibility_mode está activo)
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, acc.acc_handle_text))
 
     logger.info("Bot avviato.")
     print("Bot funzionante... In attesa di messaggi.")
