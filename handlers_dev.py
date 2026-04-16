@@ -850,19 +850,12 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
     texto_limpio = ' '.join(texto_norm.split())
     palabras = texto_limpio.split()
 
-    # ========== REGLA ESPECIAL: palabras que empiezan por ESTE/STE y terminan en CORO/COLO/COMO ==========
-    pattern_matches = []
-    for palabra in palabras:
-        palabra_lower = palabra.lower()
-        starts_ok = palabra_lower.startswith('este') or palabra_lower.startswith('ste')
-        ends_ok = palabra_lower.endswith('coro') or palabra_lower.endswith('colo') or palabra_lower.endswith('como')
-        if starts_ok and ends_ok:
-            pos = texto_limpio.find(palabra_lower)
-            pattern_matches.append((pos, "stesicoro"))
-    if pattern_matches:
-        pattern_matches.sort(key=lambda x: x[0])
-        mejor_clave = pattern_matches[0][1]
-        await send_station_response(update, context, mejor_clave, return_to_main=True)
+        # ========== REGLA ESPECIAL: "este" + "coro/colo/como" en cualquier parte ==========
+    # Detecta si hay una palabra que empiece por "este"/"ste" Y otra palabra que termine en "coro"/"colo"/"como"
+    tiene_este = any(p.startswith('este') or p.startswith('ste') for p in palabras)
+    tiene_coro = any(p.endswith('coro') or p.endswith('colo') or p.endswith('como') for p in palabras)
+    if tiene_este and tiene_coro:
+        await send_station_response(update, context, "stesicoro", return_to_main=True)
         return
 
     # ========== ALIAS (sinónimos de estaciones) ==========
