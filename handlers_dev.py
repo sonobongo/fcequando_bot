@@ -453,6 +453,10 @@ async def send_header_response(chat_id, context, estacion_key):
         [InlineKeyboardButton("🔄 Aggiornare", callback_data=f"agg_cabecera_{estacion_key}")]
     ])
     
+    # Construir el mensaje base y la imagen
+    msg = ""
+    img = None
+    
     if closed:
         if next_open.date() > now.date():
             msg = f"{special_closing_msg}\n🚇 La metropolitana è chiusa in questo momento. Riaprirà domani alle {next_open.strftime('%H:%M')}."
@@ -467,70 +471,74 @@ async def send_header_response(chat_id, context, estacion_key):
             else:
                 msg = f"{special_closing_msg}\n🚇 La metropolitana è chiusa in questo momento.\n🕒 Riaprirà alle {next_open.strftime('%H:%M')}."
         img = get_station_image(estacion_key, now)
+        # Enviar y salir
         if img:
             msg1 = await context.bot.send_photo(chat_id=chat_id, photo=img, caption=msg, reply_markup=keyboard_inline)
         else:
             msg1 = await context.bot.send_message(chat_id=chat_id, text=msg, reply_markup=keyboard_inline)
         context.chat_data['main_msg_id'] = msg1.message_id
-    else:
-        next_dep, minutes, seconds, has_trains = get_next_departure(station, now)
-        if not has_trains:
-            close_h, close_m = get_closing_time(now, station)
-            msg = f"🚇 Non ci sono più treni oggi. Il servizio termina alle {close_h:02d}:{close_m:02d}."
-            img = get_station_image(estacion_key, now)
-            if img:
-                msg1 = await context.bot.send_photo(chat_id=chat_id, photo=img, caption=msg, reply_markup=keyboard_inline)
-            else:
-                msg1 = await context.bot.send_message(chat_id=chat_id, text=msg, reply_markup=keyboard_inline)
-            context.chat_data['main_msg_id'] = msg1.message_id
-        else:
-            dest = "Stesicoro" if station == "Montepo" else "Monte Po"
-            remaining = next_dep - now
-            mins_rest = int(remaining.total_seconds() // 60)
-            secs_rest = int(remaining.total_seconds() % 60)
-            time_str_rest = format_time(mins_rest, secs_rest)
-            if mins_rest <= 4:
-                msg = f"🚇 Il treno è in binario. Partirà tra **{time_str_rest}**."
-                if mins_rest <= 1:
-                    next2, min2, sec2, has2 = get_next_departure_after(station, now, next_dep.time())
-                    if has2:
-                        msg += f"\n\n🚆 Il prossimo treno successivo partirà tra {format_time(min2, sec2)}, alle {next2.strftime('%H:%M')}."
-                    else:
-                        msg += f"\n\n🚆 Questo è l'ultimo treno della giornata."
-            else:
-                time_str = format_time(minutes, seconds)
-                if minutes < SHORT_TIME_THRESHOLD:
-                    msg = f"🚇 Prossimo treno per {dest} parte tra **{time_str}**."
-                else:
-                    msg = f"🚇 Prossimo treno per {dest} parte tra **{time_str}**, alle {next_dep.strftime('%H:%M')}."
-                if minutes <= 1:
-                    next2, min2, sec2, has2 = get_next_departure_after(station, now, next_dep.time())
-                    if has2:
-                        msg += f"\n\n🚆 Il prossimo treno successivo partirà tra {format_time(min2, sec2)}, alle {next2.strftime('%H:%M')}."
-                    else:
-                        msg += f"\n\n🚆 Questo è l'ultimo treno della giornata."
-        last_msg = get_last_train_message(now)
-        if last_msg and not is_sant_agata(now):
-            if "01:00" in last_msg:
-                last_msg = last_msg.replace("📌", "🕐")
-            elif "22:30" in last_msg:
-                last_msg = last_msg.replace("📌", "🕙")
-            msg += f"\n\n{last_msg}"
+        return
     
+    # Si no está cerrado, obtener siguiente tren
+    next_dep, minutes, seconds, has_trains = get_next_departure(station, now)
+    
+    if not has_trains:
+        close_h, close_m = get_closing_time(now, station)
+        msg = f"🚇 Non ci sono più treni oggi. Il servizio termina alle {close_h:02d}:{close_m:02d}."
+        img = get_station_image(estacion_key, now)
+        if img:
+            msg1 = await context.bot.send_photo(chat_id=chat_id, photo=img, caption=msg, reply_markup=keyboard_inline)
+        else:
+            msg1 = await context.bot.send_message(chat_id=chat_id, text=msg, reply_markup=keyboard_inline)
+        context.chat_data['main_msg_id'] = msg1.message_id
+        return
+    
+    # Aquí hay trenes
+    dest = "Stesicoro" if station == "Montepo" else "Monte Po"
+    remaining = next_dep - now
+    mins_rest = int(remaining.total_seconds() // 60)
+    secs_rest = int(remaining.total_seconds() % 60)
+    time_str_rest = format_time(mins_rest, secs_rest)
+    
+    if mins_rest <= 4:
+        msg = f"🚇 Il treno è in binario. Partirà tra **{time_str_rest}**."
+        if mins_rest <= 1:
+            next2, min2, sec2, has2 = get_next_departure_after(station, now, next_dep.time())
+            if has2:
+                msg += f"\n\n🚆 Il prossimo treno successivo partirà tra {format_time(min2, sec2)}, alle {next2.strftime('%H:%M')}."
+            else:
+                msg += f"\n\n🚆 Questo è l'ultimo treno della giornata."
+    else:
+        time_str = format_time(minutes, seconds)
+        if minutes < SHORT_TIME_THRESHOLD:
+            msg = f"🚇 Prossimo treno per {dest} parte tra **{time_str}**."
+        else:
+            msg = f"🚇 Prossimo treno per {dest} parte tra **{time_str}**, alle {next_dep.strftime('%H:%M')}."
+        if minutes <= 1:
+            next2, min2, sec2, has2 = get_next_departure_after(station, now, next_dep.time())
+            if has2:
+                msg += f"\n\n🚆 Il prossimo treno successivo partirà tra {format_time(min2, sec2)}, alle {next2.strftime('%H:%M')}."
+            else:
+                msg += f"\n\n🚆 Questo è l'ultimo treno della giornata."
+    
+    # Añadir mensaje de último tren solo si no es un caso especial de cierre inminente
+    last_msg = get_last_train_message(now)
+    if last_msg and not is_sant_agata(now):
+        if "01:00" in last_msg:
+            last_msg = last_msg.replace("📌", "🕐")
+        elif "22:30" in last_msg:
+            last_msg = last_msg.replace("📌", "🕙")
+        msg += f"\n\n{last_msg}"
+    
+    # Añadir bus si es Monte Po
     if estacion_key == "montepo":
         bus_text = get_bus_message_montepo_advanced(now)
         if bus_text:
             bus_text_clean = bus_text.replace("**", "")
             msg += f"\n\n{bus_text_clean}"
     
-    if not closed and has_trains:
-        total_seconds_rest = int(remaining.total_seconds())
-        mins_rest = int(remaining.total_seconds() // 60)
-    else:
-        total_seconds_rest = 0
-        mins_rest = 0
-    
-    if not closed and has_trains and (total_seconds_rest <= 90 or mins_rest <= 1):
+    # Elegir imagen según si el tren está muy cerca (≤90 segundos o ≤1 minuto)
+    if (total_seconds_rest := int(remaining.total_seconds())) <= 90 or mins_rest <= 1:
         img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_trenoarriva_cabeceras.png"
         cache_buster = int(time_module.time())
         img_url = f"{img_url}?v={cache_buster}"
@@ -542,6 +550,7 @@ async def send_header_response(chat_id, context, estacion_key):
             msg1 = await context.bot.send_photo(chat_id=chat_id, photo=img, caption=msg, parse_mode='Markdown', reply_markup=keyboard_inline)
         else:
             msg1 = await context.bot.send_message(chat_id=chat_id, text=msg, parse_mode='Markdown', reply_markup=keyboard_inline)
+    
     context.chat_data['main_msg_id'] = msg1.message_id
 
 # ============================================================================
