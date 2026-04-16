@@ -516,8 +516,7 @@ async def aggiornare_cabecera_callback(update: Update, context: ContextTypes.DEF
     chat_id = query.message.chat_id
     
     # El mensaje que tiene el botón es el MENSAJE2 (el del tren)
-    # Lo eliminamos y luego llamamos a send_header_response con update_mode=True
-    # para que solo envíe el nuevo MENSAJE2 (sin volver a enviar la foto de la estación)
+    # Lo eliminamos y luego llamamos a send_header_response con is_update=True
     try:
         await query.message.delete()
     except Exception:
@@ -548,7 +547,6 @@ async def send_header_response(chat_id, context, estacion_key, is_update=False):
     
     # Si no es update, enviamos la foto de la estación (MENSAJE1)
     if not is_update:
-        # Obtener imagen de la estación (con cache buster)
         img_station = get_station_image(estacion_key, now)
         caption_station = f"🚇 {NOMBRE_MOSTRAR.get(estacion_key, estacion_key.capitalize())}"
         if img_station:
@@ -574,7 +572,7 @@ async def send_header_response(chat_id, context, estacion_key, is_update=False):
                 msg = f"{special_closing_msg}\n🚇 La metropolitana è chiusa in questo momento. Il primo treno da {station_display} partirà alle {first_train.strftime('%H:%M')}."
             else:
                 msg = f"{special_closing_msg}\n🚇 La metropolitana è chiusa in questo momento.\n🕒 Riaprirà alle {next_open.strftime('%H:%M')}."
-        # Enviar mensaje con imagen por defecto o sin imagen
+        # Enviar mensaje con imagen por defecto
         img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_default.png"
         cache_buster = int(time_module.time())
         img_url = f"{img_url}?v={cache_buster}"
@@ -588,7 +586,6 @@ async def send_header_response(chat_id, context, estacion_key, is_update=False):
     if not has_trains:
         close_h, close_m = get_closing_time(now, station)
         msg = f"🚇 Non ci sono più treni oggi. Il servizio termina alle {close_h:02d}:{close_m:02d}."
-        # Enviar mensaje con imagen por defecto
         img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_default.png"
         cache_buster = int(time_module.time())
         img_url = f"{img_url}?v={cache_buster}"
@@ -602,80 +599,69 @@ async def send_header_response(chat_id, context, estacion_key, is_update=False):
     remaining = next_dep - now
     mins_rest = int(remaining.total_seconds() // 60)
     secs_rest = int(remaining.total_seconds() % 60)
+    total_seconds_rest = int(remaining.total_seconds())
     time_str_rest = format_time(mins_rest, secs_rest)
     
-    # Construir mensaje principal del tren
+    # Construir el mensaje base
     if mins_rest <= 4:
-        # Tren en binario: usar imagen específica
-        if estacion_key == "montepo":
-            img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_binario_montepo.jpg"
-        else:
-            img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_binario_stesicoro.jpg"
-        cache_buster = int(time_module.time())
-        img_url = f"{img_url}?v={cache_buster}"
         msg = f"Il treno è in binario. Partirà tra **{time_str_rest}**."
-        if mins_rest <= 1:
-            next2, min2, sec2, has2 = get_next_departure_after(station, now, next_dep.time())
-            if has2:
-                msg += f"\n\n🚆 Il prossimo treno successivo partirà tra {format_time(min2, sec2)}, alle {next2.strftime('%H:%M')}."
-            else:
-                msg += f"\n\n🚆 Questo è l'ultimo treno della giornata."
-        # Añadir mensaje de último tren si procede
-        last_msg = get_last_train_message(now)
-        if last_msg and not is_sant_agata(now):
-            if "01:00" in last_msg:
-                last_msg = last_msg.replace("📌", "🕐")
-            elif "22:30" in last_msg:
-                last_msg = last_msg.replace("📌", "🕙")
-            msg += f"\n\n{last_msg}"
-        # Añadir bus si es Monte Po
-        if estacion_key == "montepo":
-            bus_text = get_bus_message_montepo_advanced(now)
-            if bus_text:
-                bus_text_clean = bus_text.replace("**", "")
-                msg += f"\n\n{bus_text_clean}"
-        # Enviar MENSAJE2 con la imagen de binario
-        msg2 = await context.bot.send_photo(chat_id=chat_id, photo=img_url, caption=msg, parse_mode='Markdown', reply_markup=keyboard_inline)
-        if 'all_msg_ids' not in context.chat_data:
-            context.chat_data['all_msg_ids'] = []
-        context.chat_data['all_msg_ids'].append(msg2.message_id)
-        return
     else:
-        # Tren no está en binario: usar imagen normal de la estación para el MENSAJE2? O la imagen por defecto?
-        # Según el comportamiento anterior, se usaba la imagen de la estación también para el mensaje de tren.
-        # Pero para mantener consistencia, usaremos la imagen de la estación.
-        img = get_station_image(estacion_key, now)
         time_str = format_time(minutes, seconds)
         if minutes < SHORT_TIME_THRESHOLD:
             msg = f"🚇 Prossimo treno per {dest} parte tra **{time_str}**."
         else:
             msg = f"🚇 Prossimo treno per {dest} parte tra **{time_str}**, alle {next_dep.strftime('%H:%M')}."
-        if minutes <= 1:
-            next2, min2, sec2, has2 = get_next_departure_after(station, now, next_dep.time())
-            if has2:
-                msg += f"\n\n🚆 Il prossimo treno successivo partirà tra {format_time(min2, sec2)}, alle {next2.strftime('%H:%M')}."
-            else:
-                msg += f"\n\n🚆 Questo è l'ultimo treno della giornata."
-        last_msg = get_last_train_message(now)
-        if last_msg and not is_sant_agata(now):
-            if "01:00" in last_msg:
-                last_msg = last_msg.replace("📌", "🕐")
-            elif "22:30" in last_msg:
-                last_msg = last_msg.replace("📌", "🕙")
-            msg += f"\n\n{last_msg}"
-        if estacion_key == "montepo":
-            bus_text = get_bus_message_montepo_advanced(now)
-            if bus_text:
-                bus_text_clean = bus_text.replace("**", "")
-                msg += f"\n\n{bus_text_clean}"
-        # Enviar MENSAJE2
-        if img:
-            msg2 = await context.bot.send_photo(chat_id=chat_id, photo=img, caption=msg, parse_mode='Markdown', reply_markup=keyboard_inline)
+    
+    # Añadir información del siguiente tren si corresponde
+    if mins_rest <= 1:
+        next2, min2, sec2, has2 = get_next_departure_after(station, now, next_dep.time())
+        if has2:
+            msg += f"\n\n🚆 Il prossimo treno successivo partirà tra {format_time(min2, sec2)}, alle {next2.strftime('%H:%M')}."
         else:
-            msg2 = await context.bot.send_message(chat_id=chat_id, text=msg, parse_mode='Markdown', reply_markup=keyboard_inline)
-        if 'all_msg_ids' not in context.chat_data:
-            context.chat_data['all_msg_ids'] = []
-        context.chat_data['all_msg_ids'].append(msg2.message_id)
+            msg += f"\n\n🚆 Questo è l'ultimo treno della giornata."
+    
+    # Añadir mensaje de último tren si procede
+    last_msg = get_last_train_message(now)
+    if last_msg and not is_sant_agata(now):
+        if "01:00" in last_msg:
+            last_msg = last_msg.replace("📌", "🕐")
+        elif "22:30" in last_msg:
+            last_msg = last_msg.replace("📌", "🕙")
+        msg += f"\n\n{last_msg}"
+    
+    # Añadir bus si es Monte Po
+    if estacion_key == "montepo":
+        bus_text = get_bus_message_montepo_advanced(now)
+        if bus_text:
+            bus_text_clean = bus_text.replace("**", "")
+            msg += f"\n\n{bus_text_clean}"
+    
+    # Decidir qué imagen usar (o ninguna)
+    img_url = None
+    if mins_rest <= 4:
+        # Tren en binario: imagen específica de binario
+        if estacion_key == "montepo":
+            img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_binario_montepo.jpg"
+        else:
+            img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_binario_stesicoro.jpg"
+    elif total_seconds_rest <= 90:
+        # Falta 1.5 min o menos pero no está en binario (caso raro)
+        img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_trenoarriva_cabeceras.png"
+    else:
+        # No mostrar ninguna imagen
+        img_url = None
+    
+    # Enviar MENSAJE2
+    cache_buster = int(time_module.time())
+    if img_url:
+        img_url = f"{img_url}?v={cache_buster}"
+        msg2 = await context.bot.send_photo(chat_id=chat_id, photo=img_url, caption=msg, parse_mode='Markdown', reply_markup=keyboard_inline)
+    else:
+        msg2 = await context.bot.send_message(chat_id=chat_id, text=msg, parse_mode='Markdown', reply_markup=keyboard_inline)
+    
+    if 'all_msg_ids' not in context.chat_data:
+        context.chat_data['all_msg_ids'] = []
+    context.chat_data['all_msg_ids'].append(msg2.message_id)
 
 # ============================================================================
 # RESPUESTA PRINCIPAL (foto + msg2/msg3)
