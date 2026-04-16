@@ -7,7 +7,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, D
 from horarios_logic import *
 import handlers as normal_handlers
 import handlers_dev as dev_handlers
-import accesibilidad_bot as acc
+# import accesibilidad_bot as acc   # <--- DESACTIVADO temporalmente
 
 flask_app = Flask(__name__)
 
@@ -188,10 +188,10 @@ def main():
     for cmd, handler in commands:
         app.add_handler(CommandHandler(cmd, handler))
 
-    # Comandos de accesibilidad
-    app.add_handler(CommandHandler("accessibilita", acc.cmd_accesibilidad))
-    app.add_handler(CommandHandler("accesibilidad", acc.cmd_accesibilidad))
-    app.add_handler(CommandHandler("uscire", acc.cmd_uscire))
+    # ========== ACCESIBILIDAD DESACTIVADA ==========
+    # app.add_handler(CommandHandler("accessibilita", acc.cmd_accesibilidad))
+    # app.add_handler(CommandHandler("accesibilidad", acc.cmd_accesibilidad))
+    # app.add_handler(CommandHandler("uscire", acc.cmd_uscire))
 
     # Comandos desarrollo
     app.add_handler(CommandHandler("dev", dev_mode_wrapper))
@@ -206,14 +206,10 @@ def main():
     app.add_handler(CallbackQueryHandler(aggiornare_callback_wrapper, pattern="^aggiornare_"))
     app.add_handler(CallbackQueryHandler(aggiornare_cabecera_callback_wrapper, pattern="^agg_cabecera_"))
 
-    # ========================================================================
-    # MANEJADORES DE TEXTO
-    # ========================================================================
-    # 1. Activación rápida de accesibilidad (si el texto empieza con "acces")
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, acc.acc_try_activate))
-
-    # 2. Manejador de texto único (modo normal + accesibilidad)
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, acc.acc_handle_text))
+    # ========== MANEJADORES DE TEXTO (solo modo normal) ==========
+    # Manejador de texto para modo normal (reconocimiento de Galatea)
+    if hasattr(dev_handlers, 'normal_handle_text'):
+        app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, dev_handlers.normal_handle_text))
 
     logger.info("Bot avviato.")
     print("Bot funzionante... In attesa di messaggi.")
