@@ -834,10 +834,19 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
     texto_norm = unicodedata.normalize('NFKD', texto.lower()).encode('ASCII', 'ignore').decode('ASCII')
     texto_limpio = ' '.join(texto_norm.split())
 
-    # Lista de estaciones (clave, nombre)
-    estaciones = list(NOMBRE_MOSTRAR.items())
-    # Ordenar por longitud descendente para coincidencias exactas más largas primero
-    estaciones.sort(key=lambda x: len(x[1]), reverse=True)
+    # ========== ALIAS (sinónimos de estaciones) ==========
+    # Estos alias NO se muestran en el mensaje de error
+    ALIASES = {
+        "misterbianco": "montepo",
+        "humanitas": "nesima",
+        "centro sicilia": "nesima",
+        "centrosicilia": "nesima",   # sin espacio
+    }
+    # Normalizar alias
+    alias_norm = {}
+    for alias, clave in ALIASES.items():
+        alias_clean = unicodedata.normalize('NFKD', alias.lower()).encode('ASCII', 'ignore').decode('ASCII')
+        alias_norm[alias_clean] = clave
 
     # Función de distancia Levenshtein
     def levenshtein_distance(a: str, b: str) -> int:
@@ -856,10 +865,26 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
             previous_row = current_row
         return previous_row[-1]
 
-    # Lista para guardar (posición, clave)
-    matches = []
+    # 1. Buscar coincidencia exacta de alias en el texto
+    for alias, clave in alias_norm.items():
+        if alias in texto_limpio:
+            await send_station_response(update, context, clave, return_to_main=True)
+            return
 
-    # 1. Coincidencia exacta (nombre completo) - buscamos todas las ocurrencias
+    # 2. Buscar coincidencia aproximada de alias (distancia <= 2) en todo el texto
+    for alias, clave in alias_norm.items():
+        dist = levenshtein_distance(texto_limpio, alias)
+        if dist <= 2:
+            await send_station_response(update, context, clave, return_to_main=True)
+            return
+
+    # ========== ESTACIONES REALES ==========
+    estaciones = list(NOMBRE_MOSTRAR.items())
+    estaciones.sort(key=lambda x: len(x[1]), reverse=True)  # ordenar por longitud descendente
+
+    matches = []  # (posición, clave)
+
+    # 3. Coincidencia exacta del nombre completo de la estación (en cualquier parte)
     for clave, nombre in estaciones:
         nombre_norm = unicodedata.normalize('NFKD', nombre.lower()).encode('ASCII', 'ignore').decode('ASCII')
         start = 0
@@ -870,16 +895,16 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
             matches.append((pos, clave))
             start = pos + 1
 
-    # 2. Coincidencia aproximada (distanza <= 2) - solo si no hay match exacto
+    # 4. Coincidencia aproximada (distancia <= 2) - solo si no hay coincidencias exactas
     if not matches:
         for clave, nombre in estaciones:
             nombre_norm = unicodedata.normalize('NFKD', nombre.lower()).encode('ASCII', 'ignore').decode('ASCII')
             dist = levenshtein_distance(texto_limpio, nombre_norm)
             if dist <= 2:
                 matches.append((0, clave))
-                break  # Tomamos el primero encontrado
+                break
 
-    # 3. Prefijos (es. "giovanni" per "giovanni xxiii")
+    # 5. Prefijos (ej. "monte" -> "Monte Po", "giovanni" -> "Giovanni XXIII")
     if not matches:
         for clave, nombre in estaciones:
             nombre_norm = unicodedata.normalize('NFKD', nombre.lower()).encode('ASCII', 'ignore').decode('ASCII')
@@ -890,21 +915,25 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 matches.append((0, clave))
                 break
 
-    # 4. Trucchi segreti per Galatea
+    # 6. Trucos secretos para Galatea
     if not matches:
         if texto_limpio.startswith("gal"):
             matches.append((0, "galatea"))
         elif "galaxia" in texto_limpio:
             matches.append((0, "galatea"))
 
-    # Se abbiamo match, ordiniamo per posizione e prendiamo il primo
+    # 7. Excepción especial: "monte" a secas -> Monte Po
+    if not matches and texto_limpio == "monte":
+        matches.append((0, "montepo"))
+
+    # Si hay coincidencias, ordenar por posición y tomar la primera
     if matches:
-        matches.sort(key=lambda x: x[0])  # ordina per indice di apparizione
+        matches.sort(key=lambda x: x[0])
         mejor_clave = matches[0][1]
         await send_station_response(update, context, mejor_clave, return_to_main=True)
         return
 
-    # Nessuna stazione riconosciuta - messaggio in italiano
+    # No reconocido: mostrar solo las estaciones reales (sin alias)
     await update.message.reply_text(
         "Stazione non riconosciuta. Le stazioni disponibili sono: " +
         ", ".join(NOMBRE_MOSTRAR.values()) + ".",
