@@ -702,7 +702,7 @@ async def start(update, context):
     last_msg = get_last_train_message(now)
     msg = await update.message.reply_text(
         f"Ciao {user.first_name}! 👋\n\n"
-        "Premi i pulsanti o digita il nome della stazione che desideri controllare.\n\n"
+        "Premi i pulsanti o scrive il nome della stazione che desideri controllare.\n\n"
         f"{last_msg}",
         reply_markup=keyboard_main
     )
