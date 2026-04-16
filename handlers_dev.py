@@ -850,13 +850,13 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
     texto_limpio = ' '.join(texto_norm.split())
     palabras = texto_limpio.split()
 
-        # ========== REGLA ESPECIAL: "este" + "coro/colo/como" en cualquier parte ==========
-    # Detecta si hay una palabra que empiece por "este"/"ste" Y otra palabra que termine en "coro"/"colo"/"como"
-    tiene_este = any(p.startswith('este') or p.startswith('ste') for p in palabras)
-    tiene_coro = any(p.endswith('coro') or p.endswith('colo') or p.endswith('como') for p in palabras)
-    if tiene_este and tiene_coro:
-        await send_station_response(update, context, "stesicoro", return_to_main=True)
-        return
+         # ========== REGLA ESPECIAL: palabras que empiezan por ESTE/STE o terminan en CORO/COLO/COMO ==========
+    for palabra in palabras:
+        palabra_lower = palabra.lower()
+        if (palabra_lower.startswith('este') or palabra_lower.startswith('ste')) or \
+           (palabra_lower.endswith('coro') or palabra_lower.endswith('colo') or palabra_lower.endswith('como')):
+            await send_station_response(update, context, "stesicoro", return_to_main=True)
+            return
 
     # ========== ALIAS (sinónimos de estaciones) ==========
     ALIASES = {
