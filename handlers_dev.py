@@ -830,29 +830,17 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return
 
     texto = update.message.text.strip()
-    # Normalizar: minúsculas y sin tildes
     import unicodedata
     texto_norm = unicodedata.normalize('NFKD', texto.lower()).encode('ASCII', 'ignore').decode('ASCII')
-    # Eliminar espacios extra y unir palabras (para comparar frases)
     texto_limpio = ' '.join(texto_norm.split())
 
-    # Lista de estaciones (clave, nombre) ordenadas por longitud descendente
+    # Lista de estaciones (clave, nombre)
     estaciones = list(NOMBRE_MOSTRAR.items())
+    # Ordenar por longitud descendente para coincidencias exactas más largas primero
     estaciones.sort(key=lambda x: len(x[1]), reverse=True)
 
-    # 1. Coincidencia exacta (nombre completo en cualquier parte)
-    for clave, nombre in estaciones:
-        nombre_norm = unicodedata.normalize('NFKD', nombre.lower()).encode('ASCII', 'ignore').decode('ASCII')
-        if nombre_norm in texto_limpio:
-            await send_station_response(update, context, clave, return_to_main=True)
-            return
-
-    # 2. Coincidencia aproximada (distancia de Levenshtein <= 2)
-    #    Se compara el texto completo del usuario con el nombre de la estación
-    from functools import lru_cache
-
+    # Función de distancia Levenshtein
     def levenshtein_distance(a: str, b: str) -> int:
-        "Calcula la distancia de edición entre dos cadenas."
         if len(a) < len(b):
             return levenshtein_distance(b, a)
         if len(b) == 0:
@@ -868,25 +856,57 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
             previous_row = current_row
         return previous_row[-1]
 
+    # Lista para guardar (posición, clave)
+    matches = []
+
+    # 1. Coincidencia exacta (nombre completo) - buscamos todas las ocurrencias
     for clave, nombre in estaciones:
         nombre_norm = unicodedata.normalize('NFKD', nombre.lower()).encode('ASCII', 'ignore').decode('ASCII')
-        # Distancia entre el texto completo del usuario y el nombre de la estación
-        dist = levenshtein_distance(texto_limpio, nombre_norm)
-        if dist <= 2:  # Permitir hasta 2 errores
-            await send_station_response(update, context, clave, return_to_main=True)
-            return
+        start = 0
+        while True:
+            pos = texto_limpio.find(nombre_norm, start)
+            if pos == -1:
+                break
+            matches.append((pos, clave))
+            start = pos + 1
 
-    # 3. Trucos secretos para Galatea (prefijo "gal" al inicio y "galaxia")
-    if texto_limpio.startswith("gal"):
-        await send_station_response(update, context, "galatea", return_to_main=True)
-        return
-    if "galaxia" in texto_limpio:
-        await send_station_response(update, context, "galatea", return_to_main=True)
+    # 2. Coincidencia aproximada (distanza <= 2) - solo si no hay match exacto
+    if not matches:
+        for clave, nombre in estaciones:
+            nombre_norm = unicodedata.normalize('NFKD', nombre.lower()).encode('ASCII', 'ignore').decode('ASCII')
+            dist = levenshtein_distance(texto_limpio, nombre_norm)
+            if dist <= 2:
+                matches.append((0, clave))
+                break  # Tomamos el primero encontrado
+
+    # 3. Prefijos (es. "giovanni" per "giovanni xxiii")
+    if not matches:
+        for clave, nombre in estaciones:
+            nombre_norm = unicodedata.normalize('NFKD', nombre.lower()).encode('ASCII', 'ignore').decode('ASCII')
+            if nombre_norm.startswith(texto_limpio) and len(texto_limpio) >= 3:
+                matches.append((0, clave))
+                break
+            if texto_limpio.startswith(nombre_norm) and len(nombre_norm) >= 3:
+                matches.append((0, clave))
+                break
+
+    # 4. Trucchi segreti per Galatea
+    if not matches:
+        if texto_limpio.startswith("gal"):
+            matches.append((0, "galatea"))
+        elif "galaxia" in texto_limpio:
+            matches.append((0, "galatea"))
+
+    # Se abbiamo match, ordiniamo per posizione e prendiamo il primo
+    if matches:
+        matches.sort(key=lambda x: x[0])  # ordina per indice di apparizione
+        mejor_clave = matches[0][1]
+        await send_station_response(update, context, mejor_clave, return_to_main=True)
         return
 
-    # No reconocido
+    # Nessuna stazione riconosciuta - messaggio in italiano
     await update.message.reply_text(
-        "Estación no reconocida. Las estaciones disponibles son: " +
+        "Stazione non riconosciuta. Le stazioni disponibili sono: " +
         ", ".join(NOMBRE_MOSTRAR.values()) + ".",
         reply_markup=keyboard_main
     )
