@@ -825,22 +825,173 @@ async def cmd_auto(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("⚠️ L'auto-refresh non è più attivo. Non c'è nulla da fermare.")
 
+  # ============================================================================
+# MODO NONNA: DETECCIÓN DE NOMBRE DE ESTACIÓN CON ERRORES TIPOGRÁFICOS Y ALIAS
+# ============================================================================
+async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    texto = update.message.text.strip()
+    
+    # ========== RESPUESTA A PALABRAS CLAVE (about, grazie) ==========
+    import re
+    texto_lower = texto.lower()
+    texto_normalized = re.sub(r'^/', '', texto_lower)   # quita slash inicial
+    texto_normalized = re.sub(r'\.$', '', texto_normalized)  # quita punto final
+    if texto_normalized in ["about", "grazie"]:
+        img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/FOTOMASTER.jpg"
+        caption = "Chatbot sviluppato con grande impegno da Àlex Naranjo. Se ti piace, condividilo con i tuoi amici e familiari. https://t.me/FCEQuando_bot"
+        try:
+            await update.message.reply_photo(photo=img_url, caption=caption, parse_mode='Markdown')
+        except Exception:
+            await update.message.reply_text(caption, parse_mode='Markdown')
+        return
+    
+    import unicodedata
+    texto_norm = unicodedata.normalize('NFKD', texto.lower()).encode('ASCII', 'ignore').decode('ASCII')
+    texto_limpio = ' '.join(texto_norm.split())
+    palabras = texto_limpio.split()
+
     # ========== REGLA ESPECIAL: palabras que empiezan por ESTE/STE y terminan en CORO/COLO/COMO ==========
-    # Ejemplo: "estecoro", "stecoro", "estecolo", "stecolo", "estecumo", etc.
     pattern_matches = []
     for palabra in palabras:
         palabra_lower = palabra.lower()
-        # Empieza por "este" o "ste" (sin importar longitud)
         starts_ok = palabra_lower.startswith('este') or palabra_lower.startswith('ste')
-        # Termina en "coro", "colo" o "como"
         ends_ok = palabra_lower.endswith('coro') or palabra_lower.endswith('colo') or palabra_lower.endswith('como')
         if starts_ok and ends_ok:
-            # Buscar la posición de esa palabra en el texto original (aproximada)
             pos = texto_limpio.find(palabra_lower)
             pattern_matches.append((pos, "stesicoro"))
     if pattern_matches:
-        # Ordenar por posición y quedarse con la primera
         pattern_matches.sort(key=lambda x: x[0])
         mejor_clave = pattern_matches[0][1]
         await send_station_response(update, context, mejor_clave, return_to_main=True)
         return
+
+    # ========== ALIAS (sinónimos de estaciones) ==========
+    ALIASES = {
+        "misterbianco": "montepo",
+        "humanitas": "nesima",
+        "centro sicilia": "nesima",
+        "centrosicilia": "nesima",
+        "mister bianco": "montepo",
+        "mr bianco": "montepo",
+        "mr. bianco": "montepo",
+        "giovanni": "giovanni",        # Giovanni a secas
+        "giovanni xxiii": "giovanni",
+        "stesicoro": "stesicoro",
+        "monte po": "montepo",
+        "san nullo": "sannullo",
+        "nullo": "sannullo",
+    }
+    alias_norm = {}
+    for alias, clave in ALIASES.items():
+        alias_clean = unicodedata.normalize('NFKD', alias.lower()).encode('ASCII', 'ignore').decode('ASCII')
+        alias_norm[alias_clean] = clave
+
+    # Función de distancia Levenshtein
+    def levenshtein_distance(a: str, b: str) -> int:
+        if len(a) < len(b):
+            return levenshtein_distance(b, a)
+        if len(b) == 0:
+            return len(a)
+        previous_row = list(range(len(b) + 1))
+        for i, ca in enumerate(a):
+            current_row = [i + 1]
+            for j, cb in enumerate(b):
+                insertions = previous_row[j + 1] + 1
+                deletions = current_row[j] + 1
+                substitutions = previous_row[j] + (ca != cb)
+                current_row.append(min(insertions, deletions, substitutions))
+            previous_row = current_row
+        return previous_row[-1]
+
+    # Lista para guardar (posición, clave)
+    matches = []
+
+    # 1. Coincidencia exacta de alias en el texto
+    for alias, clave in alias_norm.items():
+        if alias in texto_limpio:
+            matches.append((texto_limpio.find(alias), clave))
+
+    # 2. Excepción especial: "giovanni x"
+    if not matches:
+        giovanni_x_prefix = "giovanni x"
+        if texto_limpio.startswith(giovanni_x_prefix):
+            matches.append((0, "giovanni"))
+
+    # 3. Coincidencia aproximada de alias: buscar palabra por palabra (solo palabras >3 letras)
+    if not matches:
+        palabras = texto_limpio.split()
+        for alias, clave in alias_norm.items():
+            for i, palabra in enumerate(palabras):
+                if len(palabra) <= 3:
+                    continue
+                dist = levenshtein_distance(palabra, alias)
+                if dist <= 2:
+                    pos = sum(len(p) + 1 for p in palabras[:i])
+                    matches.append((pos, clave))
+                    break
+            if matches:
+                break
+
+    # 4. Coincidencia exacta del nombre completo de la estación (subcadena)
+    estaciones = list(NOMBRE_MOSTRAR.items())
+    estaciones.sort(key=lambda x: len(x[1]), reverse=True)
+    for clave, nombre in estaciones:
+        nombre_norm = unicodedata.normalize('NFKD', nombre.lower()).encode('ASCII', 'ignore').decode('ASCII')
+        start = 0
+        while True:
+            pos = texto_limpio.find(nombre_norm, start)
+            if pos == -1:
+                break
+            matches.append((pos, clave))
+            start = pos + 1
+
+    # 5. Coincidencia aproximada de nombres de estación (solo palabras >3 letras)
+    if not matches:
+        palabras = texto_limpio.split()
+        for clave, nombre in estaciones:
+            nombre_norm = unicodedata.normalize('NFKD', nombre.lower()).encode('ASCII', 'ignore').decode('ASCII')
+            for i, palabra in enumerate(palabras):
+                if len(palabra) <= 3:
+                    continue
+                dist = levenshtein_distance(palabra, nombre_norm)
+                if dist <= 2:
+                    pos = sum(len(p) + 1 for p in palabras[:i])
+                    matches.append((pos, clave))
+                    break
+            if matches:
+                break
+
+    # 6. Prefijos (ej. "monte" -> "Monte Po")
+    if not matches:
+        for clave, nombre in estaciones:
+            nombre_norm = unicodedata.normalize('NFKD', nombre.lower()).encode('ASCII', 'ignore').decode('ASCII')
+            if nombre_norm.startswith(texto_limpio) and len(texto_limpio) >= 3:
+                matches.append((0, clave))
+                break
+            if texto_limpio.startswith(nombre_norm) and len(nombre_norm) >= 3:
+                matches.append((0, clave))
+                break
+
+    # 7. Trucos secretos para Galatea
+    if not matches:
+        if texto_limpio.startswith("gal"):
+            matches.append((0, "galatea"))
+        elif "galaxia" in texto_limpio:
+            matches.append((0, "galatea"))
+
+    # 8. Excepción especial: "monte" a secas
+    if not matches and texto_limpio == "monte":
+        matches.append((0, "montepo"))
+
+    if matches:
+        matches.sort(key=lambda x: x[0])
+        mejor_clave = matches[0][1]
+        await send_station_response(update, context, mejor_clave, return_to_main=True)
+        return
+
+    # No reconocido
+    await update.message.reply_text(
+        "Stazione non riconosciuta. Le stazioni disponibili sono: " +
+        ", ".join(NOMBRE_MOSTRAR.values()) + ".\nPuoi anche usare alias come 'Misterbianco' (Monte Po) o 'Humanitas' (Nesima).",
+        reply_markup=keyboard_main
+    )
