@@ -12,34 +12,6 @@ from horarios_logic import CATANIA_TZ
 logger = logging.getLogger(__name__)
 
 # ============================================================================
-# CARGAR TRADUCCIONES
-# ============================================================================
-def load_translations():
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    texts = {}
-    for lang in ['en', 'es']:
-        file_path = os.path.join(script_dir, f'texts_{lang}.json')
-        if os.path.exists(file_path):
-            with open(file_path, 'r', encoding='utf-8') as f:
-                texts[lang] = json.load(f)
-    return texts
-
-TRANSLATIONS = load_translations()
-DEFAULT_LANG = 'it'  # italiano por defecto
-
-def get_text(key: str, lang: str = None, **kwargs) -> str:
-    """Devuelve el texto traducido para la clave dada, con formato opcional."""
-    if lang is None:
-        lang = DEFAULT_LANG
-    # Si el idioma no está disponible, usar italiano o inglés
-    if lang not in TRANSLATIONS:
-        lang = 'it' if 'it' in TRANSLATIONS else 'en'
-    text = TRANSLATIONS.get(lang, {}).get(key, f"{{missing: {key}}}")
-    if kwargs:
-        text = text.format(**kwargs)
-    return text
-
-# ============================================================================
 # TECLADOS
 # ============================================================================
 keyboard_main = ReplyKeyboardMarkup(
@@ -640,8 +612,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
     
     img_station = get_station_image(estacion_key, now)
     if return_to_main:
-        lang = context.chat_data.get('language', DEFAULT_LANG)
-        await update.message.reply_text(get_text('loading_info', lang), reply_markup=ReplyKeyboardRemove())
+        await update.message.reply_text("caricando informazione...", reply_markup=ReplyKeyboardRemove())
     
     if img_station:
         msg1 = await update.message.reply_photo(photo=img_station, caption=permanent_caption, reply_markup=keyboard_main if return_to_main else keyboard_altri)
@@ -718,51 +689,50 @@ async def cmd_giovanni(update, context):
     context.chat_data['last_station'] = "giovanni"
     await send_station_response(update, context, "giovanni", return_to_main=False)
 async def cmd_altri(update, context):
-    lang = context.chat_data.get('language', DEFAULT_LANG)
-    await update.message.reply_text(get_text('other_stations', lang), reply_markup=keyboard_altri)
+    await update.message.reply_text("⬇️ Altre stazioni:", reply_markup=keyboard_altri)
 
 async def start(update, context):
     user = update.effective_user
     now = datetime.now(CATANIA_TZ)
     last_msg = get_last_train_message(now)
-    lang = context.chat_data.get('language', DEFAULT_LANG)
-    msg = get_text('welcome', lang, name=user.first_name, last_msg=last_msg)
-    await update.message.reply_text(msg, reply_markup=keyboard_main)
-    # Guardar ID del mensaje de bienvenida (opcional, para no borrarlo)
-    # context.chat_data['welcome_msg_id'] = msg.message_id
+    msg = await update.message.reply_text(
+        f"Ciao {user.first_name}! 👋\n\n"
+        "Premi i pulsanti o scrive Accessibilità ♿ per aprire il modo accessibile per tutti.\n\n"
+        f"{last_msg}",
+        reply_markup=keyboard_main
+    )
+    context.chat_data['welcome_msg_id'] = msg.message_id
 
 async def help_command(update, context):
-    lang = context.chat_data.get('language', DEFAULT_LANG)
-    await update.message.reply_text(get_text('help', lang), reply_markup=keyboard_main)
+    await update.message.reply_text(
+        "Comandi disponibili:\n"
+        "/start - Messaggio di benvenuto\n"
+        "/help - Questo aiuto\n"
+        "/montepo - Prossimi treni a Monte Po\n"
+        "/stesicoro - Prossimi treni a Stesicoro\n"
+        "/milo - Prossimi treni a Milo\n"
+        "/altri - Mostra altre stazioni\n"
+        "/fontana, /nesima, /sannullo, /cibali, /borgo, /giuffrida, /italia, /galatea, /giovanni\n"
+        "/stop - Ferma gli aggiornamenti automatici\n"
+        "/test DDMMYYYY HHMM - Attiva modalità test\n"
+        "/testfin - Disattiva modalità test\n"
+        "Modalità accessibilità: /accessibilita\n\n"
+        "Oppure premi i pulsanti.",
+        reply_markup=keyboard_main
+    )
 
 async def handle_button(update, context):
     text = update.message.text
-    lang = context.chat_data.get('language', DEFAULT_LANG)
     if text == "Altri":
         await cmd_altri(update, context)
     elif text == "← Menu":
-        await update.message.reply_text(get_text('back_menu', lang), reply_markup=keyboard_main)
+        await update.message.reply_text("🔙 Ritorno al menu principale.", reply_markup=keyboard_main)
     elif text in BOTON_TO_KEY:
         est_key = BOTON_TO_KEY[text]
         context.chat_data['last_station'] = est_key
         await send_station_response(update, context, est_key, return_to_main=True)
     else:
-        await update.message.reply_text(get_text('invalid_choice', lang), reply_markup=keyboard_main)
-
-async def cmd_testgif(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    gif_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_stesicoro_fontana.gif"
-    text_msg = (
-        "🚆 Prossimi treni a Nesima\n\n"
-        "🔺 Per Monte Po: Passa tra 3 minuti.\n"
-        "   [il treno si trova attualmente a Monte Po]"
-    )
-    await update.message.reply_text(text_msg)
-    gif_message = await update.message.reply_animation(animation=gif_url)
-    await asyncio.sleep(60)
-    try:
-        await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=gif_message.message_id)
-    except Exception as e:
-        print(f"Error al borrar el GIF: {e}")
+        await update.message.reply_text("Scelta non valida. Usa i pulsanti.", reply_markup=keyboard_main)
 
 async def test_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     args = context.args
@@ -799,9 +769,8 @@ async def test_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         simulated = CATANIA_TZ.localize(simulated)
         context.chat_data['test_time'] = simulated
-        lang = context.chat_data.get('language', DEFAULT_LANG)
         await update.message.reply_text(
-            get_text('test_mode_active', lang, simulated=simulated.strftime('%d/%m/%Y %H:%M')),
+            f"🧪 **Modalità test attivata**\nOra simulata: {simulated.strftime('%d/%m/%Y %H:%M')}\nUsa i bottoni. Per uscire: `/testfin`",
             parse_mode='Markdown'
         )
         return
@@ -842,18 +811,18 @@ async def test_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def testfin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if context.chat_data and 'test_time' in context.chat_data:
         del context.chat_data['test_time']
-        await update.message.reply_text(get_text('test_mode_deactivated', context.chat_data.get('language', DEFAULT_LANG)))
+        await update.message.reply_text("✅ Modalità test disattivata. Ora reale ripristinata.")
     else:
-        await update.message.reply_text(get_text('test_mode_not_active', context.chat_data.get('language', DEFAULT_LANG)))
+        await update.message.reply_text("⚠️ Nessuna modalità test attiva.")
 
 async def cmd_auto(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(get_text('auto_refresh_disabled', context.chat_data.get('language', DEFAULT_LANG)))
+    await update.message.reply_text("⚠️ L'auto-refresh è stato disattivato. Usa il pulsante 'Aggiornare' per aggiornare manualmente i dati.")
 
 async def cmd_stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(get_text('nothing_to_stop', context.chat_data.get('language', DEFAULT_LANG)))
+    await update.message.reply_text("⚠️ L'auto-refresh non è più attivo. Non c'è nulla da fermare.")
 
 # ============================================================================
-# MODO NONNA: DETECCIÓN DE NOMBRE DE ESTACIÓN CON ERRORES TIPOGRÁFICOS Y ALIAS
+# DETECCIÓN DE NOMBRE DE ESTACIÓN EN MODO NORMAL (CON EXCEPCIONES)
 # ============================================================================
 async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Salir si estamos en modo accesibilidad
@@ -861,21 +830,6 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return
 
     texto = update.message.text.strip()
-    # Detectar cambio de idioma (antes de cualquier otro procesamiento)
-    texto_lower = texto.lower()
-    if any(word in texto_lower for word in ["english", "inglese"]):
-        context.chat_data['language'] = 'en'
-        await update.message.reply_text("Language set to English. Use /italian to go back, or write 'italiano'.")
-        return
-    if any(word in texto_lower for word in ["español", "spagnolo"]):
-        context.chat_data['language'] = 'es'
-        await update.message.reply_text("Idioma cambiado a español. Usa /italian para volver, o escribe 'italiano'.")
-        return
-    if any(word in texto_lower for word in ["italiano", "italian"]):
-        context.chat_data['language'] = 'it'
-        await update.message.reply_text("Lingua impostata su italiano. Usa /english o /español per cambiare.")
-        return
-
     import unicodedata
     texto_norm = unicodedata.normalize('NFKD', texto.lower()).encode('ASCII', 'ignore').decode('ASCII')
     texto_limpio = ' '.join(texto_norm.split())
@@ -886,12 +840,10 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
         "humanitas": "nesima",
         "centro sicilia": "nesima",
         "centrosicilia": "nesima",
-        # Nuevas excepciones
+        # Nuevas excepciones para Mister Bianco
         "mister bianco": "montepo",
         "mr bianco": "montepo",
         "mr. bianco": "montepo",
-        "giovani": "giovanni",          # error tipográfico
-        "giovanni x": "giovanni",       # cualquier texto que empiece con "giovanni x" (se manejará aparte)
     }
     alias_norm = {}
     for alias, clave in ALIASES.items():
@@ -925,7 +877,6 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     # 2. Excepción especial: "giovanni x" (cualquier texto que empiece con "giovanni x")
     if not matches:
-        # Buscamos si el texto normalizado empieza con "giovanni x"
         giovanni_x_prefix = "giovanni x"
         if texto_limpio.startswith(giovanni_x_prefix):
             matches.append((0, "giovanni"))
@@ -998,9 +949,9 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await send_station_response(update, context, mejor_clave, return_to_main=True)
         return
 
-    # No reconocido: mostrar mensaje traducido
-    lang = context.chat_data.get('language', DEFAULT_LANG)
+    # No reconocido
     await update.message.reply_text(
-        get_text('station_not_recognized', lang) + ", ".join(NOMBRE_MOSTRAR.values()) + ".",
+        "Stazione non riconosciuta. Le stazioni disponibili sono: " +
+        ", ".join(NOMBRE_MOSTRAR.values()) + ".",
         reply_markup=keyboard_main
     )
