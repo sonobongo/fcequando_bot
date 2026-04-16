@@ -1,5 +1,6 @@
 import asyncio
 import time as time_module
+import unicodedata
 from datetime import datetime, timedelta
 from telegram import Update
 from telegram.ext import ContextTypes
@@ -25,10 +26,9 @@ DESCRIPCION_ESTACION = {
 }
 
 # ============================================================================
-# FUNCIONES AUXILIARES PARA LIMPIAR TEXTO
+# FUNCIONES AUXILIARES
 # ============================================================================
 def clean_for_accessibility(text: str) -> str:
-    """Elimina emojis, asteriscos, negritas y caracteres no deseados para TalkBack."""
     if not text:
         return ""
     replacements = {
@@ -41,24 +41,20 @@ def clean_for_accessibility(text: str) -> str:
     return text
 
 def get_station_by_name(text: str) -> tuple:
-    """
-    Busca el nombre completo de la estación en el texto (ignorando mayúsculas/minúsculas y tildes).
-    Devuelve (clave_estacion, nombre_mostrar) o (None, None).
-    """
+    """Compara el texto con el nombre de la estación (ignorando mayúsculas, tildes y espacios)."""
     text = text.lower().strip()
-    import unicodedata
     text = unicodedata.normalize('NFKD', text).encode('ASCII', 'ignore').decode('ASCII')
     
     for key, nombre in NOMBRE_MOSTRAR.items():
-        if nombre.lower() == text:
+        nombre_norm = unicodedata.normalize('NFKD', nombre.lower()).encode('ASCII', 'ignore').decode('ASCII')
+        if text == nombre_norm:
             return key, nombre
     return None, None
 
 # ============================================================================
-# FUNCIÓN PRINCIPAL PARA ENVIAR INFORMACIÓN DE ESTACIÓN (MODO ACCESIBLE)
+# FUNCIÓN PRINCIPAL PARA ENVIAR INFORMACIÓN (MODO ACCESIBLE)
 # ============================================================================
 async def acc_send_station_info(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str):
-    """Envía la información de una estación en modo accesibilidad (sin botón)."""
     simulated = context.chat_data.get('test_time')
     if simulated:
         if simulated.tzinfo is None:
@@ -67,7 +63,6 @@ async def acc_send_station_info(update: Update, context: ContextTypes.DEFAULT_TY
     else:
         now = datetime.now(CATANIA_TZ)
     
-    # Obtener mensajes de horarios (msg2 y msg3) y limpiarlos
     msg2, msg3, _, _, _, _, _, _ = build_temporary_messages(now, estacion_key)
     msg2_clean = clean_for_accessibility(msg2) or "Nessun treno in arrivo verso Monte Po."
     msg3_clean = clean_for_accessibility(msg3) or "Nessun treno in arrivo verso Stesicoro."
@@ -75,7 +70,6 @@ async def acc_send_station_info(update: Update, context: ContextTypes.DEFAULT_TY
     nombre = NOMBRE_MOSTRAR.get(estacion_key, estacion_key.capitalize())
     descripcion = DESCRIPCION_ESTACION.get(estacion_key, "Stazione accessibile.")
     
-    # Imagen de la estación (prefijo st_a)
     nombre_imagen = nombre.replace(" ", "").replace("XXIII", "XXIII")
     if nombre_imagen == "SanNullo":
         nombre_imagen = "SanNullo"
@@ -85,15 +79,11 @@ async def acc_send_station_info(update: Update, context: ContextTypes.DEFAULT_TY
     cache_buster = int(time_module.time())
     img_url = f"{img_url}?v={cache_buster}"
     
-    # Enviar foto (Mensaje 1)
     await update.message.reply_photo(photo=img_url, caption=f"Stazione {nombre}", parse_mode=None)
-    # Enviar descripción (Mensaje 1 bis, pero la foto ya lleva el nombre)
     await update.message.reply_text(descripcion, parse_mode=None)
-    # Enviar horarios (Mensaje 2 y 3) sin botón
     await update.message.reply_text(f"Prossimi treni verso Monte Po:\n{msg2_clean}", parse_mode=None)
     await update.message.reply_text(f"Prossimi treni verso Stesicoro:\n{msg3_clean}", parse_mode=None)
     
-    # Mensaje 4: lista de estaciones e instrucción de salida
     lista_estaciones = ", ".join(NOMBRE_MOSTRAR.values())
     mensaje4 = (
         f"Scegli la stazione che desideri consultare o aggiornare.\n"
@@ -103,35 +93,49 @@ async def acc_send_station_info(update: Update, context: ContextTypes.DEFAULT_TY
     await update.message.reply_text(mensaje4, parse_mode=None)
 
 # ============================================================================
-# MANEJADOR DE TEXTO PARA MODO ACCESIBILIDAD
+# MANEJADOR DE TEXTO ÚNICO (modo normal + accesibilidad)
 # ============================================================================
 async def acc_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Maneja los mensajes de texto cuando el modo accesibilidad está activo."""
-    if not context.chat_data.get('accessibility_mode', False):
+    texto = update.message.text.strip()
+    texto_norm = unicodedata.normalize('NFKD', texto.lower()).encode('ASCII', 'ignore').decode('ASCII')
+    
+    # Si estamos en modo accesibilidad, usar lógica de accesibilidad (nombre exacto)
+    if context.chat_data.get('accessibility_mode', False):
+        estacion_key, nombre_estacion = get_station_by_name(texto)
+        if estacion_key:
+            await update.message.reply_text(f"Hai scelto {nombre_estacion}. Ecco le informazioni:")
+            await acc_send_station_info(update, context, estacion_key)
+        else:
+            await update.message.reply_text(
+                "Stazione non riconosciuta. Le stazioni disponibili sono:\n" +
+                ", ".join(NOMBRE_MOSTRAR.values()) + "\n\nPer uscire, scrivi 'Uscire'."
+            )
         return
     
-    text = update.message.text.strip()
-    # Salir si el usuario escribe "Uscire" o "/uscire" (insensible a mayúsculas)
-    if text.lower() in ["/uscire", "uscire", "exit", "salir"]:
-        await cmd_uscire(update, context)
+    # ========== MODO NORMAL: reconocer Galatea (y luego otras estaciones) ==========
+    # 1. Reconocer "galatea" en cualquier parte
+    if "galatea" in texto_norm:
+        # Llamar a la función del modo normal (send_station_response está en handlers_dev.py)
+        from handlers_dev import send_station_response
+        await send_station_response(update, context, "galatea", return_to_main=True)
         return
     
-    # Buscar estación por nombre completo
-    estacion_key, nombre_estacion = get_station_by_name(text)
-    if estacion_key:
-        await update.message.reply_text(f"Hai scelto {nombre_estacion}. Ecco le informazioni:")
-        await acc_send_station_info(update, context, estacion_key)
-    else:
-        await update.message.reply_text(
-            "Stazione non riconosciuta. Le stazioni disponibili sono:\n" +
-            ", ".join(NOMBRE_MOSTRAR.values()) + "\n\nPer uscire, scrivi 'Uscire'."
-        )
+    # 2. Reconocer prefijo "gal" al inicio
+    if texto_norm.startswith("gal"):
+        from handlers_dev import send_station_response
+        await send_station_response(update, context, "galatea", return_to_main=True)
+        return
+    
+    # 3. Reconocer variante "galaxia"
+    if "galaxia" in texto_norm:
+        from handlers_dev import send_station_response
+        await send_station_response(update, context, "galatea", return_to_main=True)
+        return
 
 # ============================================================================
 # COMANDO PARA ACTIVAR MODO ACCESIBILIDAD
 # ============================================================================
 async def cmd_accesibilidad(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Activa el modo accesibilidad."""
     context.chat_data['accessibility_mode'] = True
     lista_estaciones = ", ".join(NOMBRE_MOSTRAR.values())
     await update.message.reply_text(
@@ -147,7 +151,6 @@ async def cmd_accesibilidad(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # COMANDO PARA SALIR DEL MODO ACCESIBILIDAD
 # ============================================================================
 async def cmd_uscire(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Desactiva el modo accesibilidad y vuelve al modo normal."""
     if context.chat_data.get('accessibility_mode', False):
         context.chat_data['accessibility_mode'] = False
         await update.message.reply_text("✅ Modalità accessibilità disattivata. Sei tornato al menu principale.")
@@ -158,7 +161,6 @@ async def cmd_uscire(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ACTIVACIÓN RÁPIDA ESCRIBIENDO "acces..."
 # ============================================================================
 async def acc_try_activate(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Si el texto empieza con 'acces' (case-insensitive) y la accesibilidad no está activa, la activa."""
     if context.chat_data.get('accessibility_mode', False):
         return
     text = update.message.text.strip().lower()
