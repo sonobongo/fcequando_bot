@@ -47,118 +47,51 @@ def main():
         else:
             await dev_handlers.start_wrapper(update, context)  # ambos usan el mismo por ahora
     async def help_command_wrapper(update, context):
-        if is_dev_mode(context):
-            await dev_handlers.help_command_wrapper(update, context)
-        else:
-            await dev_handlers.help_command_wrapper(update, context)
+        await dev_handlers.help_command_wrapper(update, context)
     async def cmd_montepo_wrapper(update, context):
-        if is_dev_mode(context):
-            await dev_handlers.cmd_montepo_wrapper(update, context)
-        else:
-            await dev_handlers.cmd_montepo_wrapper(update, context)
+        await dev_handlers.cmd_montepo_wrapper(update, context)
     async def cmd_stesicoro_wrapper(update, context):
-        if is_dev_mode(context):
-            await dev_handlers.cmd_stesicoro_wrapper(update, context)
-        else:
-            await dev_handlers.cmd_stesicoro_wrapper(update, context)
+        await dev_handlers.cmd_stesicoro_wrapper(update, context)
     async def cmd_milo_wrapper(update, context):
-        if is_dev_mode(context):
-            await dev_handlers.cmd_milo_wrapper(update, context)
-        else:
-            await dev_handlers.cmd_milo_wrapper(update, context)
+        await dev_handlers.cmd_milo_wrapper(update, context)
     async def cmd_fontana_wrapper(update, context):
-        if is_dev_mode(context):
-            await dev_handlers.cmd_fontana_wrapper(update, context)
-        else:
-            await dev_handlers.cmd_fontana_wrapper(update, context)
+        await dev_handlers.cmd_fontana_wrapper(update, context)
     async def cmd_nesima_wrapper(update, context):
-        if is_dev_mode(context):
-            await dev_handlers.cmd_nesima_wrapper(update, context)
-        else:
-            await dev_handlers.cmd_nesima_wrapper(update, context)
+        await dev_handlers.cmd_nesima_wrapper(update, context)
     async def cmd_sannullo_wrapper(update, context):
-        if is_dev_mode(context):
-            await dev_handlers.cmd_sannullo_wrapper(update, context)
-        else:
-            await dev_handlers.cmd_sannullo_wrapper(update, context)
+        await dev_handlers.cmd_sannullo_wrapper(update, context)
     async def cmd_cibali_wrapper(update, context):
-        if is_dev_mode(context):
-            await dev_handlers.cmd_cibali_wrapper(update, context)
-        else:
-            await dev_handlers.cmd_cibali_wrapper(update, context)
+        await dev_handlers.cmd_cibali_wrapper(update, context)
     async def cmd_borgo_wrapper(update, context):
-        if is_dev_mode(context):
-            await dev_handlers.cmd_borgo_wrapper(update, context)
-        else:
-            await dev_handlers.cmd_borgo_wrapper(update, context)
+        await dev_handlers.cmd_borgo_wrapper(update, context)
     async def cmd_giuffrida_wrapper(update, context):
-        if is_dev_mode(context):
-            await dev_handlers.cmd_giuffrida_wrapper(update, context)
-        else:
-            await dev_handlers.cmd_giuffrida_wrapper(update, context)
+        await dev_handlers.cmd_giuffrida_wrapper(update, context)
     async def cmd_italia_wrapper(update, context):
-        if is_dev_mode(context):
-            await dev_handlers.cmd_italia_wrapper(update, context)
-        else:
-            await dev_handlers.cmd_italia_wrapper(update, context)
+        await dev_handlers.cmd_italia_wrapper(update, context)
     async def cmd_galatea_wrapper(update, context):
-        if is_dev_mode(context):
-            await dev_handlers.cmd_galatea_wrapper(update, context)
-        else:
-            await dev_handlers.cmd_galatea_wrapper(update, context)
+        await dev_handlers.cmd_galatea_wrapper(update, context)
     async def cmd_giovanni_wrapper(update, context):
-        if is_dev_mode(context):
-            await dev_handlers.cmd_giovanni_wrapper(update, context)
-        else:
-            await dev_handlers.cmd_giovanni_wrapper(update, context)
+        await dev_handlers.cmd_giovanni_wrapper(update, context)
     async def cmd_altri_wrapper(update, context):
-        if is_dev_mode(context):
-            await dev_handlers.cmd_altri_wrapper(update, context)
-        else:
-            await dev_handlers.cmd_altri_wrapper(update, context)
+        await dev_handlers.cmd_altri_wrapper(update, context)
     async def handle_button_wrapper(update, context):
-        if is_dev_mode(context):
-            await dev_handlers.handle_button_wrapper(update, context)
-        else:
-            await dev_handlers.handle_button_wrapper(update, context)
+        await dev_handlers.handle_button_wrapper(update, context)
     async def cmd_testgif_wrapper(update, context):
-        if is_dev_mode(context):
-            await dev_handlers.cmd_testgif_wrapper(update, context)
-        else:
-            await dev_handlers.cmd_testgif_wrapper(update, context)
+        await dev_handlers.cmd_testgif_wrapper(update, context)
     async def test_command_wrapper(update, context):
-        if is_dev_mode(context):
-            await dev_handlers.test_command_wrapper(update, context)
-        else:
-            await dev_handlers.test_command_wrapper(update, context)
+        await dev_handlers.test_command_wrapper(update, context)
     async def testfin_command_wrapper(update, context):
-        if is_dev_mode(context):
-            await dev_handlers.testfin_command_wrapper(update, context)
-        else:
-            await dev_handlers.testfin_command_wrapper(update, context)
+        await dev_handlers.testfin_command_wrapper(update, context)
     async def auto_wrapper(update, context):
-        if is_dev_mode(context):
-            await dev_handlers.auto_wrapper(update, context)
-        else:
-            await dev_handlers.auto_wrapper(update, context)
+        await dev_handlers.auto_wrapper(update, context)
     async def stop_wrapper(update, context):
-        if is_dev_mode(context):
-            await dev_handlers.stop_wrapper(update, context)
-        else:
-            await dev_handlers.stop_wrapper(update, context)
+        await dev_handlers.stop_wrapper(update, context)
 
     # Callbacks
     async def aggiornare_callback_wrapper(update, context):
-        if is_dev_mode(context):
-            await dev_handlers.aggiornare_callback(update, context)
-        else:
-            await dev_handlers.aggiornare_callback(update, context)
-
+        await dev_handlers.aggiornare_callback(update, context)
     async def aggiornare_cabecera_callback_wrapper(update, context):
-        if is_dev_mode(context):
-            await dev_handlers.aggiornare_cabecera_callback(update, context)
-        else:
-            await dev_handlers.aggiornare_cabecera_callback(update, context)
+        await dev_handlers.aggiornare_cabecera_callback(update, context)
 
     # Comandos desarrollo
     async def dev_mode_wrapper(update, context):
@@ -168,16 +101,19 @@ def main():
         context.chat_data['dev_mode'] = False
         await update.message.reply_text("✅ Modalità sviluppatore disattivata. Tornato alla versione stabile.")
 
-    # ========================================================================
-    # MANEJADORES PARA /about Y /grazie (además del texto normal)
-    # ========================================================================
-    async def about_grazie_command(update: Update, context):
-        # Llamamos a la misma función que maneja el texto normal (eliminando el slash)
-        # Pero como el mensaje es un comando, no tiene el texto original con slash.
-        # Vamos a crear un fake message con el texto sin slash.
-        cmd = update.message.text.lower().lstrip('/')
-        fake_update = update
-        fake_update.message.text = cmd
+    # Comandos para about y grazie (responden igual que el modo nonna)
+    async def about_cmd(update, context):
+        # Simula un mensaje de texto "about" para que lo procese normal_handle_text
+        class FakeUpdate:
+            def __init__(self, msg):
+                self.message = msg
+        fake_msg = type('obj', (object,), {'text': 'about', 'reply_text': update.message.reply_text, 'reply_photo': update.message.reply_photo})()
+        fake_update = FakeUpdate(fake_msg)
+        await dev_handlers.normal_handle_text(fake_update, context)
+
+    async def grazie_cmd(update, context):
+        fake_msg = type('obj', (object,), {'text': 'grazie', 'reply_text': update.message.reply_text, 'reply_photo': update.message.reply_photo})()
+        fake_update = FakeUpdate(fake_msg)
         await dev_handlers.normal_handle_text(fake_update, context)
 
     # ========================================================================
@@ -194,7 +130,7 @@ def main():
         ("giovanni", cmd_giovanni_wrapper), ("test", test_command_wrapper),
         ("testfin", testfin_command_wrapper), ("testgif", cmd_testgif_wrapper),
         ("auto", auto_wrapper), ("stop", stop_wrapper),
-        ("about", about_grazie_command), ("grazie", about_grazie_command)
+        ("about", about_cmd), ("grazie", grazie_cmd)   # <--- AÑADIDO
     ]
     for cmd, handler in commands:
         app.add_handler(CommandHandler(cmd, handler))
@@ -203,7 +139,7 @@ def main():
     app.add_handler(CommandHandler("dev", dev_mode_wrapper))
     app.add_handler(CommandHandler("devfin", dev_fin_wrapper))
 
-    # Teclados (ReplyKeyboardMarkup)
+    # Teclados (ReplyKeyboardMarkup) para modo normal
     button_texts = ["Monte Po", "Stesicoro", "Altri", "← Menu", "Fontana", "Nesima", "San Nullo",
                     "Cibali", "Milo", "Borgo", "Giuffrida", "Italia", "Galatea", "Giovanni XXIII"]
     app.add_handler(MessageHandler(filters.Text(button_texts), handle_button_wrapper))
@@ -213,7 +149,7 @@ def main():
     app.add_handler(CallbackQueryHandler(aggiornare_cabecera_callback_wrapper, pattern="^agg_cabecera_"))
 
     # ========================================================================
-    # MANEJADOR DE TEXTO PARA MODO NONNA (cualquier texto que no sea comando ni botón)
+    # MANEJADOR DE TEXTO PARA MODO NONNA
     # ========================================================================
     if hasattr(dev_handlers, 'normal_handle_text'):
         app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, dev_handlers.normal_handle_text))
