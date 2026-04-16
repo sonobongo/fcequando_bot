@@ -64,7 +64,7 @@ async def acc_send_message_3(update: Update, msg: str, estacion_key: str, reply_
     await update.message.reply_text(f"Prossimi treni verso Stesicoro:\n{msg_clean}", parse_mode=None, reply_markup=reply_markup)
 
 async def acc_send_horarios(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str):
-    """Envía los horarios (msg2 y msg3) y guarda los IDs para actualizarlos luego."""
+    """Envía los horarios (msg2 y msg3)."""
     simulated = context.chat_data.get('test_time')
     if simulated:
         if simulated.tzinfo is None:
@@ -75,10 +75,7 @@ async def acc_send_horarios(update: Update, context: ContextTypes.DEFAULT_TYPE, 
     
     msg2, msg3, _, _, _, _, _, _ = build_temporary_messages(now, estacion_key)
     
-    # Enviar msg2 (sin botón)
     await acc_send_message_2(update, msg2)
-    
-    # Enviar msg3 con botón inline
     keyboard_inline = InlineKeyboardMarkup([
         [InlineKeyboardButton("🔄 Aggiornare", callback_data=f"acc_aggiornare_{estacion_key}")]
     ])
@@ -104,7 +101,7 @@ async def acc_send_station_info(update: Update, context: ContextTypes.DEFAULT_TY
     intro = f"Informazioni sulla stazione {nombre}.\n\n{descripcion}"
     await update.message.reply_text(intro, parse_mode=None)
     
-    # 1. Foto de la estación (mensaje 1)
+    # 1. Foto de la estación (mensaje 1) - con manejo de errores
     nombre_imagen = nombre.replace(" ", "").replace("XXIII", "XXIII")
     if nombre_imagen == "SanNullo":
         nombre_imagen = "SanNullo"
@@ -113,7 +110,12 @@ async def acc_send_station_info(update: Update, context: ContextTypes.DEFAULT_TY
     img_url = f"https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/st_a{nombre_imagen}.png"
     cache_buster = int(time_module.time())
     img_url = f"{img_url}?v={cache_buster}"
-    await update.message.reply_photo(photo=img_url, caption=f"Stazione {nombre}", parse_mode=None)
+    try:
+        await update.message.reply_photo(photo=img_url, caption=f"Stazione {nombre}", parse_mode=None)
+    except Exception as e:
+        # Si falla la foto, enviamos solo el nombre como texto
+        print(f"Error al enviar foto para {nombre}: {e}")
+        await update.message.reply_text(f"Stazione {nombre}", parse_mode=None)
     
     # 2. Horarios (msg2 y msg3 con botón)
     await acc_send_horarios(update, context, estacion_key)
@@ -145,7 +147,6 @@ async def acc_aggiornare_callback(update: Update, context: ContextTypes.DEFAULT_
     
     msg2, msg3, _, _, _, _, _, _ = build_temporary_messages(now, estacion_key)
     
-    # Enviar nuevos mensajes de horarios (sin borrar los anteriores)
     await query.message.reply_text(f"Prossimi treni verso Monte Po:\n{clean_for_accessibility(msg2) or 'Nessun treno in arrivo verso Monte Po.'}", parse_mode=None)
     keyboard_inline = InlineKeyboardMarkup([
         [InlineKeyboardButton("🔄 Aggiornare", callback_data=f"acc_aggiornare_{estacion_key}")]
@@ -161,12 +162,10 @@ async def acc_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     texto = update.message.text.strip()
-    # Salir si el usuario escribe "Uscire" o "/uscire"
     if texto.lower() in ["/uscire", "uscire", "exit", "salir"]:
         await cmd_uscire(update, context)
         return
     
-    # Buscar estación por nombre exacto (ignorando mayúsculas y tildes)
     estacion_key, nombre_estacion = get_station_by_name(texto)
     if estacion_key:
         await update.message.reply_text(f"Hai scelto {nombre_estacion}. Ecco le informazioni:")
@@ -190,7 +189,6 @@ async def cmd_accesibilidad(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Per uscire, scrivi 'Uscire'.",
         parse_mode=None
     )
-    # Mostrar información de Monte Po por defecto
     await acc_send_station_info(update, context, "montepo")
 
 # ============================================================================
@@ -203,14 +201,3 @@ async def cmd_uscire(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("✅ Modalità accessibilità disattivata. Sei tornato al menu principale.")
     else:
         await update.message.reply_text("⚠️ Non sei in modalità accessibilità.")
-
-# ============================================================================
-# ACTIVACIÓN RÁPIDA (opcional, puedes comentarla si no la quieres)
-# ============================================================================
-async def acc_try_activate(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Si el texto empieza con 'acces' (case-insensitive) y la accesibilidad no está activa, la activa."""
-    if context.chat_data.get('accessibility_mode', False):
-        return
-    text = update.message.text.strip().lower()
-    if text.startswith("acces"):
-        await cmd_accesibilidad(update, context)
