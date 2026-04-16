@@ -74,6 +74,7 @@ KEYWORDS = {
     "stadio": "cibali",
     # San Nullo
     "usodimare": "sannullo",
+    "uso di mare": "sannullo",   # Añadido para detectar "uso di mare"
     "sebastiano": "sannullo",
     # Nesima
     "lorenzo": "nesima",
@@ -983,11 +984,11 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
     texto_limpio = ' '.join(texto_norm.split())
     palabras = texto_limpio.split()
 
-    # ========== DETECCIÓN DE PALABRAS CLAVE (calles cercanas) con 1 error ==========
+    # ========== DETECCIÓN DE PALABRAS CLAVE (calles cercanas) con regla de longitud ==========
     from_keyword = False
     mejor_clave_kw = None
     
-    # Función de distancia Levenshtein (definida aquí para usarla en keywords)
+    # Función de distancia Levenshtein
     def levenshtein_distance(a: str, b: str) -> int:
         if len(a) < len(b):
             return levenshtein_distance(b, a)
@@ -1004,14 +1005,14 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
             previous_row = current_row
         return previous_row[-1]
     
-    # 1. Búsqueda de frases exactas (ej. "corso sicilia")
+    # 1. Búsqueda de frases exactas (ej. "corso sicilia", "uso di mare")
     for kw_norm, station in KEYWORDS_NORM.items():
         if kw_norm in texto_limpio:
             mejor_clave_kw = station
             from_keyword = True
             break
     
-    # 2. Si no hay frase exacta, buscar palabra por palabra con distancia ≤ 1
+    # 2. Si no hay frase exacta, buscar palabra por palabra con distancia según longitud
     if not mejor_clave_kw:
         palabras_limpio = texto_limpio.split()
         for kw_norm, station in KEYWORDS_NORM.items():
@@ -1020,15 +1021,24 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
             # Si la keyword tiene más de una palabra, saltar (ya se buscó como frase exacta)
             if len(kw_palabras) > 1:
                 continue
-            # Buscar coincidencia con distancia 1
+            # Para palabras sueltas (single word)
+            kw_len = len(kw_norm)
             for palabra in palabras_limpio:
                 if len(palabra) <= 2:
-                    continue  # ignorar palabras muy cortas para evitar falsos
+                    continue  # ignorar palabras muy cortas
                 dist = levenshtein_distance(palabra, kw_norm)
-                if dist <= 1:
-                    mejor_clave_kw = station
-                    from_keyword = True
-                    break
+                # Regla: longitud <= 4 -> solo distancia 0 (exacta)
+                # longitud >= 5 -> distancia <= 1
+                if kw_len <= 4:
+                    if dist == 0:
+                        mejor_clave_kw = station
+                        from_keyword = True
+                        break
+                else:
+                    if dist <= 1:
+                        mejor_clave_kw = station
+                        from_keyword = True
+                        break
             if mejor_clave_kw:
                 break
     
