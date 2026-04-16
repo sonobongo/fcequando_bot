@@ -1,6 +1,5 @@
 import asyncio
 import time as time_module
-import unicodedata
 from datetime import datetime, timedelta
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
@@ -39,16 +38,6 @@ def clean_for_accessibility(text: str) -> str:
         text = text.replace(old, new)
     text = ' '.join(text.split())
     return text
-
-def get_station_by_name(text: str) -> tuple:
-    """Compara el texto con el nombre de la estación (ignorando mayúsculas, tildes y espacios)."""
-    text = text.lower().strip()
-    text = unicodedata.normalize('NFKD', text).encode('ASCII', 'ignore').decode('ASCII')
-    for key, nombre in NOMBRE_MOSTRAR.items():
-        nombre_norm = unicodedata.normalize('NFKD', nombre.lower()).encode('ASCII', 'ignore').decode('ASCII')
-        if text == nombre_norm:
-            return key, nombre
-    return None, None
 
 # ============================================================================
 # FUNCIONES PARA ENVIAR HORARIOS (msg2 y msg3) CON BOTÓN
@@ -153,45 +142,17 @@ async def acc_aggiornare_callback(update: Update, context: ContextTypes.DEFAULT_
     await query.message.reply_text(f"Prossimi treni verso Stesicoro:\n{clean_for_accessibility(msg3) or 'Nessun treno in arrivo verso Stesicoro.'}", parse_mode=None, reply_markup=keyboard_inline)
 
 # ============================================================================
-# MANEJADOR DE TEXTO PARA MODO ACCESIBILIDAD
-# ============================================================================
-async def acc_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Maneja los mensajes de texto cuando el modo accesibilidad está activo."""
-    if not context.chat_data.get('accessibility_mode', False):
-        return
-    
-    texto = update.message.text.strip()
-    # Salir si el usuario escribe "Uscire" o "/uscire"
-    if texto.lower() in ["/uscire", "uscire", "exit", "salir"]:
-        await cmd_uscire(update, context)
-        return
-    
-    # Buscar estación por nombre exacto (ignorando mayúsculas y tildes)
-    estacion_key, nombre_estacion = get_station_by_name(texto)
-    if estacion_key:
-        await update.message.reply_text(f"Hai scelto {nombre_estacion}. Ecco le informazioni:")
-        await acc_send_station_info(update, context, estacion_key)
-    else:
-        lista = ", ".join(NOMBRE_MOSTRAR.values())
-        await update.message.reply_text(
-            f"Stazione non riconosciuta. Le stazioni disponibili sono:\n{lista}\n\nPer uscire, scrivi 'Uscire'."
-        )
-
-# ============================================================================
-# COMANDO PARA ACTIVAR MODO ACCESIBILIDAD
+# COMANDO PARA ACTIVAR MODO ACCESIBILIDAD (sin información por defecto)
 # ============================================================================
 async def cmd_accesibilidad(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Activa el modo accesibilidad y muestra la información de una estación por defecto (Monte Po)."""
+    """Activa el modo accesibilidad."""
     context.chat_data['accessibility_mode'] = True
     await update.message.reply_text(
         "♿ Modalità accessibilità attivata.\n\n"
-        "Scrivi il nome della stazione che desideri consultare.\n"
-        "Esempio: 'Monte Po' o 'Galatea'.\n\n"
-        "Per uscire, scrivi 'Uscire'.",
+        "Per consultare una stazione, usa il comando /a seguito del nome della stazione (es. /aMontepo).\n"
+        "Per uscire, scrivi /uscire.",
         parse_mode=None
     )
-    # Opcional: mostrar información de Monte Po por defecto
-    await acc_send_station_info(update, context, "montepo")
 
 # ============================================================================
 # COMANDO PARA SALIR DEL MODO ACCESIBILIDAD
@@ -203,14 +164,3 @@ async def cmd_uscire(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("✅ Modalità accessibilità disattivata. Sei tornato al menu principale.")
     else:
         await update.message.reply_text("⚠️ Non sei in modalità accessibilità.")
-
-# ============================================================================
-# ACTIVACIÓN RÁPIDA ESCRIBIENDO "acces..."
-# ============================================================================
-async def acc_try_activate(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Si el texto empieza con 'acces' (case-insensitive) y la accesibilidad no está activa, la activa."""
-    if context.chat_data.get('accessibility_mode', False):
-        return
-    text = update.message.text.strip().lower()
-    if text.startswith("acces"):
-        await cmd_accesibilidad(update, context)
