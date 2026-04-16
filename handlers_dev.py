@@ -1,7 +1,6 @@
 import asyncio
 import time as time_module
-import json
-import os
+import unicodedata
 import logging
 from datetime import datetime, timedelta
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove
@@ -427,15 +426,12 @@ async def aggiornare_cabecera_callback(update: Update, context: ContextTypes.DEF
     estacion_key = query.data.split("_")[2]
     chat_id = query.message.chat_id
     
-    # Elimina el mensaje principal viejo
     try:
         await query.message.delete()
     except Exception:
         pass
     
-    # Regenera todo (incluirá el bus si está presente)
     await send_header_response(chat_id, context, estacion_key)
-    
     schedule_cleanup(update, context)
 
 # ============================================================================
@@ -457,7 +453,6 @@ async def send_header_response(chat_id, context, estacion_key):
         [InlineKeyboardButton("🔄 Aggiornare", callback_data=f"agg_cabecera_{estacion_key}")]
     ])
     
-    # Costruisci il messaggio principale
     if closed:
         if next_open.date() > now.date():
             msg = f"{special_closing_msg}\n🚇 La metropolitana è chiusa in questo momento. Riaprirà domani alle {next_open.strftime('%H:%M')}."
@@ -471,11 +466,23 @@ async def send_header_response(chat_id, context, estacion_key):
                 msg = f"{special_closing_msg}\n🚇 La metropolitana è chiusa in questo momento. Il primo treno da {station_display} partirà alle {first_train.strftime('%H:%M')}."
             else:
                 msg = f"{special_closing_msg}\n🚇 La metropolitana è chiusa in questo momento.\n🕒 Riaprirà alle {next_open.strftime('%H:%M')}."
+        img = get_station_image(estacion_key, now)
+        if img:
+            msg1 = await context.bot.send_photo(chat_id=chat_id, photo=img, caption=msg, reply_markup=keyboard_inline)
+        else:
+            msg1 = await context.bot.send_message(chat_id=chat_id, text=msg, reply_markup=keyboard_inline)
+        context.chat_data['main_msg_id'] = msg1.message_id
     else:
         next_dep, minutes, seconds, has_trains = get_next_departure(station, now)
         if not has_trains:
             close_h, close_m = get_closing_time(now, station)
             msg = f"🚇 Non ci sono più treni oggi. Il servizio termina alle {close_h:02d}:{close_m:02d}."
+            img = get_station_image(estacion_key, now)
+            if img:
+                msg1 = await context.bot.send_photo(chat_id=chat_id, photo=img, caption=msg, reply_markup=keyboard_inline)
+            else:
+                msg1 = await context.bot.send_message(chat_id=chat_id, text=msg, reply_markup=keyboard_inline)
+            context.chat_data['main_msg_id'] = msg1.message_id
         else:
             dest = "Stesicoro" if station == "Montepo" else "Monte Po"
             remaining = next_dep - now
@@ -510,14 +517,12 @@ async def send_header_response(chat_id, context, estacion_key):
                 last_msg = last_msg.replace("📌", "🕙")
             msg += f"\n\n{last_msg}"
     
-    # Aggiungi il messaggio del bus (solo per Monte Po) direttamente nel caption
     if estacion_key == "montepo":
         bus_text = get_bus_message_montepo_advanced(now)
         if bus_text:
             bus_text_clean = bus_text.replace("**", "")
             msg += f"\n\n{bus_text_clean}"
     
-    # Ora invia il messaggio principale (foto + caption) con il bottone
     if not closed and has_trains:
         total_seconds_rest = int(remaining.total_seconds())
         mins_rest = int(remaining.total_seconds() // 60)
@@ -697,7 +702,7 @@ async def start(update, context):
     last_msg = get_last_train_message(now)
     msg = await update.message.reply_text(
         f"Ciao {user.first_name}! 👋\n\n"
-        "Premi i pulsanti o scrive Accessibilità ♿ per aprire il modo accessibile per tutti.\n\n"
+        "Premi i pulsanti o digita il nome della stazione che desideri controllare.\n\n"
         f"{last_msg}",
         reply_markup=keyboard_main
     )
@@ -716,7 +721,6 @@ async def help_command(update, context):
         "/stop - Ferma gli aggiornamenti automatici\n"
         "/test DDMMYYYY HHMM - Attiva modalità test\n"
         "/testfin - Disattiva modalità test\n"
-        "Modalità accessibilità: /accessibilita\n\n"
         "Oppure premi i pulsanti.",
         reply_markup=keyboard_main
     )
@@ -822,13 +826,9 @@ async def cmd_stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("⚠️ L'auto-refresh non è più attivo. Non c'è nulla da fermare.")
 
 # ============================================================================
-# DETECCIÓN DE NOMBRE DE ESTACIÓN EN MODO NORMAL (CON EXCEPCIONES)
+# MODO NONNA: DETECCIÓN DE NOMBRE DE ESTACIÓN CON ERRORES TIPOGRÁFICOS Y ALIAS
 # ============================================================================
 async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Salir si estamos en modo accesibilidad
-    if context.chat_data.get('accessibility_mode', False):
-        return
-
     texto = update.message.text.strip()
     import unicodedata
     texto_norm = unicodedata.normalize('NFKD', texto.lower()).encode('ASCII', 'ignore').decode('ASCII')
@@ -840,7 +840,6 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
         "humanitas": "nesima",
         "centro sicilia": "nesima",
         "centrosicilia": "nesima",
-        # Nuevas excepciones para Mister Bianco
         "mister bianco": "montepo",
         "mr bianco": "montepo",
         "mr. bianco": "montepo",
@@ -875,7 +874,7 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
         if alias in texto_limpio:
             matches.append((texto_limpio.find(alias), clave))
 
-    # 2. Excepción especial: "giovanni x" (cualquier texto que empiece con "giovanni x")
+    # 2. Excepción especial: "giovanni x"
     if not matches:
         giovanni_x_prefix = "giovanni x"
         if texto_limpio.startswith(giovanni_x_prefix):
@@ -944,7 +943,7 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
         matches.append((0, "montepo"))
 
     if matches:
-        matches.sort(key=lambda x: x[0])  # ordenar por posición de aparición
+        matches.sort(key=lambda x: x[0])
         mejor_clave = matches[0][1]
         await send_station_response(update, context, mejor_clave, return_to_main=True)
         return
