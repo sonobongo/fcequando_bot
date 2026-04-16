@@ -825,38 +825,34 @@ async def cmd_stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # DETECCIÓN DE NOMBRE DE ESTACIÓN EN MODO NORMAL (SOLO GALATEA PARA PRUEBA)
 # ============================================================================
 async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    print(">>> [DEBUG] normal_handle_text called")
+    # 1. Salir si estamos en modo accesibilidad
     if context.chat_data.get('accessibility_mode', False):
-        print(">>> [DEBUG] accessibility_mode active, exiting")
         return
     
-    text = update.message.text.strip()
-    print(f">>> [DEBUG] Original text: {text}")
+    # 2. Obtener el texto del mensaje
+    texto = update.message.text.strip()
     
+    # 3. Normalizar: minúsculas y sin tildes
     import unicodedata
-    text_norm = unicodedata.normalize('NFKD', text.lower()).encode('ASCII', 'ignore').decode('ASCII')
-    print(f">>> [DEBUG] Normalized: {text_norm}")
+    texto_norm = unicodedata.normalize('NFKD', texto.lower()).encode('ASCII', 'ignore').decode('ASCII')
     
-    # 1. Reconocer "galatea" en cualquier parte del mensaje
-    if "galatea" in text_norm:
-        print(">>> [DEBUG] Matched 'galatea' anywhere")
+    # 4. Reconocer "galatea" en cualquier parte del mensaje
+    if "galatea" in texto_norm:
         await send_station_response(update, context, "galatea", return_to_main=True)
         return
     
-    # 2. Reconocer prefijo "gal" al inicio
-    if text_norm.startswith("gal"):
-        print(">>> [DEBUG] Matched prefix 'gal' at start")
+    # 5. Reconocer prefijo "gal" solo al inicio del mensaje
+    if texto_norm.startswith("gal"):
         await send_station_response(update, context, "galatea", return_to_main=True)
         return
     
-    # 3. Reconocer variante "galaxia" en cualquier parte
-    if "galaxia" in text_norm:
-        print(">>> [DEBUG] Matched 'galaxia' anywhere")
+    # 6. Reconocer variante "galaxia" en cualquier parte
+    if "galaxia" in texto_norm:
         await send_station_response(update, context, "galatea", return_to_main=True)
         return
     
-    print(">>> [DEBUG] No match")
+    # 7. Si no se reconoce nada, responder con error
     await update.message.reply_text(
-        "Stazione non riconosciuta. Prova con 'galatea'.",
+        "Estación no reconocida. Prueba con 'galatea'.",
         reply_markup=keyboard_main
     )
