@@ -463,7 +463,7 @@ async def aggiornare_cabecera_callback(update: Update, context: ContextTypes.DEF
     schedule_cleanup(update, context)
 
 # ============================================================================
-# FUNCIÓN AUXILIAR PARA ENVIAR RESPUESTA DE CABECERA
+# FUNCIÓN AUXILIAR PARA ENVIAR RESPUESTA DE CABECERA (CON LÓGICA DE BINARIO)
 # ============================================================================
 async def send_header_response(chat_id, context, estacion_key):
     simulated = context.chat_data.get('test_time')
@@ -524,29 +524,28 @@ async def send_header_response(chat_id, context, estacion_key):
     remaining = next_dep - now
     mins_rest = int(remaining.total_seconds() // 60)
     secs_rest = int(remaining.total_seconds() % 60)
+    total_seconds_rest = int(remaining.total_seconds())
     time_str_rest = format_time(mins_rest, secs_rest)
     
+    # Construir mensaje base
     if mins_rest <= 4:
         msg = f"🚇 Il treno è in binario. Partirà tra **{time_str_rest}**."
-        if mins_rest <= 1:
-            next2, min2, sec2, has2 = get_next_departure_after(station, now, next_dep.time())
-            if has2:
-                msg += f"\n\n🚆 Il prossimo treno successivo partirà tra {format_time(min2, sec2)}, alle {next2.strftime('%H:%M')}."
-            else:
-                msg += f"\n\n🚆 Questo è l'ultimo treno della giornata."
     else:
         time_str = format_time(minutes, seconds)
         if minutes < SHORT_TIME_THRESHOLD:
             msg = f"🚇 Prossimo treno per {dest} parte tra **{time_str}**."
         else:
             msg = f"🚇 Prossimo treno per {dest} parte tra **{time_str}**, alle {next_dep.strftime('%H:%M')}."
-        if minutes <= 1:
-            next2, min2, sec2, has2 = get_next_departure_after(station, now, next_dep.time())
-            if has2:
-                msg += f"\n\n🚆 Il prossimo treno successivo partirà tra {format_time(min2, sec2)}, alle {next2.strftime('%H:%M')}."
-            else:
-                msg += f"\n\n🚆 Questo è l'ultimo treno della giornata."
     
+    # Añadir siguiente tren si procede
+    if mins_rest <= 1:
+        next2, min2, sec2, has2 = get_next_departure_after(station, now, next_dep.time())
+        if has2:
+            msg += f"\n\n🚆 Il prossimo treno successivo partirà tra {format_time(min2, sec2)}, alle {next2.strftime('%H:%M')}."
+        else:
+            msg += f"\n\n🚆 Questo è l'ultimo treno della giornata."
+    
+    # Añadir mensaje de último tren (solo si no es horario especial)
     last_msg = get_last_train_message(now)
     if last_msg and not is_sant_agata(now):
         if "01:00" in last_msg:
@@ -555,25 +554,34 @@ async def send_header_response(chat_id, context, estacion_key):
             last_msg = last_msg.replace("📌", "🕙")
         msg += f"\n\n{last_msg}"
     
+    # Añadir bus si es Monte Po
     if estacion_key == "montepo":
         bus_text = get_bus_message_montepo_advanced(now)
         if bus_text:
             bus_text_clean = bus_text.replace("**", "")
             msg += f"\n\n{bus_text_clean}"
     
-    total_seconds_rest = int(remaining.total_seconds())
-    if total_seconds_rest <= 90 or mins_rest <= 1:
-        img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_trenoarriva_cabeceras.png"
+    # ========== LÓGICA DE IMAGEN PARA CABECERAS ==========
+    img_url = None
+    if mins_rest <= 4:
+        # Está en binario
+        if total_seconds_rest <= 90:
+            # 1 minuto y medio o menos: imagen de última oportunidad
+            img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_trenoarriva_cabeceras.png"
+        else:
+            # Más de 90 segundos (2, 3, 4 minutos): imagen de binario normal
+            if estacion_key == "montepo":
+                img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_binario_montepo.jpg"
+            else:
+                img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_binario_stesicoro.jpg"
+    # Si mins_rest > 4, no se muestra imagen (img_url = None)
+    
+    if img_url:
         cache_buster = int(time_module.time())
         img_url = f"{img_url}?v={cache_buster}"
-        msg1 = await context.bot.send_photo(chat_id=chat_id, photo=img_url, caption=msg, parse_mode='Markdown')
-        await msg1.edit_reply_markup(reply_markup=keyboard_inline)
+        msg1 = await context.bot.send_photo(chat_id=chat_id, photo=img_url, caption=msg, parse_mode='Markdown', reply_markup=keyboard_inline)
     else:
-        img = get_station_image(estacion_key, now)
-        if img:
-            msg1 = await context.bot.send_photo(chat_id=chat_id, photo=img, caption=msg, parse_mode='Markdown', reply_markup=keyboard_inline)
-        else:
-            msg1 = await context.bot.send_message(chat_id=chat_id, text=msg, parse_mode='Markdown', reply_markup=keyboard_inline)
+        msg1 = await context.bot.send_message(chat_id=chat_id, text=msg, parse_mode='Markdown', reply_markup=keyboard_inline)
     
     context.chat_data['main_msg_id'] = msg1.message_id
     if 'all_msg_ids' not in context.chat_data:
