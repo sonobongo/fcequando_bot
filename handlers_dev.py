@@ -559,7 +559,7 @@ async def send_header_response(chat_id, context, estacion_key, is_update=False):
                 context.chat_data['all_msg_ids'] = []
             context.chat_data['all_msg_ids'].append(msg1.message_id)
         
-        # MENSAJE2: información del tren
+        # Construir MENSAJE2
         if closed:
             if next_open.date() > now.date():
                 msg = f"{special_closing_msg}\n🚇 La metropolitana è chiusa in questo momento. Riaprirà domani alle {next_open.strftime('%H:%M')}."
@@ -573,7 +573,7 @@ async def send_header_response(chat_id, context, estacion_key, is_update=False):
                     msg = f"{special_closing_msg}\n🚇 La metropolitana è chiusa in questo momento. Il primo treno da {station_display} partirà alle {first_train.strftime('%H:%M')}."
                 else:
                     msg = f"{special_closing_msg}\n🚇 La metropolitana è chiusa in questo momento.\n🕒 Riaprirà alle {next_open.strftime('%H:%M')}."
-            # Usamos imagen por defecto
+            # Imagen por defecto
             img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_default.png"
             cache_buster = int(time_module.time())
             img_url = f"{img_url}?v={cache_buster}"
@@ -583,7 +583,6 @@ async def send_header_response(chat_id, context, estacion_key, is_update=False):
             context.chat_data['all_msg_ids'].append(msg2.message_id)
             return
         
-        # Obtener siguiente tren
         next_dep, minutes, seconds, has_trains = get_next_departure(station, now)
         if not has_trains:
             close_h, close_m = get_closing_time(now, station)
@@ -597,7 +596,6 @@ async def send_header_response(chat_id, context, estacion_key, is_update=False):
             context.chat_data['all_msg_ids'].append(msg2.message_id)
             return
         
-        # Hay trenes
         dest = "Stesicoro" if station == "Montepo" else "Monte Po"
         remaining = next_dep - now
         mins_rest = int(remaining.total_seconds() // 60)
@@ -639,18 +637,19 @@ async def send_header_response(chat_id, context, estacion_key, is_update=False):
                 bus_text_clean = bus_text.replace("**", "")
                 msg += f"\n\n{bus_text_clean}"
         
-        # Decidir imagen según tu criterio: si mins_rest <= 4 y secs_rest == 0 -> binario; si mins_rest <= 4 y secs_rest > 0 -> cabeceras; else sin imagen
+        # ========== LÓGICA DE IMAGEN SEGÚN TIEMPO ==========
         img_url = None
         if mins_rest <= 4:
-            if secs_rest == 0:
-                # Minutos exactos
+            # Está en binario
+            if total_seconds_rest <= 90:
+                # 1 minuto 30 segundos o menos: imagen de última oportunidad
+                img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_trenoarriva_cabeceras.png"
+            else:
+                # Más de 90 segundos (2, 3, 4 minutos): imagen binario normal
                 if estacion_key == "montepo":
                     img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_binario_montepo.jpg"
                 else:
                     img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_binario_stesicoro.jpg"
-            else:
-                # Con segundos
-                img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_trenoarriva_cabeceras.png"
         # Si mins_rest > 4, no imagen (img_url = None)
         
         if img_url:
@@ -665,7 +664,6 @@ async def send_header_response(chat_id, context, estacion_key, is_update=False):
         context.chat_data['all_msg_ids'].append(msg2.message_id)
     
     except Exception as e:
-        # En caso de error, intentamos enviar al menos un mensaje de texto con el error (para depuración)
         logger.error(f"Error en send_header_response: {e}")
         try:
             await context.bot.send_message(chat_id=chat_id, text=f"❌ Errore nel recupero informazioni: {str(e)}", reply_markup=keyboard_inline)
