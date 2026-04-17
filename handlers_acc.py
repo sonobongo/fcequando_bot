@@ -26,62 +26,62 @@ INFO_ESTACIONES = {
     "stesicoro": (
         "Informazioni sulla stazione Stesicoro.\n\n"
         "La stazione è dotata di Percorso tattile, scale mobili e Ascensore.\n\n"
-        "Sul marciapiede 1, arrivano i treni da Monte Po, e termina la corsa. Alla testa del treno si trovano le uscite per: Corso Sicilia, Piazza Stesicoro e Via Etnea. Sul marciapiede 2, si fermano i treni e iniziano il viaggio di ritorno in direzione Monte Po. Alla coda del treno si trovano le uscite per: Corso Italia e Piazza della Repubblica. Al centro della piattaforma si trovano gli ascensori con tastiere Braille, che raggiungono diretto alla strada, senza passare per Biglietteria."
+        "Sul marciapiede 1, arrivano i treni da Monte Po, e termina la corsa. Alla testa del treno si trovano le uscite per: Corso Sicilia, Piazza Stesicoro e Via Etnea. Sul marciapiede 2,, si fermano i treni e iniziano il viaggio di ritorno in direzione Monte Po. Alla coda del treno si trovano le uscite per: Corso Italia e Piazza della Repubblica. Al centro della piattaforma si trovano gli ascensori con tastiere Braille, che raggiungono diretto alla strada, senza passare per Biglietteria."
     ),
     "giovanni": (
         "Informazioni sulla stazione Giovanni XXIII.\n\n"
         "La stazione è dotata di Percorso tattile, Iscrizione in Braille sul corrimano delle scale, scale mobili e Ascensore.\n\n"
-        "Sul marciapiede 1, partono i treni in direzione Monte Po. Alla testa del treno si trova l'uscita per: Piazza Papa Giovanni XXIII e Viale Africa. Sul marciapiede 2 partono i treni in direzione Stesicoro. Alla testa del treno si trovano le uscite per: Via Archimede, Viale della Libertà e Stazione di Trenitalia \"Catania Centrale\". Al centro della piattaforma si trovano gli ascensori con tastiere Braille, che raggiungono la strada."
+        "Sul marciapiede 1, partono i treni in direzione Monte Po. Alla testa del treno si trova l'uscita per: Piazza Papa Giovanni XXIII e Viale Africa. Sul marciapiede 2, partono i treni in direzione Stesicoro. Alla testa del treno si trovano le uscite per: Via Archimede, Viale della Libertà e Stazione di Trenitalia \"Catania Centrale\". Al centro della piattaforma si trovano gli ascensori con tastiere Braille, che raggiungono la strada."
     ),
     "galatea": (
         "Informazioni sulla stazione Galatea.\n\n"
         "La stazione è dotata di Percorso tattile e scale mobili.\n\n"
-        "Sul marciapiede 1, partono i treni in direzione Monte Po. Alla testa del treno si trovano le uscite per: Viale Jonio, Via Pasubio e via Palmanova. Sul marciapiede 2 partono i treni in direzione Stesicoro. Alla testa del treno si trovano le uscite per: Piazza Galatea, Viale Africa e Via Messina."
+        "Sul marciapiede 1, partono i treni in direzione Monte Po. Alla testa del treno si trovano le uscite per: Viale Jonio, Via Pasubio e via Palmanova. Sul marciapiede 2, partono i treni in direzione Stesicoro. Alla testa del treno si trovano le uscite per: Piazza Galatea, Viale Africa e Via Messina."
     ),
     "italia": (
         "Informazioni sulla stazione Italia.\n\n"
         "La stazione è dotata di Percorso tattile e scale mobili.\n\n"
-        "Sul marciapiede 1, partono i treni in direzione Monte Po. Alla testa del treno si trovano le uscite per: Via Firenze, Via Ramondetta e Via Oliveto Scammacca. Sul marciapiede 2 partono i treni in direzione Stesicoro. Alla testa del treno si trovano le uscite per: Viale Vittorio Veneto e Corso Italia."
+        "Sul marciapiede 1, partono i treni in direzione Monte Po. Alla testa del treno si trovano le uscite per: Via Firenze, Via Ramondetta e Via Oliveto Scammacca. Sul marciapiede 2, partono i treni in direzione Stesicoro. Alla testa del treno si trovano le uscite per: Viale Vittorio Veneto e Corso Italia."
     ),
     "giuffrida": (
         "Informazioni sulla stazione Giuffrida.\n\n"
         "La stazione è dotata di Percorso tattile e scale mobili.\n\n"
-        "Sul marciapiede 1, partono i treni in direzione Monte Po. Alla testa del treno si trovano le uscite per: Via Guardia della Carvana e Piazza Abraham Lincoln. Sul marciapiede 2 partono i treni in direzione Stesicoro. Alla testa del treno si trovano le uscite per: Via Caronda e Via Vincenzo Giuffrida."
+        "Sul marciapiede 1, partono i treni in direzione Monte Po. Alla testa del treno si trovano le uscite per: Via Guardia della Carvana e Piazza Abraham Lincoln. Sul marciapiede 2, partono i treni in direzione Stesicoro. Alla testa del treno si trovano le uscite per: Via Caronda e Via Vincenzo Giuffrida."
     ),
     "borgo": (
         "Informazioni sulla stazione Borgo.\n\n"
         "La stazione è dotata di Percorso tattile e scale mobili.\n\n"
-        "Sul marciapiede 1, partono i treni in direzione Monte Po. Alla testa del treno si trovano le uscite per: Via Empedocle e Via Etnea. Sul marciapiede 2 partono i treni in direzione Stesicoro. Alla testa del treno si trovano le uscite per: I treni della FCE, Via Signorelli e Via Caronda."
+        "Sul marciapiede 1, partono i treni in direzione Monte Po. Alla testa del treno si trovano le uscite per: Via Empedocle e Via Etnea. Sul marciapiede 2, partono i treni in direzione Stesicoro. Alla testa del treno si trovano le uscite per: I treni della FCE, Via Signorelli e Via Caronda."
     ),
     "milo": (
         "Informazioni sulla stazione Milo.\n\n"
         "La stazione è dotata di Percorso tattile, scale mobili e Ascensore.\n\n"
-        "Sul marciapiede 1, partono i treni in direzione Monte Po. Alla testa del treno si trovano le uscite per: Via Bronte e Viale Fleming. Sul marciapiede 2 partono i treni in direzione Stesicoro. Alla testa del treno si trovano anche le uscite per: Via Bronte e Viale Fleming. Al centro della piattaforma si trovano gli ascensori con tastiere Braille, che raggiungono la strada."
+        "Sul marciapiede 1, partono i treni in direzione Monte Po. Alla testa del treno si trovano le uscite per: Via Bronte e Viale Fleming. Sul marciapiede 2, partono i treni in direzione Stesicoro. Alla testa del treno si trovano anche le uscite per: Via Bronte e Viale Fleming. Al centro della piattaforma si trovano gli ascensori con tastiere Braille, che raggiungono la strada."
     ),
     "cibali": (
         "Informazioni sulla stazione Cibali.\n\n"
         "La stazione è dotata di Percorso tattile, scale mobili e Ascensore.\n\n"
-        "Sul marciapiede 1, partono i treni in direzione Monte Po. Alla testa del treno si trovano le uscite per: Via Bergamo, Via Galermo e lo stadio di Calcio, Angelo Massimino. Sul marciapiede 2 partono i treni in direzione Stesicoro. Alla testa del treno si trovano anche le uscite per: Via Bergamo, Via Galermo e lo stadio di Calcio. Al centro della piattaforma si trovano gli ascensori con tastiere Braille, che raggiungono la strada."
+        "Sul marciapiede 1, partono i treni in direzione Monte Po. Alla testa del treno si trovano le uscite per: Via Bergamo, Via Galermo e lo stadio di Calcio, Angelo Massimino. Sul marciapiede 2, partono i treni in direzione Stesicoro. Alla testa del treno si trovano anche le uscite per: Via Bergamo, Via Galermo e lo stadio di Calcio. Al centro della piattaforma si trovano gli ascensori con tastiere Braille, che raggiungono la strada."
     ),
     "sannullo": (
         "Informazioni sulla stazione San Nullo.\n\n"
         "La stazione è dotata di Percorso tattile, scale mobili e Ascensore.\n\n"
-        "Sul marciapiede 1, partono i treni in direzione Monte Po. Alla testa del treno si trovano le uscite per: Viale Antoniotto Usodimare e Via Sebastiano Catania. Sul marciapiede 2 partono i treni in direzione Stesicoro. Alla testa del treno si trovano anche le uscite per: Viale Antoniotto Usodimare e Via Sebastiano Catania. Al centro della piattaforma si trovano gli ascensori con tastiere Braille, che raggiungono la strada."
+        "Sul marciapiede 1, partono i treni in direzione Monte Po. Alla testa del treno si trovano le uscite per: Viale Antoniotto Usodimare e Via Sebastiano Catania. Sul marciapiede 2, partono i treni in direzione Stesicoro. Alla testa del treno si trovano anche le uscite per: Viale Antoniotto Usodimare e Via Sebastiano Catania. Al centro della piattaforma si trovano gli ascensori con tastiere Braille, che raggiungono la strada."
     ),
     "nesima": (
         "Informazioni sulla stazione Nesima.\n\n"
         "La stazione è dotata di Percorso tattile, scale mobili e Ascensore.\n\n"
-        "Sul marciapiede 1, partono i treni in direzione Monte Po. Alla testa del treno si trovano le uscite per: Viale Lorenzo Bolano e Via Filippo Eredia. Sul marciapiede 2 partono i treni in direzione Stesicoro. Alla testa del treno si trova l'uscita per: Viale Lorenzo Bolano. Al centro della piattaforma si trovano gli ascensori con tastiere Braille, che raggiungono la strada."
+        "Sul marciapiede 1, partono i treni in direzione Monte Po. Alla testa del treno si trovano le uscite per: Viale Lorenzo Bolano e Via Filippo Eredia. Sul marciapiede 2, partono i treni in direzione Stesicoro. Alla testa del treno si trova l'uscita per: Viale Lorenzo Bolano. Al centro della piattaforma si trovano gli ascensori con tastiere Braille, che raggiungono la strada."
     ),
     "fontana": (
         "Informazioni sulla stazione Fontana.\n\n"
         "La stazione è dotata di Percorso tattile, scale mobili e Ascensore.\n\n"
-        "Sul marciapiede 1, partono i treni in direzione Monte Po. Alla testa del treno si trova l'uscita per: Via Felice Fontana. Sul marciapiede 2 partono i treni in direzione Stesicoro. Alla testa del treno si trovano le uscite per: Via Felice Fontana e l'Ospedale Garibaldi-Nesima. Al centro della piattaforma si trovano gli ascensori con tastiere Braille, che raggiungono la strada."
+        "Sul marciapiede 1, partono i treni in direzione Monte Po. Alla testa del treno si trova l'uscita per: Via Felice Fontana. Sul marciapiede 2, partono i treni in direzione Stesicoro. Alla testa del treno si trovano le uscite per: Via Felice Fontana e l'Ospedale Garibaldi-Nesima. Al centro della piattaforma si trovano gli ascensori con tastiere Braille, che raggiungono la strada."
     ),
     "montepo": (
         "Informazioni sulla stazione Monte Po.\n\n"
         "La stazione è dotata di Percorso tattile, scale mobili, Ascensore e Mappa della stazione in Braille accanto ai tornelli d'accesso.\n\n"
-        "Sul marciapiede 1, si fermano i treni e iniziano il viaggio di ritorno in direzione Stesicoro. Alla testa e alla coda del treno si trovano le uscite per: Corso Carlo Marx-Misterbianco. Il marciapiede 2 è inoperativo al momento. Al centro della piattaforma si trovano gli ascensori con tastiere Braille, che raggiungono l'uscita dei tornelli e verso un nuovo ascensore verso Piazza Carlo Marx."
+        "Sul marciapiede 1, si fermano i treni e iniziano il viaggio di ritorno in direzione Stesicoro. Alla testa e alla coda del treno si trovano le uscite per: Corso Carlo Marx-Misterbianco. Il marciapiede 2, è inoperativo al momento. Al centro della piattaforma si trovano gli ascensori con tastiere Braille, che raggiungono l'uscita dei tornelli e verso un nuovo ascensore verso Piazza Carlo Marx."
     ),
 }
 
