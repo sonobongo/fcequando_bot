@@ -548,35 +548,16 @@ def is_metro_closed(now: datetime, station: str) -> Tuple[bool, Optional[datetim
             special_msg = "🚇 Non ci sono informazioni disponibili. Ricorda che oggi l'ultima metropolitana è partita alle 03:00."
             return (True, next_open, special_msg)
     
-    # Elimina todo el bloque que usa is_special_interval para viernes/sábado
-    # Simplemente deja que la lógica estándar decida basándose en opening_time y closing_time.
-    
     current_time = now.time()
     open_h, open_m = get_opening_time(now, station)
     close_h, close_m = get_closing_time(now, station)
     opening_time = time(open_h, open_m)
     closing_time = time(close_h, close_m)
     
-    # Lógica estándar para determinar si está cerrado (incluye el caso de servicio nocturno)
+    # Si el servicio cruza la medianoche (ej. 22:30 a 01:00)
     if close_h < open_h or (close_h == open_h and close_m < open_m):
-        # El servicio cruza la medianoche (ej. 22:30 a 01:00)
         if current_time >= opening_time or current_time < closing_time:
             return (False, None, "")
-        else:
-            next_open = datetime.combine(now.date(), opening_time)
-            if next_open <= now:
-                next_open = datetime.combine(now.date() + timedelta(days=1), opening_time)
-            next_open = CATANIA_TZ.localize(next_open)
-            return (True, next_open, "")
-    else:
-        if current_time >= closing_time or current_time < opening_time:
-            if current_time < opening_time:
-                next_open = datetime.combine(now.date(), opening_time)
-            else:
-                next_open = datetime.combine(now.date() + timedelta(days=1), opening_time)
-            next_open = CATANIA_TZ.localize(next_open)
-            return (True, next_open, "")
-        return (False, None, "")
         else:
             next_open = datetime.combine(now.date(), opening_time)
             if next_open <= now:
