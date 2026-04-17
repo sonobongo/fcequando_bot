@@ -636,16 +636,17 @@ async def send_header_response(chat_id, context, estacion_key, is_update=False):
             bus_text_clean = bus_text.replace("**", "")
             msg += f"\n\n{bus_text_clean}"
     
-    # Decidir qué imagen usar (o ninguna)
+        # Decidir qué imagen usar (o ninguna)
     img_url = None
-    if mins_rest <= 4:
+    # Definir "tren en binario" cuando falta 1 minuto o menos (60 segundos)
+    if total_seconds_rest <= 60:
         # Tren en binario: imagen específica de binario
         if estacion_key == "montepo":
             img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_binario_montepo.jpg"
         else:
             img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_binario_stesicoro.jpg"
     elif total_seconds_rest <= 90:
-        # Falta 1.5 min o menos pero no está en binario (caso raro)
+        # Falta entre 60 y 90 segundos (1 minuto - 1.5 minutos)
         img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_trenoarriva_cabeceras.png"
     else:
         # No mostrar ninguna imagen
