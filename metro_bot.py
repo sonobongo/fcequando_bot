@@ -135,7 +135,6 @@ def main():
     
     async def handle_button_wrapper(update, context):
         if context.chat_data.get('acces_mode', False):
-            # Redirigir al handler de acc
             await acc_handlers.normal_handle_text(update, context)
         else:
             await dev_handlers.handle_button_wrapper(update, context)
@@ -148,14 +147,15 @@ def main():
     app.add_handler(CallbackQueryHandler(dev_handlers.aggiornare_super_callback, pattern="^aggiornare_super$"))
 
     # ========================================================================
-    # MANEJADOR DE TEXTO PRINCIPAL (para todo mensaje que no sea comando ni botón)
+    # MANEJADOR DE TEXTO PRINCIPAL
     # ========================================================================
     async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text = update.message.text.strip()
         if context.chat_data.get('acces_mode', False):
             await acc_handlers.normal_handle_text(update, context)
         else:
-            if text.lower() == "acces":
+            # Si es una sola palabra y empieza por "acces" (case-insensitive), activamos modo acces
+            if len(text.split()) == 1 and text.lower().startswith("acces"):
                 await acc_handlers.activate_acces_mode(update, context)
             else:
                 await dev_handlers.normal_handle_text(update, context)
