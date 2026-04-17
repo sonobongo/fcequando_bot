@@ -216,7 +216,7 @@ CLOSED_STATIONS = [
     {
         "station": "giuffrida",
         "start": date(2026, 1, 1),
-        "end": date(2026, 4, 19),
+        "end": date(2026, 4, 26),   # Cerrada hasta el 26 de abril de 2026 (inclusive)
         "reduction_seconds": 40
     }
 ]
