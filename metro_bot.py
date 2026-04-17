@@ -129,9 +129,9 @@ def main():
     app.add_handler(CommandHandler("devfin", dev_fin_wrapper))
 
     # ========================================================================
-    # MANEJADOR DE BOTONES (ReplyKeyboardMarkup) - rispetta modo acces
+    # MANEJADOR DE BOTONES (ReplyKeyboardMarkup) - incluye "← Menu"
     # ========================================================================
-    button_texts = ["Monte Po", "Stesicoro", "Altri", "Menu", "Fontana", "Nesima", "San Nullo",
+    button_texts = ["Monte Po", "Stesicoro", "Altri", "Menu", "← Menu", "Fontana", "Nesima", "San Nullo",
                     "Cibali", "Milo", "Borgo", "Giuffrida", "Italia", "Galatea", "Giovanni XXIII"]
     
     async def handle_button_wrapper(update, context):
