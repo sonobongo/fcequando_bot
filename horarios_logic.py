@@ -169,7 +169,6 @@ def get_travel_time_from_montepo(station: str, now: datetime) -> int:
             if stations_order.index(closed["station"]) < stations_order.index(station):
                 if is_station_closed(closed["station"], now):
                     total_seconds -= closed["reduction_seconds"]
-    # Extra de Giovanni
     if should_add_giovanni_extra(now):
         idx_station = stations_order.index(station) if station in stations_order else -1
         idx_giovanni = stations_order.index("giovanni")
@@ -200,7 +199,6 @@ def get_travel_time_from_stesicoro(station: str, now: datetime) -> int:
             if stations_order_rev.index(closed["station"]) < stations_order_rev.index(station):
                 if is_station_closed(closed["station"], now):
                     total_seconds -= closed["reduction_seconds"]
-    # Extra de Giovanni
     if should_add_giovanni_extra(now):
         idx_station = stations_order_rev.index(station) if station in stations_order_rev else -1
         idx_giovanni = stations_order_rev.index("giovanni")
@@ -216,7 +214,7 @@ CLOSED_STATIONS = [
     {
         "station": "giuffrida",
         "start": date(2026, 1, 1),
-        "end": date(2026, 4, 26),   # Cerrada hasta el 26 de abril de 2026 (inclusive)
+        "end": date(2026, 4, 26),
         "reduction_seconds": 40
     }
 ]
@@ -513,11 +511,6 @@ def get_opening_time(now: datetime, station: str = None) -> Tuple[int, int]:
         return (6, 0)
 
 def get_closing_time(now: datetime, station: str) -> Tuple[int, int]:
-    # Si es madrugada (antes de las 6am), usar el día anterior para determinar el cierre
-    if now.hour < 6:
-        previous_day = now - timedelta(days=1)
-        return get_closing_time(previous_day, station)
-    
     if is_new_years_eve(now):
         return (3, 0)
     if is_sant_agata(now):
@@ -527,11 +520,14 @@ def get_closing_time(now: datetime, station: str) -> Tuple[int, int]:
         return (22, 30)
     else:
         weekday = now.weekday()
-        if weekday in [4, 5]:  # viernes o sábado
+        if weekday in [4, 5]:
             return (1, 0)
         else:
             return (22, 30)
 
+# ============================================================================
+# IS_METRO_CLOSED CORREGIDA (maneja horarios nocturnos)
+# ============================================================================
 def is_metro_closed(now: datetime, station: str) -> Tuple[bool, Optional[datetime], str]:
     if now.tzinfo is None:
         now = CATANIA_TZ.localize(now)
@@ -553,31 +549,53 @@ def is_metro_closed(now: datetime, station: str) -> Tuple[bool, Optional[datetim
             special_msg = "🚇 Non ci sono informazioni disponibili. Ricorda che oggi l'ultima metropolitana è partita alle 03:00."
             return (True, next_open, special_msg)
     
-    current_time = now.time()
+    # Obtener apertura del día actual
     open_h, open_m = get_opening_time(now, station)
-    close_h, close_m = get_closing_time(now, station)
     opening_time = time(open_h, open_m)
-    closing_time = time(close_h, close_m)
     
-    # Si el servicio cruza la medianoche (ej. 22:30 a 01:00)
-    if close_h < open_h or (close_h == open_h and close_m < open_m):
-        if current_time >= opening_time or current_time < closing_time:
+    # Para el cierre, si es de madrugada (hora < 6), usar el día anterior
+    if now.hour < 6:
+        previous_day = now - timedelta(days=1)
+        close_h, close_m = get_closing_time(previous_day, station)
+        closing_time = time(close_h, close_m)
+        # El cierre pertenece al día anterior, así que lo consideramos como tiempo del día actual sumando 24h
+        # Para comparar, pasamos closing_time a minutos + 24*60
+        close_min = close_h * 60 + close_m + 24 * 60
+        current_min = now.hour * 60 + now.minute
+        open_min = open_h * 60 + open_m
+        if open_min <= current_min < close_min:
             return (False, None, "")
         else:
-            next_open = datetime.combine(now.date(), opening_time)
+            # Está cerrado: el próximo opening es hoy a las open_h:open_m
+            next_open = datetime.combine(now.date(), time(open_h, open_m))
             if next_open <= now:
-                next_open = datetime.combine(now.date() + timedelta(days=1), opening_time)
+                next_open = datetime.combine(now.date() + timedelta(days=1), time(open_h, open_m))
             next_open = CATANIA_TZ.localize(next_open)
             return (True, next_open, "")
     else:
-        if current_time >= closing_time or current_time < opening_time:
-            if current_time < opening_time:
-                next_open = datetime.combine(now.date(), opening_time)
+        # Horario normal (no madrugada)
+        close_h, close_m = get_closing_time(now, station)
+        closing_time = time(close_h, close_m)
+        current_time = now.time()
+        if close_h < open_h or (close_h == open_h and close_m < open_m):
+            # Cruce de medianoche
+            if current_time >= opening_time or current_time < closing_time:
+                return (False, None, "")
             else:
-                next_open = datetime.combine(now.date() + timedelta(days=1), opening_time)
-            next_open = CATANIA_TZ.localize(next_open)
-            return (True, next_open, "")
-        return (False, None, "")
+                next_open = datetime.combine(now.date(), opening_time)
+                if next_open <= now:
+                    next_open = datetime.combine(now.date() + timedelta(days=1), opening_time)
+                next_open = CATANIA_TZ.localize(next_open)
+                return (True, next_open, "")
+        else:
+            if current_time >= closing_time or current_time < opening_time:
+                if current_time < opening_time:
+                    next_open = datetime.combine(now.date(), opening_time)
+                else:
+                    next_open = datetime.combine(now.date() + timedelta(days=1), opening_time)
+                next_open = CATANIA_TZ.localize(next_open)
+                return (True, next_open, "")
+            return (False, None, "")
 
 def get_schedule_list(station: str, now: datetime) -> List[time]:
     if is_festivo_nazionale(now):
