@@ -327,17 +327,6 @@ def build_temporary_messages(now: datetime, estacion_key: str):
         msg3 = f"Per Stesicoro: nessun treno in arrivo al momento.\n"
         tiempo_restante_st = 9999
 
-    # Añadir mensaje de último tren (cierre) al final de msg2 (el más visible)
-    last_msg = get_last_train_message(now)
-    if last_msg and not is_sant_agata(now):
-        if "01:00" in last_msg:
-            last_msg = last_msg.replace("📌", "")
-        elif "22:30" in last_msg:
-            last_msg = last_msg.replace("📌", "")
-        last_msg = remove_emojis(last_msg)
-        if last_msg:
-            msg2 += f"\n\n{last_msg}"
-
     msg2 = remove_emojis(msg2)
     msg3 = remove_emojis(msg3)
     return msg2, msg3, current_station_key_mp, tiempo_restante_mp, current_station_key_st, tiempo_restante_st, mins_mp, mins_st
@@ -664,7 +653,6 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
 
     nombre = NOMBRE_MOSTRAR.get(estacion_key, estacion_key.capitalize())
     
-    # Obtener la información detallada de la estación (sin mensaje de último tren)
     info_text = INFO_ESTACIONES.get(estacion_key, f"Informazioni sulla stazione {nombre}.")
     if test_indicator:
         info_text = f"{test_indicator}{info_text}"
@@ -705,7 +693,6 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
     
     if texto.lower() == "uscire":
         context.chat_data['acces_mode'] = False
-        # Restaurar teclado principal (sin emojis)
         await update.message.reply_text("Uscito dalla modalità accessibilità. Per riattivarla, scrivi 'acces'.", reply_markup=keyboard_main_acc)
         return
     
@@ -864,8 +851,7 @@ async def process_station_request(update: Update, context: ContextTypes.DEFAULT_
         await send_station_response(update, context, mejor_clave, return_to_main=True)
         return
     
+    # No reconocido: mensaje personalizado
     await update.message.reply_text(
-        "Stazione non riconosciuta. Le stazioni disponibili sono: " +
-        ", ".join(NOMBRE_MOSTRAR.values()) + ".\nPuoi anche usare alias come 'Misterbianco' (Monte Po) o 'Humanitas' (Nesima).\n\n"
-        "Per uscire dalla modalità accessibilità, scrivi USCIRE."
+        "Stazione non riconosciuta. Scegli la stazione che vuoi controllare o scrive la stessa stazione per aggiornarla: Monte Po, Fontana, Nesima, San Nullo, Cibali, Milo, Borgo, Giuffrida, Italia, Galatea, Giovanni XXIII, Stesicoro. Per uscire dalla modalità accessibilità scrivi USCIRE"
     )
