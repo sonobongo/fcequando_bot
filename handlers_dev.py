@@ -446,7 +446,7 @@ async def aggiornare_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     await refresh_messages_only(fake_update, context, estacion_key)
 
 # ============================================================================
-# CALLBACK PARA EL BOTÓN EN CABECERAS (Monte Po y Stesicoro)
+# CALLBACK PARA EL BOTÓN EN CABECERAS (Monte Po y Stesicoro) - CORREGIDO
 # ============================================================================
 async def aggiornare_cabecera_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -454,12 +454,23 @@ async def aggiornare_cabecera_callback(update: Update, context: ContextTypes.DEF
     estacion_key = query.data.split("_")[2]
     chat_id = query.message.chat_id
     
+    # Eliminar mensaje1 (foto de la estación)
+    main_msg_id = context.chat_data.get('main_msg_id')
+    if main_msg_id:
+        try:
+            await context.bot.delete_message(chat_id=chat_id, message_id=main_msg_id)
+        except Exception:
+            pass
+        context.chat_data.pop('main_msg_id', None)
+    
+    # Eliminar mensaje2 (el que tiene el botón)
     try:
         await query.message.delete()
     except Exception:
         pass
     
-    await send_header_response(chat_id, context, estacion_key)
+    # Generar nuevos mensajes (tanto mensaje1 como mensaje2)
+    await send_header_response(chat_id, context, estacion_key, is_update=False)
     schedule_cleanup(update, context)
 
 # ============================================================================
@@ -482,6 +493,8 @@ async def send_header_response(chat_id, context, estacion_key, is_update=False):
             [InlineKeyboardButton("🔄 Aggiornare", callback_data=f"agg_cabecera_{estacion_key}")]
         ])
         
+        # Siempre enviamos el mensaje1 (foto de la estación) a menos que sea una actualización que ya lo ha eliminado
+        # En este caso, is_update=False siempre se usa desde el callback, por lo que enviamos el mensaje1.
         if not is_update:
             img_station = get_station_image(estacion_key, now)
             caption_station = f"🚇 {NOMBRE_MOSTRAR.get(estacion_key, estacion_key.capitalize())}"
@@ -617,7 +630,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
     test_indicator = "🧪 [TEST MODE] " if simulated else ""
 
     if estacion_key in ["montepo", "stesicoro"]:
-        await send_header_response(update.message.chat_id, context, estacion_key)
+        await send_header_response(update.message.chat_id, context, estacion_key, is_update=False)
         schedule_cleanup(update, context)
         return
 
