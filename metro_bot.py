@@ -2,7 +2,7 @@ import os
 import logging
 import threading
 from flask import Flask
-from telegram import Update
+from telegram import Update, ReplyKeyboardRemove
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, Defaults, CallbackQueryHandler
 from horarios_logic import *
 import handlers_dev as dev_handlers
@@ -66,12 +66,6 @@ def main():
         await dev_handlers.cmd_giovanni_wrapper(update, context)
     async def cmd_altri_wrapper(update, context):
         await dev_handlers.cmd_altri_wrapper(update, context)
-    async def handle_button_wrapper(update, context):
-    if context.chat_data.get('acces_mode', False):
-        # En modo acces, redirigir todo texto al handler de acc
-        await acc_handlers.normal_handle_text(update, context)
-    else:
-        await dev_handlers.handle_button_wrapper(update, context)
     async def cmd_testgif_wrapper(update, context):
         await dev_handlers.cmd_testgif_wrapper(update, context)
     async def test_command_wrapper(update, context):
@@ -133,9 +127,19 @@ def main():
     app.add_handler(CommandHandler("dev", dev_mode_wrapper))
     app.add_handler(CommandHandler("devfin", dev_fin_wrapper))
 
-    # Teclados (ReplyKeyboardMarkup) - solo para modo normal
+    # ========================================================================
+    # MANEJADOR DE BOTONES (ReplyKeyboardMarkup) - respeta modo acces
+    # ========================================================================
     button_texts = ["Monte Po", "Stesicoro", "Altri", "Menu", "Fontana", "Nesima", "San Nullo",
                     "Cibali", "Milo", "Borgo", "Giuffrida", "Italia", "Galatea", "Giovanni XXIII"]
+    
+    async def handle_button_wrapper(update, context):
+        if context.chat_data.get('acces_mode', False):
+            # Redirigir al handler de acc
+            await acc_handlers.normal_handle_text(update, context)
+        else:
+            await dev_handlers.handle_button_wrapper(update, context)
+    
     app.add_handler(MessageHandler(filters.Text(button_texts), handle_button_wrapper))
 
     # Callbacks
@@ -144,27 +148,17 @@ def main():
     app.add_handler(CallbackQueryHandler(dev_handlers.aggiornare_super_callback, pattern="^aggiornare_super$"))
 
     # ========================================================================
-    # MANEJADOR DE TEXTO PRINCIPAL (para todo mensaje que no sea comando)
+    # MANEJADOR DE TEXTO PRINCIPAL (para todo mensaje que no sea comando ni botón)
     # ========================================================================
     async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text = update.message.text.strip()
-        logger.info(f"Texto recibido: '{text}'")
-
-        # Si ya estamos en modo acces, redirigir todo a handlers_acc
         if context.chat_data.get('acces_mode', False):
-            logger.info("Modo acces activo, redirigiendo a acc_handlers.normal_handle_text")
             await acc_handlers.normal_handle_text(update, context)
-            return
-
-        # Si no estamos en modo acces, comprobar si el texto es exactamente "acces"
-        if text.lower() == "acces":
-            logger.info("Activando modo acces")
-            await acc_handlers.activate_acces_mode(update, context)
-            return
-
-        # En cualquier otro caso, usar el handler normal (dev)
-        logger.info("Usando modo normal (dev)")
-        await dev_handlers.normal_handle_text(update, context)
+        else:
+            if text.lower() == "acces":
+                await acc_handlers.activate_acces_mode(update, context)
+            else:
+                await dev_handlers.normal_handle_text(update, context)
 
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
 
