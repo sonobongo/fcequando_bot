@@ -6,7 +6,7 @@ from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, Defaults, CallbackQueryHandler
 from horarios_logic import *
 import handlers_dev as dev_handlers
-import handlers_acc as acc_handlers   # Nueva importación para la versión simplificada
+import handlers_acc as acc_handlers
 
 flask_app = Flask(__name__)
 
@@ -35,17 +35,9 @@ def main():
     defaults = Defaults(disable_notification=True)
     app = Application.builder().token(TOKEN).defaults(defaults).build()
 
-    # ========================================================================
-    # WRAPPERS (delegano a handlers_dev)
-    # ========================================================================
-    def is_dev_mode(context):
-        return context.chat_data.get('dev_mode', False)
-
+    # Wrappers para comandos (delegan a dev_handlers)
     async def start_wrapper(update, context):
-        if is_dev_mode(context):
-            await dev_handlers.start_wrapper(update, context)
-        else:
-            await dev_handlers.start_wrapper(update, context)
+        await dev_handlers.start_wrapper(update, context)
     async def help_command_wrapper(update, context):
         await dev_handlers.help_command_wrapper(update, context)
     async def cmd_montepo_wrapper(update, context):
@@ -101,27 +93,23 @@ def main():
         context.chat_data['dev_mode'] = False
         await update.message.reply_text("Modalità sviluppatore disattivata. Tornato alla versione stabile.")
 
-    # ========================================================================
-    # COMANDOS PARA /about Y /grazie (directos)
-    # ========================================================================
+    # Comandos about/grazie
     FOTO_CREDITI_URL = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/FOTOMASTER.jpg"
     CREDITI_MSG = "Chatbot sviluppato con grande impegno da Àlex Naranjo. Se ti piace, condividilo con i tuoi amici e familiari. https://t.me/FCEQuando_bot"
 
-    async def about_cmd(update: Update, context):
+    async def about_cmd(update, context):
         try:
             await update.message.reply_photo(photo=FOTO_CREDITI_URL, caption=CREDITI_MSG, parse_mode='Markdown')
         except Exception:
             await update.message.reply_text(CREDITI_MSG, parse_mode='Markdown')
 
-    async def grazie_cmd(update: Update, context):
+    async def grazie_cmd(update, context):
         try:
             await update.message.reply_photo(photo=FOTO_CREDITI_URL, caption=CREDITI_MSG, parse_mode='Markdown')
         except Exception:
             await update.message.reply_text(CREDITI_MSG, parse_mode='Markdown')
 
-    # ========================================================================
-    # REGISTRO DE COMANDOS
-    # ========================================================================
+    # Registro de comandos
     commands = [
         ("start", start_wrapper), ("help", help_command_wrapper),
         ("montepo", cmd_montepo_wrapper), ("stesicoro", cmd_stesicoro_wrapper),
@@ -138,11 +126,10 @@ def main():
     for cmd, handler in commands:
         app.add_handler(CommandHandler(cmd, handler))
 
-    # Comandos desarrollo
     app.add_handler(CommandHandler("dev", dev_mode_wrapper))
     app.add_handler(CommandHandler("devfin", dev_fin_wrapper))
 
-    # Teclados (ReplyKeyboardMarkup)
+    # Teclados (ReplyKeyboardMarkup) - solo para modo normal
     button_texts = ["Monte Po", "Stesicoro", "Altri", "Menu", "Fontana", "Nesima", "San Nullo",
                     "Cibali", "Milo", "Borgo", "Giuffrida", "Italia", "Galatea", "Giovanni XXIII"]
     app.add_handler(MessageHandler(filters.Text(button_texts), handle_button_wrapper))
@@ -153,17 +140,27 @@ def main():
     app.add_handler(CallbackQueryHandler(dev_handlers.aggiornare_super_callback, pattern="^aggiornare_super$"))
 
     # ========================================================================
-    # MANEJADOR DE TEXTO: si el mensaje es exactamente "acces" (sin más texto)
-    # se usa la versión acc (handlers_acc.py). En caso contrario, se usa dev.
+    # MANEJADOR DE TEXTO PRINCIPAL (para todo mensaje que no sea comando)
     # ========================================================================
     async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text = update.message.text.strip()
-        if text.lower() == "acces":
-            # Usar la versión simplificada (sin emojis, sin imágenes en msg2/3, con fotos st_a...)
+        logger.info(f"Texto recibido: '{text}'")
+
+        # Si ya estamos en modo acces, redirigir todo a handlers_acc
+        if context.chat_data.get('acces_mode', False):
+            logger.info("Modo acces activo, redirigiendo a acc_handlers.normal_handle_text")
             await acc_handlers.normal_handle_text(update, context)
-        else:
-            # Usar la versión normal (con emojis, GIFs, imágenes)
-            await dev_handlers.normal_handle_text(update, context)
+            return
+
+        # Si no estamos en modo acces, comprobar si el texto es exactamente "acces"
+        if text.lower() == "acces":
+            logger.info("Activando modo acces")
+            await acc_handlers.activate_acces_mode(update, context)
+            return
+
+        # En cualquier otro caso, usar el handler normal (dev)
+        logger.info("Usando modo normal (dev)")
+        await dev_handlers.normal_handle_text(update, context)
 
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
 
