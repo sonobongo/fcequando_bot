@@ -33,7 +33,7 @@ NEXT_TRAIN_THRESHOLD = CONFIG["next_train_threshold"]
 # CARGAR MEDICIONES REALES (mediciones.json)
 # ============================================================================
 MEDICIONES_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'mediciones.json')
-mediciones_por_tramo = defaultdict(list)  # clave: (origen, destino, direccion, dia_semana, hora_redondeada)
+mediciones_por_tramo = defaultdict(list)
 
 def cargar_mediciones():
     if not os.path.exists(MEDICIONES_FILE):
@@ -43,15 +43,12 @@ def cargar_mediciones():
         for medicion in data.get('mediciones', []):
             dia = medicion.get('dia_semana', '').lower()
             hora_str = medicion.get('hora', '12:00')
-            # Redondeamos la hora a la hora exacta (para agrupar franjas de 1 hora)
             hora_redondeada = int(hora_str.split(':')[0])
-            # Procesar trayectos de ida (direccion 'ida')
             for t in medicion.get('trayectos_ida', []):
                 origen = t['origen'].lower()
                 destino = t['destino'].lower()
                 key = (origen, destino, 'ida', dia, hora_redondeada)
                 mediciones_por_tramo[key].append(t['tiempo_seg'])
-            # Procesar trayectos de vuelta (direccion 'vuelta')
             for t in medicion.get('trayectos_vuelta', []):
                 origen = t['origen'].lower()
                 destino = t['destino'].lower()
@@ -61,31 +58,23 @@ def cargar_mediciones():
 cargar_mediciones()
 
 def get_measured_travel_time(origen: str, destino: str, direccion: str, now: datetime) -> Optional[float]:
-    """
-    Retorna el tiempo medio en segundos si hay mediciones para el mismo día de semana
-    y para la misma hora (rango ±1 hora). Si no, retorna None.
-    direccion: 'ida' (Monte Po -> Stesicoro) o 'vuelta' (Stesicoro -> Monte Po)
-    """
-    # Días de la semana en italiano (clave en mediciones)
     weekdays_it = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo']
     dia_actual = weekdays_it[now.weekday()].lower()
     hora_actual = now.hour
-    
-    # Buscar mediciones que coincidan en día y hora (rango ±1 hora)
     tiempos = []
     for (o, d, dir_m, dia, hora), valores in mediciones_por_tramo.items():
         if o == origen.lower() and d == destino.lower() and dir_m == direccion and dia == dia_actual:
-            if abs(hora - hora_actual) <= 1:  # misma hora o una hora antes/después
+            if abs(hora - hora_actual) <= 1:
                 tiempos.extend(valores)
     if tiempos:
         return mean(tiempos)
     return None
 
 # ============================================================================
-# TIEMPOS BASE ENTRE ESTACIONES (en segundos) - valores reales promediados
+# TIEMPOS BASE ENTRE ESTACIONES (en segundos)
 # ============================================================================
 FORWARD_PEAK = [
-    ("montepo", "fontana", 109),    # redondeado
+    ("montepo", "fontana", 109),
     ("fontana", "nesima", 111),
     ("nesima", "sannullo", 143),
     ("sannullo", "cibali", 115),
@@ -124,7 +113,7 @@ EXTRA_TRAMOS_REVERSE = [
 ]
 
 # ============================================================================
-# DETECCIÓN DE HORA PUNTA
+# DETECCIÓN DE HORA PUNTA (ampliada: 7-9 y 13-14, lunes a viernes, sept-jun)
 # ============================================================================
 def is_peak_hour(now: datetime) -> bool:
     if now.weekday() >= 5:
@@ -135,17 +124,40 @@ def is_peak_hour(now: datetime) -> bool:
     if not (month >= 9 or month <= 6):
         return False
     hour = now.hour
-    if not (7 <= hour <= 9):
-        return False
-    return True
+    if (7 <= hour <= 9) or (13 <= hour <= 14):
+        return True
+    return False
 
+# ============================================================================
+# EXTRA DE 5 SEGUNDOS PARA GIOVANNI XXIII (13:00-18:00, laborables, sept-jun)
+# ============================================================================
+def should_add_giovanni_extra(now: datetime) -> bool:
+    if now.weekday() >= 5:
+        return False
+    if is_festivo_nazionale(now):
+        return False
+    month = now.month
+    if not (month >= 9 or month <= 6):
+        return False
+    hour = now.hour
+    if 13 <= hour < 18:
+        return True
+    return False
+
+# ============================================================================
+# TIEMPOS DE VIAJE (con extra de Giovanni si aplica)
+# ============================================================================
 def get_travel_time_from_montepo(station: str, now: datetime) -> int:
     total_seconds = 0
     peak = is_peak_hour(now)
     for (start, end, base_sec) in FORWARD_PEAK:
-        sec = base_sec
-        if not peak and (start, end) in EXTRA_TRAMOS_FORWARD:
-            sec -= 10
+        measured = get_measured_travel_time(start, end, 'ida', now)
+        if measured is not None:
+            sec = measured
+        else:
+            sec = base_sec
+            if not peak and (start, end) in EXTRA_TRAMOS_FORWARD:
+                sec -= 10
         total_seconds += sec
         if end == station:
             break
@@ -157,6 +169,12 @@ def get_travel_time_from_montepo(station: str, now: datetime) -> int:
             if stations_order.index(closed["station"]) < stations_order.index(station):
                 if is_station_closed(closed["station"], now):
                     total_seconds -= closed["reduction_seconds"]
+    # Extra de Giovanni
+    if should_add_giovanni_extra(now):
+        idx_station = stations_order.index(station) if station in stations_order else -1
+        idx_giovanni = stations_order.index("giovanni")
+        if idx_station >= idx_giovanni:
+            total_seconds += 5
     minutes = (total_seconds + 59) // 60
     return minutes
 
@@ -164,25 +182,35 @@ def get_travel_time_from_stesicoro(station: str, now: datetime) -> int:
     total_seconds = 0
     peak = is_peak_hour(now)
     for (start, end, base_sec) in REVERSE_PEAK:
-        sec = base_sec
-        if not peak and (start, end) in EXTRA_TRAMOS_REVERSE:
-            sec -= 10
+        measured = get_measured_travel_time(start, end, 'vuelta', now)
+        if measured is not None:
+            sec = measured
+        else:
+            sec = base_sec
+            if not peak and (start, end) in EXTRA_TRAMOS_REVERSE:
+                sec -= 10
         total_seconds += sec
         if end == station:
             break
-    stations_order_reverse = ["stesicoro", "giovanni", "galatea", "italia", "giuffrida", "borgo", "milo", "cibali", "sannullo", "nesima", "fontana", "montepo"]
+    stations_order_rev = ["stesicoro", "giovanni", "galatea", "italia", "giuffrida", "borgo", "milo", "cibali", "sannullo", "nesima", "fontana", "montepo"]
     for closed in CLOSED_STATIONS:
         if closed["station"] == station:
             continue
-        if closed["station"] in stations_order_reverse and station in stations_order_reverse:
-            if stations_order_reverse.index(closed["station"]) < stations_order_reverse.index(station):
+        if closed["station"] in stations_order_rev and station in stations_order_rev:
+            if stations_order_rev.index(closed["station"]) < stations_order_rev.index(station):
                 if is_station_closed(closed["station"], now):
                     total_seconds -= closed["reduction_seconds"]
+    # Extra de Giovanni
+    if should_add_giovanni_extra(now):
+        idx_station = stations_order_rev.index(station) if station in stations_order_rev else -1
+        idx_giovanni = stations_order_rev.index("giovanni")
+        if idx_station >= idx_giovanni:
+            total_seconds += 5
     minutes = (total_seconds + 59) // 60
     return max(0, minutes)
 
 # ============================================================================
-# CIERRE TEMPORAL DE ESTACIONES
+# CIERRE TEMPORAL DE ESTACIONES (Giuffrida)
 # ============================================================================
 CLOSED_STATIONS = [
     {
@@ -257,7 +285,6 @@ def get_station_image(estacion_key: str, now: datetime) -> str:
     cache_buster = int(timer.time())
     return f"{base_url}?v={cache_buster}"
 
-# Convertir strings "HH:MM" a objetos time
 def str_to_time(t_str: str) -> time:
     h, m = map(int, t_str.split(':'))
     return time(h, m)
@@ -501,18 +528,14 @@ def get_closing_time(now: datetime, station: str) -> Tuple[int, int]:
             return (22, 30)
 
 def is_metro_closed(now: datetime, station: str) -> Tuple[bool, Optional[datetime], str]:
-    # Asegurar que now es aware
     if now.tzinfo is None:
         now = CATANIA_TZ.localize(now)
-    
     if is_closed_all_day(now):
         tomorrow = now + timedelta(days=1)
         open_h, open_m = get_opening_time(tomorrow, station)
         next_open = datetime.combine(tomorrow.date(), time(open_h, open_m))
         next_open = CATANIA_TZ.localize(next_open)
         return (True, next_open, "")
-    
-    # Caso especial: Nochevieja
     if is_new_years_eve(now):
         if now.hour >= 23 or now.hour < 3:
             open_h, open_m = get_opening_time(now, station)
@@ -522,28 +545,21 @@ def is_metro_closed(now: datetime, station: str) -> Tuple[bool, Optional[datetim
             next_open = CATANIA_TZ.localize(next_open)
             special_msg = "🚇 Non ci sono informazioni disponibili. Ricorda che oggi l'ultima metropolitana è partita alle 03:00."
             return (True, next_open, special_msg)
-    
     weekday = now.weekday()
-    # Para viernes y sábado, el mensaje especial solo entre 23:58 y 01:00
     if weekday in [4, 5]:
-        # Determinar si estamos en el intervalo especial: desde las 23:58 del día actual hasta la 01:00 del día siguiente
-        # Para viernes (4): el intervalo especial empieza el viernes a las 23:58 y termina el sábado a las 01:00
-        # Para sábado (5): empieza el sábado a las 23:58 y termina el domingo a las 01:00
         is_special_interval = False
-        if weekday == 4:  # viernes
-            if (now.hour == 23 and now.minute >= 58) or (now.hour == 0) or (now.hour == 1 and now.minute == 0):
-                # desde 23:58 viernes hasta 01:00 sábado (incluye 00:00-00:59 y 01:00 exactamente? quitamos 01:00)
-                if now.hour == 1 and now.minute == 0:
-                    is_special_interval = False  # a las 01:00 ya no mostramos el mensaje especial
-                else:
-                    is_special_interval = True
-        elif weekday == 5:  # sábado
+        if weekday == 4:
             if (now.hour == 23 and now.minute >= 58) or (now.hour == 0) or (now.hour == 1 and now.minute == 0):
                 if now.hour == 1 and now.minute == 0:
                     is_special_interval = False
                 else:
                     is_special_interval = True
-        
+        elif weekday == 5:
+            if (now.hour == 23 and now.minute >= 58) or (now.hour == 0) or (now.hour == 1 and now.minute == 0):
+                if now.hour == 1 and now.minute == 0:
+                    is_special_interval = False
+                else:
+                    is_special_interval = True
         if is_special_interval:
             open_h, open_m = get_opening_time(now, station)
             next_open = datetime.combine(now.date(), time(open_h, open_m))
@@ -552,26 +568,19 @@ def is_metro_closed(now: datetime, station: str) -> Tuple[bool, Optional[datetim
             next_open = CATANIA_TZ.localize(next_open)
             special_msg = "🚇 Non ci sono informazioni disponibili. Ricorda che oggi l'ultima metropolitana è partita alle 01:00."
             return (True, next_open, special_msg)
-        
-        # Fuera del intervalo especial, se aplica la lógica normal de cierre (sin mensaje especial)
-        # Para viernes y sábado, el metro cierra a la 01:00, por lo que después de la 01:00 está cerrado sin mensaje especial
-        if now.hour >= 1 and now.hour < 6:  # después de la 01:00 hasta la apertura
+        if now.hour >= 1 and now.hour < 6:
             open_h, open_m = get_opening_time(now, station)
             next_open = datetime.combine(now.date(), time(open_h, open_m))
             if next_open <= now:
                 next_open = datetime.combine(now.date() + timedelta(days=1), time(open_h, open_m))
             next_open = CATANIA_TZ.localize(next_open)
             return (True, next_open, "")
-    
-    # Lógica estándar de cierre (para el resto de días y horas)
     current_time = now.time()
     open_h, open_m = get_opening_time(now, station)
     close_h, close_m = get_closing_time(now, station)
     opening_time = time(open_h, open_m)
     closing_time = time(close_h, close_m)
-    
     if close_h < open_h or (close_h == open_h and close_m < open_m):
-        # El servicio cruza la medianoche (ej. 22:30 a 01:00)
         if current_time >= opening_time or current_time < closing_time:
             return (False, None, "")
         else:
@@ -593,7 +602,6 @@ def is_metro_closed(now: datetime, station: str) -> Tuple[bool, Optional[datetim
 def get_schedule_list(station: str, now: datetime) -> List[time]:
     if is_festivo_nazionale(now):
         return SCHEDULES[station]["sunday"]
-    
     current_time = now.time()
     weekday_num = now.weekday()
     if weekday_num == 4:
@@ -604,7 +612,6 @@ def get_schedule_list(station: str, now: datetime) -> List[time]:
         normal_list = SCHEDULES[station]["sunday"]
     else:
         normal_list = SCHEDULES[station]["weekday"]
-    
     first_train = normal_list[0] if normal_list else None
     if first_train and current_time < first_train:
         yesterday = now - timedelta(days=1)
@@ -626,7 +633,6 @@ def get_next_departure(station: str, now: datetime) -> Tuple[Optional[datetime],
         return get_next_departure_new_years_eve(station, now)
     if is_sant_agata(now):
         return get_next_departure_sant_agata(station, now)
-    
     current_time = now.time()
     schedule_list = get_schedule_list(station, now)
     for dep_time in schedule_list:
@@ -646,7 +652,6 @@ def get_next_departure_after(station: str, now: datetime, after_time: time) -> T
         fake_now = datetime.combine(now.date(), after_time) + timedelta(minutes=1)
         fake_now = CATANIA_TZ.localize(fake_now)
         return get_next_departure(station, fake_now)
-    
     schedule_list = get_schedule_list(station, now)
     for dep_time in schedule_list:
         if dep_time > after_time:
@@ -698,7 +703,6 @@ def get_total_seconds_from_montepo(station: str, now: datetime) -> int:
     total = 0
     peak = is_peak_hour(now)
     for (start, end, base_sec) in FORWARD_PEAK:
-        # Intentar obtener tiempo medido para este segmento (dirección ida)
         measured = get_measured_travel_time(start, end, 'ida', now)
         if measured is not None:
             sec = measured
@@ -714,6 +718,11 @@ def get_total_seconds_from_montepo(station: str, now: datetime) -> int:
         if is_station_closed(closed["station"], now):
             if stations_order.index(closed["station"]) < stations_order.index(station):
                 total -= closed["reduction_seconds"]
+    if should_add_giovanni_extra(now):
+        idx_station = stations_order.index(station) if station in stations_order else -1
+        idx_giovanni = stations_order.index("giovanni")
+        if idx_station >= idx_giovanni:
+            total += 5
     return max(0, int(total))
 
 def get_total_seconds_from_stesicoro(station: str, now: datetime) -> int:
@@ -722,7 +731,6 @@ def get_total_seconds_from_stesicoro(station: str, now: datetime) -> int:
     total = 0
     peak = is_peak_hour(now)
     for (start, end, base_sec) in REVERSE_PEAK:
-        # Intentar obtener tiempo medido para este segmento (dirección vuelta)
         measured = get_measured_travel_time(start, end, 'vuelta', now)
         if measured is not None:
             sec = measured
@@ -738,6 +746,11 @@ def get_total_seconds_from_stesicoro(station: str, now: datetime) -> int:
         if is_station_closed(closed["station"], now):
             if stations_order_rev.index(closed["station"]) < stations_order_rev.index(station):
                 total -= closed["reduction_seconds"]
+    if should_add_giovanni_extra(now):
+        idx_station = stations_order_rev.index(station) if station in stations_order_rev else -1
+        idx_giovanni = stations_order_rev.index("giovanni")
+        if idx_station >= idx_giovanni:
+            total += 5
     return max(0, int(total))
 
 def get_next_train_at_station(now: datetime, estacion_key: str) -> Tuple[Optional[Tuple], Optional[Tuple]]:
