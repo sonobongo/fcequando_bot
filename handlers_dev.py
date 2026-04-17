@@ -630,19 +630,16 @@ async def send_header_response(chat_id, context, estacion_key, is_update=False):
                 bus_text_clean = bus_text.replace("**", "")
                 msg += f"\n\n{bus_text_clean}"
         
-        # ========== NUEVA LÓGICA DE IMAGEN (basada en segundos) ==========
+        # ========== LÓGICA DE IMAGEN CORREGIDA ==========
         img_url = None
         if mins_rest <= 4:
-            if secs_rest == 0:
-                # Minutos exactos: imagen de binario
+            if total_seconds_rest <= 90:
+                img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_trenoarriva_cabeceras.png"
+            else:
                 if estacion_key == "montepo":
                     img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_binario_montepo.jpg"
                 else:
                     img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_binario_stesicoro.jpg"
-            else:
-                # Con segundos: imagen de cabeceras
-                img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_trenoarriva_cabeceras.png"
-        # Si mins_rest > 4, no imagen
         
         if img_url:
             cache_buster = int(time_module.time())
