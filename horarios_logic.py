@@ -513,6 +513,11 @@ def get_opening_time(now: datetime, station: str = None) -> Tuple[int, int]:
         return (6, 0)
 
 def get_closing_time(now: datetime, station: str) -> Tuple[int, int]:
+    # Si es madrugada (antes de las 6am), usar el día anterior para determinar el cierre
+    if now.hour < 6:
+        previous_day = now - timedelta(days=1)
+        return get_closing_time(previous_day, station)
+    
     if is_new_years_eve(now):
         return (3, 0)
     if is_sant_agata(now):
@@ -522,7 +527,7 @@ def get_closing_time(now: datetime, station: str) -> Tuple[int, int]:
         return (22, 30)
     else:
         weekday = now.weekday()
-        if weekday in [4, 5]:
+        if weekday in [4, 5]:  # viernes o sábado
             return (1, 0)
         else:
             return (22, 30)
