@@ -327,6 +327,17 @@ def build_temporary_messages(now: datetime, estacion_key: str):
         msg3 = f"Per Stesicoro: nessun treno in arrivo al momento.\n"
         tiempo_restante_st = 9999
 
+    # Añadir mensaje de último tren (cierre) al final de msg2 (el más visible)
+    last_msg = get_last_train_message(now)
+    if last_msg and not is_sant_agata(now):
+        if "01:00" in last_msg:
+            last_msg = last_msg.replace("📌", "")
+        elif "22:30" in last_msg:
+            last_msg = last_msg.replace("📌", "")
+        last_msg = remove_emojis(last_msg)
+        if last_msg:
+            msg2 += f"\n\n{last_msg}"
+
     msg2 = remove_emojis(msg2)
     msg3 = remove_emojis(msg3)
     return msg2, msg3, current_station_key_mp, tiempo_restante_mp, current_station_key_st, tiempo_restante_st, mins_mp, mins_st
@@ -684,10 +695,7 @@ async def activate_acces_mode(update: Update, context: ContextTypes.DEFAULT_TYPE
     """Activa el modo accesibilidad, oculta el teclado y muestra el mensaje4."""
     context.chat_data['acces_mode'] = True
     msg4_text = ("Scegli la stazione che vuoi controllare o scrive la stessa stazione per aggiornarla: Monte Po, Fontana, Nesima, San Nullo, Cibali, Milo, Borgo, Giuffrida, Italia, Galatea, Giovanni XXIII, Stesicoro. Per uscire dalla modalità accessibilità scrivi USCIRE")
-    # Enviar mensaje con eliminación del teclado
     await update.message.reply_text(msg4_text, reply_markup=ReplyKeyboardRemove())
-    # Enviar un segundo mensaje vacío con remove para asegurar (opcional)
-    # await update.message.reply_text("", reply_markup=ReplyKeyboardRemove())
 
 # ============================================================================
 # MANEJADOR PRINCIPAL DE TEXTO PARA EL MODO ACCES
