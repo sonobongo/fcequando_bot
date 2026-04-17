@@ -129,7 +129,7 @@ def main():
     app.add_handler(CommandHandler("devfin", dev_fin_wrapper))
 
     # ========================================================================
-    # MANEJADOR DE BOTONES (ReplyKeyboardMarkup) - incluye "← Menu"
+    # MANEJADOR DE BOTONES (ReplyKeyboardMarkup)
     # ========================================================================
     button_texts = ["Monte Po", "Stesicoro", "Altri", "Menu", "← Menu", "Fontana", "Nesima", "San Nullo",
                     "Cibali", "Milo", "Borgo", "Giuffrida", "Italia", "Galatea", "Giovanni XXIII"]
@@ -148,16 +148,26 @@ def main():
     app.add_handler(CallbackQueryHandler(dev_handlers.aggiornare_super_callback, pattern="^aggiornare_super$"))
 
     # ========================================================================
-    # MANEJADOR DE TEXTO PRINCIPALE
+    # MANEJADOR DE TEXTO PRINCIPALE (con excepción para "← Menu")
     # ========================================================================
     async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text = update.message.text.strip()
+        # Manejo especial para volver al menú
+        if text == "← Menu":
+            # Simular que es un botón
+            class FakeUpdate:
+                def __init__(self, msg):
+                    self.message = msg
+            fake_msg = type('obj', (object,), {'text': '← Menu', 'reply_text': update.message.reply_text})()
+            fake_update = FakeUpdate(fake_msg)
+            await dev_handlers.handle_button(fake_update, context)
+            return
+        
         if context.chat_data.get('acces_mode', False):
             await acc_handlers.normal_handle_text(update, context)
         else:
-            # Normalizza per eliminare accenti (es. "accessibilità" -> "accessibilita")
+            # Normalizza per eliminare accenti
             text_norm = unicodedata.normalize('NFKD', text.lower()).encode('ASCII', 'ignore').decode('ASCII')
-            # Verifica che sia una singola parola (nessuno spazio) e che inizi con "acces"
             if " " not in text and text_norm.startswith("acces"):
                 await acc_handlers.activate_acces_mode(update, context)
             else:
