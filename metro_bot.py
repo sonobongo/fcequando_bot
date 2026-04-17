@@ -6,6 +6,7 @@ from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, Defaults, CallbackQueryHandler
 from horarios_logic import *
 import handlers_dev as dev_handlers
+import handlers_acc as acc_handlers   # Nueva importación para la versión simplificada
 
 flask_app = Flask(__name__)
 
@@ -95,13 +96,13 @@ def main():
     # Comandos desarrollo
     async def dev_mode_wrapper(update, context):
         context.chat_data['dev_mode'] = True
-        await update.message.reply_text("🔧 Modalità sviluppatore attivata. Usa /devfin per disattivare.")
+        await update.message.reply_text("Modalità sviluppatore attivata. Usa /devfin per disattivare.")
     async def dev_fin_wrapper(update, context):
         context.chat_data['dev_mode'] = False
-        await update.message.reply_text("✅ Modalità sviluppatore disattivata. Tornato alla versione stabile.")
+        await update.message.reply_text("Modalità sviluppatore disattivata. Tornato alla versione stabile.")
 
     # ========================================================================
-    # COMANDOS PARA /about Y /grazie (directos, sin depender del modo nonna)
+    # COMANDOS PARA /about Y /grazie (directos)
     # ========================================================================
     FOTO_CREDITI_URL = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/FOTOMASTER.jpg"
     CREDITI_MSG = "Chatbot sviluppato con grande impegno da Àlex Naranjo. Se ti piace, condividilo con i tuoi amici e familiari. https://t.me/FCEQuando_bot"
@@ -142,19 +143,29 @@ def main():
     app.add_handler(CommandHandler("devfin", dev_fin_wrapper))
 
     # Teclados (ReplyKeyboardMarkup)
-    button_texts = ["Monte Po", "Stesicoro", "Altri", "← Menu", "Fontana", "Nesima", "San Nullo",
+    button_texts = ["Monte Po", "Stesicoro", "Altri", "Menu", "Fontana", "Nesima", "San Nullo",
                     "Cibali", "Milo", "Borgo", "Giuffrida", "Italia", "Galatea", "Giovanni XXIII"]
     app.add_handler(MessageHandler(filters.Text(button_texts), handle_button_wrapper))
 
     # Callbacks
     app.add_handler(CallbackQueryHandler(aggiornare_callback_wrapper, pattern="^aggiornare_"))
     app.add_handler(CallbackQueryHandler(aggiornare_cabecera_callback_wrapper, pattern="^agg_cabecera_"))
+    app.add_handler(CallbackQueryHandler(dev_handlers.aggiornare_super_callback, pattern="^aggiornare_super$"))
 
     # ========================================================================
-    # MANEJADOR DE TEXTO PARA MODO NONNA (todo lo que no sea comando)
+    # MANEJADOR DE TEXTO: si el mensaje es exactamente "acces" (sin más texto)
+    # se usa la versión acc (handlers_acc.py). En caso contrario, se usa dev.
     # ========================================================================
-    if hasattr(dev_handlers, 'normal_handle_text'):
-        app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, dev_handlers.normal_handle_text))
+    async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        text = update.message.text.strip()
+        if text.lower() == "acces":
+            # Usar la versión simplificada (sin emojis, sin imágenes en msg2/3, con fotos st_a...)
+            await acc_handlers.normal_handle_text(update, context)
+        else:
+            # Usar la versión normal (con emojis, GIFs, imágenes)
+            await dev_handlers.normal_handle_text(update, context)
+
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
 
     logger.info("Bot avviato.")
     print("Bot funzionante... In attesa di messaggi.")
