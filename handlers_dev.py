@@ -636,22 +636,24 @@ async def send_header_response(chat_id, context, estacion_key, is_update=False):
             bus_text_clean = bus_text.replace("**", "")
             msg += f"\n\n{bus_text_clean}"
     
-    # Decidir qué imagen usar (solo una: ruta_trenoarriva_cabeceras si tiempo <= 90 segundos)
+        # Decidir qué imagen usar según el tiempo restante
     img_url = None
-    if total_seconds_rest <= 90:
-        img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_trenoarriva_cabeceras.png"
+    if mins_rest <= 4:
+        # Está en binario (el mensaje será "Il treno è in binario...")
+        if secs_rest == 0:
+            # Tiempo en minutos exactos: imagen de binario
+            if estacion_key == "montepo":
+                img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_binario_montepo.jpg"
+            else:
+                img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_binario_stesicoro.jpg"
+        else:
+            # Tiempo con segundos: imagen de cabeceras
+            img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_trenoarriva_cabeceras.png"
+    # else: mins_rest > 4 -> sin imagen (img_url = None)
+    
+    if img_url:
         cache_buster = int(time_module.time())
         img_url = f"{img_url}?v={cache_buster}"
-    
-    # Enviar MENSAJE2
-    if img_url:
-        msg2 = await context.bot.send_photo(chat_id=chat_id, photo=img_url, caption=msg, parse_mode='Markdown', reply_markup=keyboard_inline)
-    else:
-        msg2 = await context.bot.send_message(chat_id=chat_id, text=msg, parse_mode='Markdown', reply_markup=keyboard_inline)
-    
-    if 'all_msg_ids' not in context.chat_data:
-        context.chat_data['all_msg_ids'] = []
-    context.chat_data['all_msg_ids'].append(msg2.message_id)
 
 # ============================================================================
 # RESPUESTA PRINCIPAL (foto + msg2/msg3)
