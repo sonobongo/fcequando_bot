@@ -1,6 +1,7 @@
 import os
 import logging
 import threading
+import unicodedata
 from flask import Flask
 from telegram import Update, ReplyKeyboardRemove
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, Defaults, CallbackQueryHandler
@@ -35,7 +36,7 @@ def main():
     defaults = Defaults(disable_notification=True)
     app = Application.builder().token(TOKEN).defaults(defaults).build()
 
-    # Wrappers para comandos (delegan a dev_handlers)
+    # Wrappers per comandi (delegano a dev_handlers)
     async def start_wrapper(update, context):
         await dev_handlers.start_wrapper(update, context)
     async def help_command_wrapper(update, context):
@@ -83,7 +84,7 @@ def main():
     async def aggiornare_cabecera_callback_wrapper(update, context):
         await dev_handlers.aggiornare_cabecera_callback(update, context)
 
-    # Comandos desarrollo
+    # Comandi sviluppo
     async def dev_mode_wrapper(update, context):
         context.chat_data['dev_mode'] = True
         await update.message.reply_text("Modalità sviluppatore attivata. Usa /devfin per disattivare.")
@@ -91,7 +92,7 @@ def main():
         context.chat_data['dev_mode'] = False
         await update.message.reply_text("Modalità sviluppatore disattivata. Tornato alla versione stabile.")
 
-    # Comandos about/grazie
+    # Comandi about/grazie
     FOTO_CREDITI_URL = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/FOTOMASTER.jpg"
     CREDITI_MSG = "Chatbot sviluppato con grande impegno da Àlex Naranjo. Se ti piace, condividilo con i tuoi amici e familiari. https://t.me/FCEQuando_bot"
 
@@ -107,7 +108,7 @@ def main():
         except Exception:
             await update.message.reply_text(CREDITI_MSG, parse_mode='Markdown')
 
-    # Registro de comandos
+    # Registro comandi
     commands = [
         ("start", start_wrapper), ("help", help_command_wrapper),
         ("montepo", cmd_montepo_wrapper), ("stesicoro", cmd_stesicoro_wrapper),
@@ -128,7 +129,7 @@ def main():
     app.add_handler(CommandHandler("devfin", dev_fin_wrapper))
 
     # ========================================================================
-    # MANEJADOR DE BOTONES (ReplyKeyboardMarkup) - respeta modo acces
+    # MANEJADOR DE BOTONES (ReplyKeyboardMarkup) - rispetta modo acces
     # ========================================================================
     button_texts = ["Monte Po", "Stesicoro", "Altri", "Menu", "Fontana", "Nesima", "San Nullo",
                     "Cibali", "Milo", "Borgo", "Giuffrida", "Italia", "Galatea", "Giovanni XXIII"]
@@ -147,15 +148,17 @@ def main():
     app.add_handler(CallbackQueryHandler(dev_handlers.aggiornare_super_callback, pattern="^aggiornare_super$"))
 
     # ========================================================================
-    # MANEJADOR DE TEXTO PRINCIPAL
+    # MANEJADOR DE TEXTO PRINCIPALE
     # ========================================================================
     async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text = update.message.text.strip()
         if context.chat_data.get('acces_mode', False):
             await acc_handlers.normal_handle_text(update, context)
         else:
-            # Si es una sola palabra y empieza por "acces" (case-insensitive), activamos modo acces
-            if len(text.split()) == 1 and text.lower().startswith("acces"):
+            # Normalizza per eliminare accenti (es. "accessibilità" -> "accessibilita")
+            text_norm = unicodedata.normalize('NFKD', text.lower()).encode('ASCII', 'ignore').decode('ASCII')
+            # Verifica che sia una singola parola (nessuno spazio) e che inizi con "acces"
+            if " " not in text and text_norm.startswith("acces"):
                 await acc_handlers.activate_acces_mode(update, context)
             else:
                 await dev_handlers.normal_handle_text(update, context)
