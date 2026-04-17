@@ -67,6 +67,10 @@ def main():
     async def cmd_altri_wrapper(update, context):
         await dev_handlers.cmd_altri_wrapper(update, context)
     async def handle_button_wrapper(update, context):
+    if context.chat_data.get('acces_mode', False):
+        # En modo acces, redirigir todo texto al handler de acc
+        await acc_handlers.normal_handle_text(update, context)
+    else:
         await dev_handlers.handle_button_wrapper(update, context)
     async def cmd_testgif_wrapper(update, context):
         await dev_handlers.cmd_testgif_wrapper(update, context)
