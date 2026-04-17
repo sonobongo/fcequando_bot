@@ -572,7 +572,7 @@ async def send_header_response(chat_id, context, estacion_key, is_update=False):
                 msg = f"{special_closing_msg}\n🚇 La metropolitana è chiusa in questo momento. Il primo treno da {station_display} partirà alle {first_train.strftime('%H:%M')}."
             else:
                 msg = f"{special_closing_msg}\n🚇 La metropolitana è chiusa in questo momento.\n🕒 Riaprirà alle {next_open.strftime('%H:%M')}."
-        # Enviar mensaje con imagen por defecto
+        # Enviar mensaje con imagen por defecto (o sin imagen? usamos la default)
         img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_default.png"
         cache_buster = int(time_module.time())
         img_url = f"{img_url}?v={cache_buster}"
@@ -636,26 +636,15 @@ async def send_header_response(chat_id, context, estacion_key, is_update=False):
             bus_text_clean = bus_text.replace("**", "")
             msg += f"\n\n{bus_text_clean}"
     
-        # Decidir qué imagen usar (o ninguna)
+    # Decidir qué imagen usar (solo una: ruta_trenoarriva_cabeceras si tiempo <= 90 segundos)
     img_url = None
-    # Definir "tren en binario" cuando falta 1 minuto o menos (60 segundos)
-    if total_seconds_rest <= 60:
-        # Tren en binario: imagen específica de binario
-        if estacion_key == "montepo":
-            img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_binario_montepo.jpg"
-        else:
-            img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_binario_stesicoro.jpg"
-    elif total_seconds_rest <= 90:
-        # Falta entre 60 y 90 segundos (1 minuto - 1.5 minutos)
+    if total_seconds_rest <= 90:
         img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_trenoarriva_cabeceras.png"
-    else:
-        # No mostrar ninguna imagen
-        img_url = None
+        cache_buster = int(time_module.time())
+        img_url = f"{img_url}?v={cache_buster}"
     
     # Enviar MENSAJE2
-    cache_buster = int(time_module.time())
     if img_url:
-        img_url = f"{img_url}?v={cache_buster}"
         msg2 = await context.bot.send_photo(chat_id=chat_id, photo=img_url, caption=msg, parse_mode='Markdown', reply_markup=keyboard_inline)
     else:
         msg2 = await context.bot.send_message(chat_id=chat_id, text=msg, parse_mode='Markdown', reply_markup=keyboard_inline)
