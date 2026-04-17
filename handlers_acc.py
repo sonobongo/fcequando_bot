@@ -693,7 +693,7 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
     
     if texto.lower() == "uscire":
         context.chat_data['acces_mode'] = False
-        await update.message.reply_text("Uscito dalla modalità accessibilità. Per riattivarla, scrivi 'acces'.", reply_markup=keyboard_main_acc)
+        await update.message.reply_text("Uscito dalla modalità accessibilità. Per riattivarla, scrivi 'Accessibilità'.", reply_markup=keyboard_main_acc)
         return
     
     await process_station_request(update, context, texto)
