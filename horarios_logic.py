@@ -549,43 +549,23 @@ def is_metro_closed(now: datetime, station: str) -> Tuple[bool, Optional[datetim
             special_msg = "🚇 Non ci sono informazioni disponibili. Ricorda che oggi l'ultima metropolitana è partita alle 03:00."
             return (True, next_open, special_msg)
     
-    open_h, open_m = get_opening_time(now, station)
-    opening_time = time(open_h, open_m)
+    # CIERRE FORZADO DESDE LA 01:00 HASTA LAS 06:00
+    if 1 <= now.hour < 6:
+        open_h, open_m = get_opening_time(now, station)
+        next_open = datetime.combine(now.date(), time(open_h, open_m))
+        if next_open <= now:
+            next_open = datetime.combine(now.date() + timedelta(days=1), time(open_h, open_m))
+        next_open = CATANIA_TZ.localize(next_open)
+        return (True, next_open, "🚇 La metropolitana è chiusa in questo momento.")
+    
+    # Lógica normal para el resto del horario
     current_time = now.time()
-    
-    # Caso especial: madrugada (0:00 a 5:59)
-    if now.hour < 6:
-        previous_day = now - timedelta(days=1)
-        close_h, close_m = get_closing_time(previous_day, station)
-        # Verificar si el día anterior tiene servicio nocturno (cierre después de medianoche)
-        open_h_prev, open_m_prev = get_opening_time(previous_day, station)
-        if close_h < open_h_prev or (close_h == open_h_prev and close_m < open_m_prev):
-            # Hay servicio nocturno: el metro está abierto si la hora actual es menor que la hora de cierre
-            close_min = close_h * 60 + close_m
-            current_min = now.hour * 60 + now.minute
-            if current_min < close_min:
-                return (False, None, "")
-            else:
-                # Cerrado: el próximo tren será hoy a la hora de apertura
-                next_open = datetime.combine(now.date(), opening_time)
-                if next_open <= now:
-                    next_open = datetime.combine(now.date() + timedelta(days=1), opening_time)
-                next_open = CATANIA_TZ.localize(next_open)
-                return (True, next_open, "")
-        else:
-            # No hay servicio nocturno, directamente está cerrado
-            next_open = datetime.combine(now.date(), opening_time)
-            if next_open <= now:
-                next_open = datetime.combine(now.date() + timedelta(days=1), opening_time)
-            next_open = CATANIA_TZ.localize(next_open)
-            return (True, next_open, "")
-    
-    # Horario normal (no madrugada)
+    open_h, open_m = get_opening_time(now, station)
     close_h, close_m = get_closing_time(now, station)
+    opening_time = time(open_h, open_m)
     closing_time = time(close_h, close_m)
     
     if close_h < open_h or (close_h == open_h and close_m < open_m):
-        # Cruce de medianoche
         if current_time >= opening_time or current_time < closing_time:
             return (False, None, "")
         else:
@@ -604,36 +584,12 @@ def is_metro_closed(now: datetime, station: str) -> Tuple[bool, Optional[datetim
             return (True, next_open, "")
         return (False, None, "")
 
-def get_schedule_list(station: str, now: datetime) -> List[time]:
-    if is_festivo_nazionale(now):
-        return SCHEDULES[station]["sunday"]
-    current_time = now.time()
-    weekday_num = now.weekday()
-    if weekday_num == 4:
-        normal_list = SCHEDULES[station]["friday"]
-    elif weekday_num == 5:
-        normal_list = SCHEDULES[station]["saturday"]
-    elif weekday_num == 6:
-        normal_list = SCHEDULES[station]["sunday"]
-    else:
-        normal_list = SCHEDULES[station]["weekday"]
-    first_train = normal_list[0] if normal_list else None
-    if first_train and current_time < first_train:
-        yesterday = now - timedelta(days=1)
-        y_weekday = yesterday.weekday()
-        if y_weekday == 4:
-            yesterday_list = SCHEDULES[station]["friday"]
-        elif y_weekday == 5:
-            yesterday_list = SCHEDULES[station]["saturday"]
-        elif y_weekday == 6:
-            yesterday_list = SCHEDULES[station]["sunday"]
-        else:
-            yesterday_list = SCHEDULES[station]["weekday"]
-        if any(t.hour < 6 for t in yesterday_list):
-            return yesterday_list
-    return normal_list
-
 def get_next_departure(station: str, now: datetime) -> Tuple[Optional[datetime], int, int, bool]:
+    # Si el metro está cerrado, no devolver trenes
+    closed, _, _ = is_metro_closed(now, station)
+    if closed:
+        return (None, 0, 0, False)
+    
     if is_new_years_eve(now):
         return get_next_departure_new_years_eve(station, now)
     if is_sant_agata(now):
