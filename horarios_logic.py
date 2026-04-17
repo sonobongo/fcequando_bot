@@ -526,7 +526,7 @@ def get_closing_time(now: datetime, station: str) -> Tuple[int, int]:
             return (22, 30)
 
 # ============================================================================
-# IS_METRO_CLOSED CORREGIDA (maneja horarios nocturnos)
+# IS_METRO_CLOSED CORREGIDA (manejo de madrugada)
 # ============================================================================
 def is_metro_closed(now: datetime, station: str) -> Tuple[bool, Optional[datetime], str]:
     if now.tzinfo is None:
@@ -549,34 +549,42 @@ def is_metro_closed(now: datetime, station: str) -> Tuple[bool, Optional[datetim
             special_msg = "🚇 Non ci sono informazioni disponibili. Ricorda che oggi l'ultima metropolitana è partita alle 03:00."
             return (True, next_open, special_msg)
     
-    # Obtener apertura del día actual
+    current_time = now.time()
     open_h, open_m = get_opening_time(now, station)
     opening_time = time(open_h, open_m)
     
-    # Para el cierre, si es de madrugada (hora < 6), usar el día anterior
+    # Para la madrugada (antes de las 6am), el cierre corresponde al día anterior
     if now.hour < 6:
         previous_day = now - timedelta(days=1)
         close_h, close_m = get_closing_time(previous_day, station)
         closing_time = time(close_h, close_m)
-        # El cierre pertenece al día anterior, así que lo consideramos como tiempo del día actual sumando 24h
-        # Para comparar, pasamos closing_time a minutos + 24*60
-        close_min = close_h * 60 + close_m + 24 * 60
-        current_min = now.hour * 60 + now.minute
-        open_min = open_h * 60 + open_m
-        if open_min <= current_min < close_min:
-            return (False, None, "")
+        # Convertir a minutos del día actual sumando 24h si es necesario
+        close_min = close_h * 60 + close_m
+        if close_h < open_h or (close_h == open_h and close_m < open_m):
+            # El servicio del día anterior cruza la medianoche
+            close_min += 24 * 60
+            current_min = now.hour * 60 + now.minute
+            open_min = open_h * 60 + open_m
+            if current_min < close_min and current_min >= 0:
+                # Está dentro del servicio nocturno del día anterior
+                return (False, None, "")
+            else:
+                next_open = datetime.combine(now.date(), opening_time)
+                if next_open <= now:
+                    next_open = datetime.combine(now.date() + timedelta(days=1), opening_time)
+                next_open = CATANIA_TZ.localize(next_open)
+                return (True, next_open, "")
         else:
-            # Está cerrado: el próximo opening es hoy a las open_h:open_m
-            next_open = datetime.combine(now.date(), time(open_h, open_m))
+            # El día anterior no tenía servicio nocturno, así que está cerrado
+            next_open = datetime.combine(now.date(), opening_time)
             if next_open <= now:
-                next_open = datetime.combine(now.date() + timedelta(days=1), time(open_h, open_m))
+                next_open = datetime.combine(now.date() + timedelta(days=1), opening_time)
             next_open = CATANIA_TZ.localize(next_open)
             return (True, next_open, "")
     else:
         # Horario normal (no madrugada)
         close_h, close_m = get_closing_time(now, station)
         closing_time = time(close_h, close_m)
-        current_time = now.time()
         if close_h < open_h or (close_h == open_h and close_m < open_m):
             # Cruce de medianoche
             if current_time >= opening_time or current_time < closing_time:
