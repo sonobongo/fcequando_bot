@@ -37,64 +37,6 @@ BOTON_TO_KEY = {
 }
 
 # ============================================================================
-# PALABRAS CLAVE (calles cercanas) para cada estación
-# ============================================================================
-KEYWORDS = {
-    # Stesicoro
-    "corso sicilia": "stesicoro",
-    "repubblica": "stesicoro",
-    # Giovanni XXIII
-    "archimede": "giovanni",
-    "liberta": "giovanni",
-    "centrale": "giovanni",
-    # Galatea
-    "jonio": "galatea",
-    "pasubio": "galatea",
-    "palmanova": "galatea",
-    "messina": "galatea",
-    # Italia
-    "firenze": "italia",
-    "ramondetta": "italia",
-    "scammacca": "italia",
-    "veneto": "italia",
-    # Giuffrida
-    "carvana": "giuffrida",
-    "abraham": "giuffrida",
-    "lincoln": "giuffrida",
-    # Borgo
-    "empedocle": "borgo",
-    "signorelli": "borgo",
-    # Milo
-    "bronte": "milo",
-    "fleming": "milo",
-    # Cibali
-    "bergamo": "cibali",
-    "galermo": "cibali",
-    "massimino": "cibali",
-    "stadio": "cibali",
-    # San Nullo
-    "usodimare": "sannullo",
-    "uso di mare": "sannullo",
-    "sebastiano": "sannullo",
-    # Nesima
-    "lorenzo": "nesima",
-    "bolano": "nesima",
-    "filippo": "nesima",
-    "eredia": "nesima",
-    # Fontana
-    "garibaldi": "fontana",
-    # Monte Po
-    "carlo": "montepo",
-    "marx": "montepo",
-}
-
-# Normalizar las claves (minúsculas, sin acentos) para búsqueda
-KEYWORDS_NORM = {}
-for kw, station in KEYWORDS.items():
-    kw_norm = unicodedata.normalize('NFKD', kw.lower()).encode('ASCII', 'ignore').decode('ASCII')
-    KEYWORDS_NORM[kw_norm] = station
-
-# ============================================================================
 # FUNCIÓN PARA ELIMINAR "[]"
 # ============================================================================
 def clean_text_for_display(text: str) -> str:
@@ -267,7 +209,7 @@ def build_temporary_messages(now: datetime, estacion_key: str):
     return msg2, msg3, current_station_key_mp, tiempo_restante_mp, current_station_key_st, tiempo_restante_st, mins_mp, mins_st
 
 # ============================================================================
-# FUNCIONES DE ENVÍO CON IMAGEN (guardan IDs en context.chat_data['all_msg_ids'])
+# FUNCIONES DE ENVÍO CON IMAGEN
 # ============================================================================
 async def send_treno_arrivo(update: Update, context: ContextTypes.DEFAULT_TYPE, msg: str, direction: str):
     img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_trenoarriva.png"
@@ -325,7 +267,7 @@ async def send_default(update: Update, context: ContextTypes.DEFAULT_TYPE, msg: 
     return result
 
 # ============================================================================
-# ENVÍO DE MENSAJE 2 y 3 (adaptados para guardar IDs)
+# ENVÍO DE MENSAJE 2 y 3
 # ============================================================================
 async def send_message_2(update: Update, context: ContextTypes.DEFAULT_TYPE, msg: str, current_station_key: str, tiempo_restante: int, mins: int, estacion_key: str):
     msg = clean_text_for_display(msg)
@@ -395,7 +337,6 @@ async def send_messages_2_and_3(update: Update, context: ContextTypes.DEFAULT_TY
     if msg3_obj:
         ids.append(msg3_obj.message_id)
     
-    # Guardar IDs también en refresh_msg_ids y all_msg_ids
     if ids:
         if 'refresh_msg_ids' not in context.chat_data:
             context.chat_data['refresh_msg_ids'] = []
@@ -404,7 +345,6 @@ async def send_messages_2_and_3(update: Update, context: ContextTypes.DEFAULT_TY
             context.chat_data['all_msg_ids'] = []
         context.chat_data['all_msg_ids'].extend(ids)
     
-    # Para estaciones intermedias, añadir botón después de 1 segundo
     if estacion_key not in ["montepo", "stesicoro"] and show_button:
         keyboard_inline = InlineKeyboardMarkup([
             [InlineKeyboardButton("🔄 Aggiornare", callback_data=f"aggiornare_{estacion_key}")]
@@ -421,7 +361,7 @@ async def send_messages_2_and_3(update: Update, context: ContextTypes.DEFAULT_TY
     return tuple(ids) if ids else None
 
 # ============================================================================
-# FUNCIÓN DE LIMPIEZA Y REINICIO AUTOMÁTICO (borra todos los mensajes excepto bienvenida)
+# FUNCIÓN DE LIMPIEZA Y REINICIO AUTOMÁTICO
 # ============================================================================
 async def auto_clean_and_restart(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await asyncio.sleep(20 * 60)
@@ -438,7 +378,6 @@ async def auto_clean_and_restart(update: Update, context: ContextTypes.DEFAULT_T
         except Exception:
             pass
     
-    # Conservar solo welcome_msg_id y dev_mode si estaba activo
     dev_mode = context.chat_data.get('dev_mode', False)
     context.chat_data.clear()
     if dev_mode:
@@ -483,7 +422,7 @@ async def refresh_messages_only(update: Update, context: ContextTypes.DEFAULT_TY
     schedule_cleanup(update, context)
 
 # ============================================================================
-# CALLBACK PARA EL BOTÓN "AGGIORNARE" (estaciones intermedias) - CON COOLDOWN
+# CALLBACK PARA EL BOTÓN "AGGIORNARE"
 # ============================================================================
 async def aggiornare_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -507,7 +446,7 @@ async def aggiornare_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     await refresh_messages_only(fake_update, context, estacion_key)
 
 # ============================================================================
-# CALLBACK PARA EL BOTÓN EN CABECERAS (Monte Po y Stesicoro) - ACTUALIZA SOLO MENSAJE2
+# CALLBACK PARA EL BOTÓN EN CABECERAS (Monte Po y Stesicoro)
 # ============================================================================
 async def aggiornare_cabecera_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -515,154 +454,136 @@ async def aggiornare_cabecera_callback(update: Update, context: ContextTypes.DEF
     estacion_key = query.data.split("_")[2]
     chat_id = query.message.chat_id
     
-    # El mensaje que tiene el botón es el MENSAJE2 (el del tren)
-    # Lo eliminamos y luego llamamos a send_header_response con is_update=True
     try:
         await query.message.delete()
     except Exception:
         pass
     
-    await send_header_response(chat_id, context, estacion_key, is_update=True)
-    # No programamos otra limpieza porque ya existe la tarea anterior
+    await send_header_response(chat_id, context, estacion_key)
+    schedule_cleanup(update, context)
 
 # ============================================================================
-# FUNCIÓN AUXILIAR PARA ENVIAR RESPUESTA DE CABECERA (Monte Po / Stesicoro)
-# is_update: si es True, solo envía el MENSAJE2 (el del tren) y no la foto de la estación
+# FUNCIÓN AUXILIAR PARA ENVIAR RESPUESTA DE CABECERA
 # ============================================================================
-async def send_header_response(chat_id, context, estacion_key, is_update=False):
-    try:
-        simulated = context.chat_data.get('test_time')
-        if simulated:
-            if simulated.tzinfo is None:
-                simulated = CATANIA_TZ.localize(simulated)
-            now = simulated
+async def send_header_response(chat_id, context, estacion_key):
+    simulated = context.chat_data.get('test_time')
+    if simulated:
+        if simulated.tzinfo is None:
+            simulated = CATANIA_TZ.localize(simulated)
+        now = simulated
+    else:
+        now = datetime.now(CATANIA_TZ)
+    
+    station = "Montepo" if estacion_key == "montepo" else "Stesicoro"
+    closed, next_open, special_closing_msg = is_metro_closed(now, station)
+    
+    keyboard_inline = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🔄 Aggiornare", callback_data=f"agg_cabecera_{estacion_key}")]
+    ])
+    
+    if closed:
+        if next_open.date() > now.date():
+            msg = f"{special_closing_msg}\n🚇 La metropolitana è chiusa in questo momento. Riaprirà domani alle {next_open.strftime('%H:%M')}."
         else:
-            now = datetime.now(CATANIA_TZ)
-        
-        station = "Montepo" if estacion_key == "montepo" else "Stesicoro"
-        closed, next_open, special_closing_msg = is_metro_closed(now, station)
-        
-        keyboard_inline = InlineKeyboardMarkup([
-            [InlineKeyboardButton("🔄 Aggiornare", callback_data=f"agg_cabecera_{estacion_key}")]
-        ])
-        
-        if not is_update:
-            img_station = get_station_image(estacion_key, now)
-            caption_station = f"🚇 {NOMBRE_MOSTRAR.get(estacion_key, estacion_key.capitalize())}"
-            if img_station:
-                msg1 = await context.bot.send_photo(chat_id=chat_id, photo=img_station, caption=caption_station, parse_mode='Markdown')
+            mins_to_open = int((next_open - now).total_seconds() // 60)
+            if mins_to_open <= 60:
+                first_train, _, _, has_first = get_next_departure(station, now)
+                if not has_first:
+                    first_train, _, _, _ = get_next_departure(station, now + timedelta(days=1))
+                station_display = "Monte Po" if station == "Montepo" else "Stesicoro"
+                msg = f"{special_closing_msg}\n🚇 La metropolitana è chiusa in questo momento. Il primo treno da {station_display} partirà alle {first_train.strftime('%H:%M')}."
             else:
-                msg1 = await context.bot.send_message(chat_id=chat_id, text=caption_station, parse_mode='Markdown')
-            context.chat_data['main_msg_id'] = msg1.message_id
-            if 'all_msg_ids' not in context.chat_data:
-                context.chat_data['all_msg_ids'] = []
-            context.chat_data['all_msg_ids'].append(msg1.message_id)
-        
-        if closed:
-            if next_open.date() > now.date():
-                msg = f"{special_closing_msg}\n🚇 La metropolitana è chiusa in questo momento. Riaprirà domani alle {next_open.strftime('%H:%M')}."
-            else:
-                mins_to_open = int((next_open - now).total_seconds() // 60)
-                if mins_to_open <= 60:
-                    first_train, _, _, has_first = get_next_departure(station, now)
-                    if not has_first:
-                        first_train, _, _, _ = get_next_departure(station, now + timedelta(days=1))
-                    station_display = "Monte Po" if station == "Montepo" else "Stesicoro"
-                    msg = f"{special_closing_msg}\n🚇 La metropolitana è chiusa in questo momento. Il primo treno da {station_display} partirà alle {first_train.strftime('%H:%M')}."
-                else:
-                    msg = f"{special_closing_msg}\n🚇 La metropolitana è chiusa in questo momento.\n🕒 Riaprirà alle {next_open.strftime('%H:%M')}."
-            img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_default.png"
-            cache_buster = int(time_module.time())
-            img_url = f"{img_url}?v={cache_buster}"
-            msg2 = await context.bot.send_photo(chat_id=chat_id, photo=img_url, caption=msg, parse_mode='Markdown', reply_markup=keyboard_inline)
-            if 'all_msg_ids' not in context.chat_data:
-                context.chat_data['all_msg_ids'] = []
-            context.chat_data['all_msg_ids'].append(msg2.message_id)
-            return
-        
-        next_dep, minutes, seconds, has_trains = get_next_departure(station, now)
-        if not has_trains:
-            close_h, close_m = get_closing_time(now, station)
-            msg = f"🚇 Non ci sono più treni oggi. Il servizio termina alle {close_h:02d}:{close_m:02d}."
-            img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_default.png"
-            cache_buster = int(time_module.time())
-            img_url = f"{img_url}?v={cache_buster}"
-            msg2 = await context.bot.send_photo(chat_id=chat_id, photo=img_url, caption=msg, parse_mode='Markdown', reply_markup=keyboard_inline)
-            if 'all_msg_ids' not in context.chat_data:
-                context.chat_data['all_msg_ids'] = []
-            context.chat_data['all_msg_ids'].append(msg2.message_id)
-            return
-        
-        dest = "Stesicoro" if station == "Montepo" else "Monte Po"
-        remaining = next_dep - now
-        mins_rest = int(remaining.total_seconds() // 60)
-        secs_rest = int(remaining.total_seconds() % 60)
-        total_seconds_rest = int(remaining.total_seconds())
-        time_str_rest = format_time(mins_rest, secs_rest)
-        
-        if mins_rest <= 4:
-            msg = f"Il treno è in binario. Partirà tra **{time_str_rest}**."
+                msg = f"{special_closing_msg}\n🚇 La metropolitana è chiusa in questo momento.\n🕒 Riaprirà alle {next_open.strftime('%H:%M')}."
+        img = get_station_image(estacion_key, now)
+        if img:
+            msg1 = await context.bot.send_photo(chat_id=chat_id, photo=img, caption=msg, reply_markup=keyboard_inline)
         else:
-            time_str = format_time(minutes, seconds)
-            if minutes < SHORT_TIME_THRESHOLD:
-                msg = f"🚇 Prossimo treno per {dest} parte tra **{time_str}**."
-            else:
-                msg = f"🚇 Prossimo treno per {dest} parte tra **{time_str}**, alle {next_dep.strftime('%H:%M')}."
-        
+            msg1 = await context.bot.send_message(chat_id=chat_id, text=msg, reply_markup=keyboard_inline)
+        context.chat_data['main_msg_id'] = msg1.message_id
+        if 'all_msg_ids' not in context.chat_data:
+            context.chat_data['all_msg_ids'] = []
+        context.chat_data['all_msg_ids'].append(msg1.message_id)
+        return
+    
+    next_dep, minutes, seconds, has_trains = get_next_departure(station, now)
+    if not has_trains:
+        close_h, close_m = get_closing_time(now, station)
+        msg = f"🚇 Non ci sono più treni oggi. Il servizio termina alle {close_h:02d}:{close_m:02d}."
+        img = get_station_image(estacion_key, now)
+        if img:
+            msg1 = await context.bot.send_photo(chat_id=chat_id, photo=img, caption=msg, reply_markup=keyboard_inline)
+        else:
+            msg1 = await context.bot.send_message(chat_id=chat_id, text=msg, reply_markup=keyboard_inline)
+        context.chat_data['main_msg_id'] = msg1.message_id
+        if 'all_msg_ids' not in context.chat_data:
+            context.chat_data['all_msg_ids'] = []
+        context.chat_data['all_msg_ids'].append(msg1.message_id)
+        return
+    
+    dest = "Stesicoro" if station == "Montepo" else "Monte Po"
+    remaining = next_dep - now
+    mins_rest = int(remaining.total_seconds() // 60)
+    secs_rest = int(remaining.total_seconds() % 60)
+    time_str_rest = format_time(mins_rest, secs_rest)
+    
+    if mins_rest <= 4:
+        msg = f"🚇 Il treno è in binario. Partirà tra **{time_str_rest}**."
         if mins_rest <= 1:
             next2, min2, sec2, has2 = get_next_departure_after(station, now, next_dep.time())
             if has2:
                 msg += f"\n\n🚆 Il prossimo treno successivo partirà tra {format_time(min2, sec2)}, alle {next2.strftime('%H:%M')}."
             else:
                 msg += f"\n\n🚆 Questo è l'ultimo treno della giornata."
-        
-        last_msg = get_last_train_message(now)
-        if last_msg and not is_sant_agata(now):
-            if "01:00" in last_msg:
-                last_msg = last_msg.replace("📌", "🕐")
-            elif "22:30" in last_msg:
-                last_msg = last_msg.replace("📌", "🕙")
-            msg += f"\n\n{last_msg}"
-        
-        if estacion_key == "montepo":
-            bus_text = get_bus_message_montepo_advanced(now)
-            if bus_text:
-                bus_text_clean = bus_text.replace("**", "")
-                msg += f"\n\n{bus_text_clean}"
-        
-        # ========== LÓGICA DE IMAGEN CORREGIDA ==========
-        img_url = None
-        if mins_rest <= 4:
-            if total_seconds_rest <= 90:
-                img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_trenoarriva_cabeceras.png"
-            else:
-                if estacion_key == "montepo":
-                    img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_binario_montepo.jpg"
-                else:
-                    img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_binario_stesicoro.jpg"
-        
-        if img_url:
-            cache_buster = int(time_module.time())
-            img_url = f"{img_url}?v={cache_buster}"
-            msg2 = await context.bot.send_photo(chat_id=chat_id, photo=img_url, caption=msg, parse_mode='Markdown', reply_markup=keyboard_inline)
+    else:
+        time_str = format_time(minutes, seconds)
+        if minutes < SHORT_TIME_THRESHOLD:
+            msg = f"🚇 Prossimo treno per {dest} parte tra **{time_str}**."
         else:
-            msg2 = await context.bot.send_message(chat_id=chat_id, text=msg, parse_mode='Markdown', reply_markup=keyboard_inline)
-        
-        if 'all_msg_ids' not in context.chat_data:
-            context.chat_data['all_msg_ids'] = []
-        context.chat_data['all_msg_ids'].append(msg2.message_id)
+            msg = f"🚇 Prossimo treno per {dest} parte tra **{time_str}**, alle {next_dep.strftime('%H:%M')}."
+        if minutes <= 1:
+            next2, min2, sec2, has2 = get_next_departure_after(station, now, next_dep.time())
+            if has2:
+                msg += f"\n\n🚆 Il prossimo treno successivo partirà tra {format_time(min2, sec2)}, alle {next2.strftime('%H:%M')}."
+            else:
+                msg += f"\n\n🚆 Questo è l'ultimo treno della giornata."
     
-    except Exception as e:
-        logger.error(f"Error en send_header_response: {e}")
-        try:
-            await context.bot.send_message(chat_id=chat_id, text=f"❌ Errore nel recupero informazioni: {str(e)}", reply_markup=keyboard_inline)
-        except:
-            pass
+    last_msg = get_last_train_message(now)
+    if last_msg and not is_sant_agata(now):
+        if "01:00" in last_msg:
+            last_msg = last_msg.replace("📌", "🕐")
+        elif "22:30" in last_msg:
+            last_msg = last_msg.replace("📌", "🕙")
+        msg += f"\n\n{last_msg}"
+    
+    if estacion_key == "montepo":
+        bus_text = get_bus_message_montepo_advanced(now)
+        if bus_text:
+            bus_text_clean = bus_text.replace("**", "")
+            msg += f"\n\n{bus_text_clean}"
+    
+    total_seconds_rest = int(remaining.total_seconds())
+    if total_seconds_rest <= 90 or mins_rest <= 1:
+        img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_trenoarriva_cabeceras.png"
+        cache_buster = int(time_module.time())
+        img_url = f"{img_url}?v={cache_buster}"
+        msg1 = await context.bot.send_photo(chat_id=chat_id, photo=img_url, caption=msg, parse_mode='Markdown')
+        await msg1.edit_reply_markup(reply_markup=keyboard_inline)
+    else:
+        img = get_station_image(estacion_key, now)
+        if img:
+            msg1 = await context.bot.send_photo(chat_id=chat_id, photo=img, caption=msg, parse_mode='Markdown', reply_markup=keyboard_inline)
+        else:
+            msg1 = await context.bot.send_message(chat_id=chat_id, text=msg, parse_mode='Markdown', reply_markup=keyboard_inline)
+    
+    context.chat_data['main_msg_id'] = msg1.message_id
+    if 'all_msg_ids' not in context.chat_data:
+        context.chat_data['all_msg_ids'] = []
+    context.chat_data['all_msg_ids'].append(msg1.message_id)
 
 # ============================================================================
 # RESPUESTA PRINCIPAL (foto + msg2/msg3)
 # ============================================================================
-async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str, return_to_main: bool = True, keyword_mode: bool = False):
+async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str, return_to_main: bool = True):
     context.chat_data['last_return_to_main'] = return_to_main
     if 'refresh_task' in context.chat_data:
         task = context.chat_data['refresh_task']
@@ -681,11 +602,10 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
     test_indicator = "🧪 [TEST MODE] " if simulated else ""
 
     if estacion_key in ["montepo", "stesicoro"]:
-        await send_header_response(update.message.chat_id, context, estacion_key, is_update=False)
+        await send_header_response(update.message.chat_id, context, estacion_key)
         schedule_cleanup(update, context)
         return
 
-    # ESTACIONES INTERMEDIAS
     closed, next_open, special_closing_msg = is_metro_closed(now, "Montepo")
     if closed:
         if next_open.date() > now.date():
@@ -735,11 +655,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
     
     img_station = get_station_image(estacion_key, now)
     if return_to_main:
-        if keyword_mode:
-            loading_msg = "Questa è la stazione più vicina alla via selezionata"
-        else:
-            loading_msg = "caricando informazione..."
-        temp_msg = await update.message.reply_text(loading_msg, reply_markup=ReplyKeyboardRemove())
+        temp_msg = await update.message.reply_text("caricando informazione...", reply_markup=ReplyKeyboardRemove())
         if 'all_msg_ids' not in context.chat_data:
             context.chat_data['all_msg_ids'] = []
         context.chat_data['all_msg_ids'].append(temp_msg.message_id)
@@ -759,7 +675,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
     schedule_cleanup(update, context)
 
 # ============================================================================
-# COMANDOS Y WRAPPERS (modo normal)
+# COMANDOS Y WRAPPERS
 # ============================================================================
 async def cancel_refresh_and_run(update: Update, context: ContextTypes.DEFAULT_TYPE, coro, *args, **kwargs):
     await coro(update, context, *args, **kwargs)
@@ -831,7 +747,7 @@ async def start(update, context):
     last_msg = get_last_train_message(now)
     msg = await update.message.reply_text(
         f"Ciao {user.first_name}! 👋\n\n"
-        "Premi i pulsanti o scrive il nome della stazione che desideri controllare.\n\n"
+        "Premi i pulsanti o scrivi il nome della stazione che desideri controllare.\n\n"
         f"{last_msg}",
         reply_markup=keyboard_main
     )
@@ -887,8 +803,7 @@ async def test_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Per tornare alla realtà: `/testfin`\n\n"
             "Per una simulazione con aggiornamenti automatici (3 cicli):\n"
             "`/test DDMMYYYY HHMM stazione` (M, S, ML)\n"
-            "Esempio: `/test 09042026 0815 ML`\n\n"
-            "In modalità test, scrivi +NUM per avanzare di NUM minuti (es. +5).",
+            "Esempio: `/test 09042026 0815 ML`",
             parse_mode='Markdown'
         )
         if 'all_msg_ids' not in context.chat_data:
@@ -916,7 +831,7 @@ async def test_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         simulated = CATANIA_TZ.localize(simulated)
         context.chat_data['test_time'] = simulated
         msg = await update.message.reply_text(
-            f"🧪 **Modalità test attivata**\nOra simulata: {simulated.strftime('%d/%m/%Y %H:%M')}\nUsa i bottoni. Per uscire: `/testfin`\nPer avanzare scrivi +NUM minuti (es. +5).",
+            f"🧪 **Modalità test attivata**\nOra simulata: {simulated.strftime('%d/%m/%Y %H:%M')}\nUsa i bottoni. Per uscire: `/testfin`",
             parse_mode='Markdown'
         )
         if 'all_msg_ids' not in context.chat_data:
@@ -1008,7 +923,6 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
                     simulated = CATANIA_TZ.localize(simulated)
                 nueva_simulacion = simulated + timedelta(minutes=minutos)
                 context.chat_data['test_time'] = nueva_simulacion
-                # Obtener la última estación consultada
                 last_station = context.chat_data.get('last_station')
                 if last_station:
                     await send_station_response(update, context, last_station, return_to_main=False)
@@ -1019,18 +933,55 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 await update.message.reply_text("Puoi avanzare da 1 a 99 minuti. Esempio: +5")
                 return
         except ValueError:
-            pass  # no es un número válido, seguir con la detección normal
+            pass
     
     import unicodedata
     texto_norm = unicodedata.normalize('NFKD', texto.lower()).encode('ASCII', 'ignore').decode('ASCII')
     texto_limpio = ' '.join(texto_norm.split())
     palabras = texto_limpio.split()
 
-    # ========== DETECCIÓN DE PALABRAS CLAVE (calles cercanas) con regla de longitud ==========
-    from_keyword = False
-    mejor_clave_kw = None
-    
-    # Función de distancia Levenshtein
+    # ========== DETECCIÓN DE PALABRAS CLAVE (calles cercanas) ==========
+    KEYWORDS = {
+        "corso sicilia": "stesicoro",
+        "repubblica": "stesicoro",
+        "archimede": "giovanni",
+        "liberta": "giovanni",
+        "centrale": "giovanni",
+        "jonio": "galatea",
+        "pasubio": "galatea",
+        "palmanova": "galatea",
+        "messina": "galatea",
+        "firenze": "italia",
+        "ramondetta": "italia",
+        "scammacca": "italia",
+        "veneto": "italia",
+        "carvana": "giuffrida",
+        "abraham": "giuffrida",
+        "lincoln": "giuffrida",
+        "empedocle": "borgo",
+        "signorelli": "borgo",
+        "bronte": "milo",
+        "fleming": "milo",
+        "bergamo": "cibali",
+        "galermo": "cibali",
+        "massimino": "cibali",
+        "stadio": "cibali",
+        "usodimare": "sannullo",
+        "uso di mare": "sannullo",
+        "sebastiano": "sannullo",
+        "lorenzo": "nesima",
+        "bolano": "nesima",
+        "filippo": "nesima",
+        "eredia": "nesima",
+        "garibaldi": "fontana",
+        "carlo": "montepo",
+        "marx": "montepo",
+    }
+    KEYWORDS_NORM = {}
+    for kw, station in KEYWORDS.items():
+        kw_norm = unicodedata.normalize('NFKD', kw.lower()).encode('ASCII', 'ignore').decode('ASCII')
+        KEYWORDS_NORM[kw_norm] = station
+
     def levenshtein_distance(a: str, b: str) -> int:
         if len(a) < len(b):
             return levenshtein_distance(b, a)
@@ -1046,46 +997,35 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 current_row.append(min(insertions, deletions, substitutions))
             previous_row = current_row
         return previous_row[-1]
-    
-    # 1. Búsqueda de frases exactas (ej. "corso sicilia", "uso di mare")
+
+    mejor_clave_kw = None
     for kw_norm, station in KEYWORDS_NORM.items():
         if kw_norm in texto_limpio:
             mejor_clave_kw = station
-            from_keyword = True
             break
-    
-    # 2. Si no hay frase exacta, buscar palabra por palabra con distancia según longitud
     if not mejor_clave_kw:
         palabras_limpio = texto_limpio.split()
         for kw_norm, station in KEYWORDS_NORM.items():
-            # Dividir la keyword en palabras (por si es una frase)
             kw_palabras = kw_norm.split()
-            # Si la keyword tiene más de una palabra, saltar (ya se buscó como frase exacta)
             if len(kw_palabras) > 1:
                 continue
-            # Para palabras sueltas (single word)
             kw_len = len(kw_norm)
             for palabra in palabras_limpio:
                 if len(palabra) <= 2:
-                    continue  # ignorar palabras muy cortas
+                    continue
                 dist = levenshtein_distance(palabra, kw_norm)
-                # Regla: longitud <= 4 -> solo distancia 0 (exacta)
-                # longitud >= 5 -> distancia <= 1
                 if kw_len <= 4:
                     if dist == 0:
                         mejor_clave_kw = station
-                        from_keyword = True
                         break
                 else:
                     if dist <= 1:
                         mejor_clave_kw = station
-                        from_keyword = True
                         break
             if mejor_clave_kw:
                 break
-    
     if mejor_clave_kw:
-        await send_station_response(update, context, mejor_clave_kw, return_to_main=True, keyword_mode=True)
+        await send_station_response(update, context, mejor_clave_kw, return_to_main=True)
         return
 
     # ========== REGLA ESPECIAL: palabras que empiezan por ESTE/STE o terminan en CORO/COLO/COMO ==========
@@ -1118,19 +1058,15 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
         alias_norm[alias_clean] = clave
 
     matches = []
-
-    # 1. Coincidencia exacta de alias
     for alias, clave in alias_norm.items():
         if alias in texto_limpio:
             matches.append((texto_limpio.find(alias), clave))
 
-    # 2. Excepción "giovanni x"
     if not matches:
         giovanni_x_prefix = "giovanni x"
         if texto_limpio.startswith(giovanni_x_prefix):
             matches.append((0, "giovanni"))
 
-    # 3. Coincidencia aproximada de alias (solo palabras >3 letras, y para borgo distancia 1)
     if not matches:
         palabras = texto_limpio.split()
         for alias, clave in alias_norm.items():
@@ -1146,7 +1082,6 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
             if matches:
                 break
 
-    # 4. Coincidencia exacta del nombre completo de la estación
     estaciones = list(NOMBRE_MOSTRAR.items())
     estaciones.sort(key=lambda x: len(x[1]), reverse=True)
     for clave, nombre in estaciones:
@@ -1159,7 +1094,6 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
             matches.append((pos, clave))
             start = pos + 1
 
-    # 5. Coincidencia aproximada de nombres (solo palabras >3 letras, y para borgo distancia 1)
     if not matches:
         palabras = texto_limpio.split()
         for clave, nombre in estaciones:
@@ -1176,7 +1110,6 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
             if matches:
                 break
 
-    # 6. Prefijos
     if not matches:
         for clave, nombre in estaciones:
             nombre_norm = unicodedata.normalize('NFKD', nombre.lower()).encode('ASCII', 'ignore').decode('ASCII')
@@ -1187,14 +1120,12 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 matches.append((0, clave))
                 break
 
-    # 7. Trucos para Galatea
     if not matches:
         if texto_limpio.startswith("gal"):
             matches.append((0, "galatea"))
         elif "galaxia" in texto_limpio:
             matches.append((0, "galatea"))
 
-    # 8. "monte" a secas
     if not matches and texto_limpio == "monte":
         matches.append((0, "montepo"))
 
@@ -1204,7 +1135,6 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await send_station_response(update, context, mejor_clave, return_to_main=True)
         return
 
-    # No reconocido
     msg = await update.message.reply_text(
         "Stazione non riconosciuta. Le stazioni disponibili sono: " +
         ", ".join(NOMBRE_MOSTRAR.values()) + ".\nPuoi anche usare alias come 'Misterbianco' (Monte Po) o 'Humanitas' (Nesima).",
@@ -1215,7 +1145,7 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
     context.chat_data['all_msg_ids'].append(msg.message_id)
 
 # ============================================================================
-# FUNCIONES PARA "SUPER": mostrar trenes inminentes (≤30 secondi)
+# FUNCIONES PARA "SUPER"
 # ============================================================================
 async def get_super_status(now: datetime) -> str:
     lines = []
@@ -1286,7 +1216,6 @@ async def aggiornare_super_callback(update: Update, context: ContextTypes.DEFAUL
     try:
         await query.edit_message_text(text=msg, parse_mode='Markdown', reply_markup=keyboard)
     except Exception:
-        # Si no se puede editar, enviamos uno nuevo (también se guardará)
         result = await query.message.reply_text(msg, parse_mode='Markdown', reply_markup=keyboard)
         if result and 'all_msg_ids' in context.chat_data:
             context.chat_data['all_msg_ids'].append(result.message_id)
