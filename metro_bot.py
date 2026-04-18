@@ -108,6 +108,80 @@ def main():
         except Exception:
             await update.message.reply_text(CREDITI_MSG, parse_mode='Markdown')
 
+    # Nuevo comando /demo
+    async def demo_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        args = context.args
+        if not args:
+            await update.message.reply_text(
+                "🔄 **Modalità demo**\n\n"
+                "Per fissare una data/ora simulata senza indicatore:\n"
+                "`/demo DDMMYYYY HHMM`\n"
+                "Esempio: `/demo 11022026 1102`\n\n"
+                "Per disattivare: `/testfin`",
+                parse_mode='Markdown'
+            )
+            return
+        if len(args) == 2:
+            date_str, time_str = args[0], args[1]
+            if len(date_str) != 8 or not date_str.isdigit():
+                await update.message.reply_text("Formato data non valido. Usa DDMMYYYY.")
+                return
+            if len(time_str) != 4 or not time_str.isdigit():
+                await update.message.reply_text("Formato ora non valido. Usa HHMM.")
+                return
+            day, month, year = int(date_str[0:2]), int(date_str[2:4]), int(date_str[4:8])
+            hour, minute = int(time_str[0:2]), int(time_str[2:4])
+            if hour > 23 or minute > 59:
+                await update.message.reply_text("Ora non valida.")
+                return
+            try:
+                simulated = datetime(year, month, day, hour, minute)
+            except Exception as e:
+                await update.message.reply_text(f"Data non valida: {e}")
+                return
+            simulated = CATANIA_TZ.localize(simulated)
+            context.chat_data['test_time'] = simulated
+            context.chat_data['demo_mode'] = True
+            await update.message.reply_text(
+                f"🧪 **Modalità demo attivata**\nOra simulata: {simulated.strftime('%d/%m/%Y %H:%M')}\n(nessun indicatore visibile)\nUsa /testfin per uscire.",
+                parse_mode='Markdown'
+            )
+            return
+        if len(args) == 3:
+            date_str, time_str, station_code = args[0], args[1], args[2].upper()
+            if station_code == "M":
+                station = "montepo"
+            elif station_code == "S":
+                station = "stesicoro"
+            elif station_code == "ML":
+                station = "milo"
+            else:
+                await update.message.reply_text("Codice stazione non valido. Usa M, S o ML.")
+                return
+            if len(date_str) != 8 or not date_str.isdigit():
+                await update.message.reply_text("Data non valida. Usa DDMMYYYY.")
+                return
+            if len(time_str) != 4 or not time_str.isdigit():
+                await update.message.reply_text("Ora non valida. Usa HHMM.")
+                return
+            day, month, year = int(date_str[0:2]), int(date_str[2:4]), int(date_str[4:8])
+            hour, minute = int(time_str[0:2]), int(time_str[2:4])
+            if hour > 23 or minute > 59:
+                await update.message.reply_text("Ora non valida.")
+                return
+            try:
+                simulated = datetime(year, month, day, hour, minute)
+            except Exception as e:
+                await update.message.reply_text(f"Data non valida: {e}")
+                return
+            simulated = CATANIA_TZ.localize(simulated)
+            context.chat_data['test_time'] = simulated
+            context.chat_data['demo_mode'] = True
+            context.chat_data['last_station'] = station
+            await dev_handlers.send_station_response(update, context, station, return_to_main=False)
+            return
+        await update.message.reply_text("Comando non riconosciuto. Usa /demo DDMMYYYY HHMM o /demo DDMMYYYY HHMM X")
+
     # Registro comandi
     commands = [
         ("start", start_wrapper), ("help", help_command_wrapper),
@@ -120,7 +194,8 @@ def main():
         ("giovanni", cmd_giovanni_wrapper), ("test", test_command_wrapper),
         ("testfin", testfin_command_wrapper), ("testgif", cmd_testgif_wrapper),
         ("auto", auto_wrapper), ("stop", stop_wrapper),
-        ("about", about_cmd), ("grazie", grazie_cmd)
+        ("about", about_cmd), ("grazie", grazie_cmd),
+        ("demo", demo_command)
     ]
     for cmd, handler in commands:
         app.add_handler(CommandHandler(cmd, handler))
@@ -129,7 +204,7 @@ def main():
     app.add_handler(CommandHandler("devfin", dev_fin_wrapper))
 
     # ========================================================================
-    # MANEJADOR DE BOTONES (ReplyKeyboardMarkup)
+    # MANEJADOR DE BOTONES (ReplyKeyboardMarkup) - incluye "← Menu"
     # ========================================================================
     button_texts = ["Monte Po", "Stesicoro", "Altri", "Menu", "← Menu", "Fontana", "Nesima", "San Nullo",
                     "Cibali", "Milo", "Borgo", "Giuffrida", "Italia", "Galatea", "Giovanni XXIII"]
@@ -154,7 +229,6 @@ def main():
         text = update.message.text.strip()
         # Manejo especial para volver al menú
         if text == "← Menu":
-            # Simular que es un botón
             class FakeUpdate:
                 def __init__(self, msg):
                     self.message = msg
