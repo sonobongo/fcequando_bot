@@ -71,7 +71,7 @@ def schedule_cleanup(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def auto_clean_and_restart(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Esperar 2 minutos (para pruebas) - cambiar a 20*60 después
-    await asyncio.sleep(2 * 60)
+    await asyncio.sleep(20 * 60)
     chat_id = update.effective_chat.id
     all_ids = context.chat_data.get('all_msg_ids', [])
     welcome_id = context.chat_data.get('welcome_msg_id')
