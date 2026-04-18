@@ -49,6 +49,50 @@ def clean_text_for_display(text: str) -> str:
     return text
 
 # ============================================================================
+# FUNCIONES PARA ALMACENAR IDS (asegurar que todos los mensajes se guardan)
+# ============================================================================
+async def store_id(context, message):
+    if message and hasattr(message, 'message_id'):
+        if 'all_msg_ids' not in context.chat_data:
+            context.chat_data['all_msg_ids'] = []
+        if message.message_id not in context.chat_data['all_msg_ids']:
+            context.chat_data['all_msg_ids'].append(message.message_id)
+
+def schedule_cleanup(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Cancelar tarea anterior
+    if 'cleanup_task' in context.chat_data:
+        try:
+            context.chat_data['cleanup_task'].cancel()
+        except Exception:
+            pass
+    # Crear nueva tarea
+    task = asyncio.create_task(auto_clean_and_restart(update, context))
+    context.chat_data['cleanup_task'] = task
+
+async def auto_clean_and_restart(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Esperar 2 minutos (para pruebas) - cambiar a 20*60 después
+    await asyncio.sleep(2 * 60)
+    chat_id = update.effective_chat.id
+    all_ids = context.chat_data.get('all_msg_ids', [])
+    welcome_id = context.chat_data.get('welcome_msg_id')
+    for mid in all_ids:
+        if mid == welcome_id:
+            continue
+        try:
+            await context.bot.delete_message(chat_id=chat_id, message_id=mid)
+        except Exception:
+            pass
+    # Conservar solo el welcome_id y el flag demo_mode si estaba activo
+    demo_mode = context.chat_data.get('demo_mode', False)
+    context.chat_data.clear()
+    if demo_mode:
+        context.chat_data['demo_mode'] = True
+    if welcome_id:
+        context.chat_data['welcome_msg_id'] = welcome_id
+        # Asegurar que el mensaje de bienvenida no se pierda de la lista
+        context.chat_data['all_msg_ids'] = [welcome_id]
+
+# ============================================================================
 # BUS NESIMA → HUMANITAS
 # ============================================================================
 def get_bus_message_nesima(now: datetime) -> str:
@@ -209,7 +253,7 @@ def build_temporary_messages(now: datetime, estacion_key: str):
     return msg2, msg3, current_station_key_mp, tiempo_restante_mp, current_station_key_st, tiempo_restante_st, mins_mp, mins_st
 
 # ============================================================================
-# FUNCIONES DE ENVÍO CON IMAGEN
+# FUNCIONES DE ENVÍO (guardan ID automáticamente)
 # ============================================================================
 async def send_treno_arrivo(update: Update, context: ContextTypes.DEFAULT_TYPE, msg: str, direction: str):
     img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_trenoarriva.png"
@@ -219,10 +263,7 @@ async def send_treno_arrivo(update: Update, context: ContextTypes.DEFAULT_TYPE, 
         result = await update.message.reply_photo(photo=img_url, caption=msg, parse_mode='Markdown')
     except Exception:
         result = await update.message.reply_text(msg, parse_mode='Markdown')
-    if result:
-        if 'all_msg_ids' not in context.chat_data:
-            context.chat_data['all_msg_ids'] = []
-        context.chat_data['all_msg_ids'].append(result.message_id)
+    await store_id(context, result)
     return result
 
 async def send_treno_arrivo_cabecera(update: Update, context: ContextTypes.DEFAULT_TYPE, msg: str):
@@ -233,10 +274,7 @@ async def send_treno_arrivo_cabecera(update: Update, context: ContextTypes.DEFAU
         result = await update.message.reply_photo(photo=img_url, caption=msg, parse_mode='Markdown')
     except Exception:
         result = await update.message.reply_text(msg, parse_mode='Markdown')
-    if result:
-        if 'all_msg_ids' not in context.chat_data:
-            context.chat_data['all_msg_ids'] = []
-        context.chat_data['all_msg_ids'].append(result.message_id)
+    await store_id(context, result)
     return result
 
 async def send_gif(update: Update, context: ContextTypes.DEFAULT_TYPE, msg: str, gif_url: str):
@@ -246,10 +284,7 @@ async def send_gif(update: Update, context: ContextTypes.DEFAULT_TYPE, msg: str,
         result = await update.message.reply_animation(animation=gif_url, caption=msg, parse_mode='Markdown')
     except Exception:
         result = await send_default(update, context, msg)
-    if result:
-        if 'all_msg_ids' not in context.chat_data:
-            context.chat_data['all_msg_ids'] = []
-        context.chat_data['all_msg_ids'].append(result.message_id)
+    await store_id(context, result)
     return result
 
 async def send_default(update: Update, context: ContextTypes.DEFAULT_TYPE, msg: str, reply_markup=None):
@@ -260,14 +295,19 @@ async def send_default(update: Update, context: ContextTypes.DEFAULT_TYPE, msg: 
         result = await update.message.reply_photo(photo=img_url, caption=msg, parse_mode='Markdown', reply_markup=reply_markup)
     except Exception:
         result = await update.message.reply_text(msg, parse_mode='Markdown', reply_markup=reply_markup)
-    if result:
-        if 'all_msg_ids' not in context.chat_data:
-            context.chat_data['all_msg_ids'] = []
-        context.chat_data['all_msg_ids'].append(result.message_id)
+    await store_id(context, result)
+    return result
+
+async def send_text_only(update: Update, context: ContextTypes.DEFAULT_TYPE, msg: str, reply_markup=None):
+    msg = clean_text_for_display(msg)
+    if msg is None:
+        return None
+    result = await update.message.reply_text(msg, parse_mode='Markdown', reply_markup=reply_markup)
+    await store_id(context, result)
     return result
 
 # ============================================================================
-# ENVÍO DE MENSAJE 2 y 3
+# ENVÍO DE MENSAJE 2 y 3 (usando send_text_only o imágenes según el caso)
 # ============================================================================
 async def send_message_2(update: Update, context: ContextTypes.DEFAULT_TYPE, msg: str, current_station_key: str, tiempo_restante: int, mins: int, estacion_key: str):
     msg = clean_text_for_display(msg)
@@ -285,16 +325,9 @@ async def send_message_3(update: Update, context: ContextTypes.DEFAULT_TYPE, msg
     msg = clean_text_for_display(msg)
     if msg is None:
         return None
-    
     if "nessun treno in arrivo al momento" in msg:
         msg = msg.replace("nessun treno in arrivo al momento", "Il servizio è terminato")
-        result = await update.message.reply_text(msg, parse_mode='Markdown', reply_markup=reply_markup)
-        if result:
-            if 'all_msg_ids' not in context.chat_data:
-                context.chat_data['all_msg_ids'] = []
-            context.chat_data['all_msg_ids'].append(result.message_id)
-        return result
-    
+        return await send_text_only(update, context, msg, reply_markup)
     if tiempo_restante is not None and (tiempo_restante <= 90 or mins <= 1):
         img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_trenoarriva.png"
         cache_buster = int(time_module.time())
@@ -303,6 +336,8 @@ async def send_message_3(update: Update, context: ContextTypes.DEFAULT_TYPE, msg
             result = await update.message.reply_photo(photo=img_url, caption=msg, parse_mode='Markdown', reply_markup=reply_markup)
         except Exception:
             result = await update.message.reply_text(msg, parse_mode='Markdown', reply_markup=reply_markup)
+        await store_id(context, result)
+        return result
     elif current_station_key and current_station_key != "stesicoro":
         gif_url = f"https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_montepo_{current_station_key}.gif"
         cache_buster = int(time_module.time())
@@ -311,17 +346,13 @@ async def send_message_3(update: Update, context: ContextTypes.DEFAULT_TYPE, msg
             result = await update.message.reply_animation(animation=gif_url, caption=msg, parse_mode='Markdown', reply_markup=reply_markup)
         except Exception:
             result = await send_default(update, context, msg, reply_markup)
+        await store_id(context, result)
+        return result
     else:
-        result = await send_default(update, context, msg, reply_markup)
-    
-    if result:
-        if 'all_msg_ids' not in context.chat_data:
-            context.chat_data['all_msg_ids'] = []
-        context.chat_data['all_msg_ids'].append(result.message_id)
-    return result
+        return await send_default(update, context, msg, reply_markup)
 
 # ============================================================================
-# FUNCIÓN PARA ENVIAR msg2 y msg3 (con botón retardado 1 segundo)
+# FUNCIÓN PARA ENVIAR msg2 y msg3 (con botón retardado)
 # ============================================================================
 async def send_messages_2_and_3(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str, now: datetime, simulated: bool = False, show_button: bool = True):
     msg2, msg3, key_mp, time_mp, key_st, time_st, mins_mp, mins_st = build_temporary_messages(now, estacion_key)
@@ -349,7 +380,6 @@ async def send_messages_2_and_3(update: Update, context: ContextTypes.DEFAULT_TY
         keyboard_inline = InlineKeyboardMarkup([
             [InlineKeyboardButton("🔄 Aggiornare", callback_data=f"aggiornare_{estacion_key}")]
         ])
-        
         async def add_button_later():
             await asyncio.sleep(1)
             try:
@@ -359,41 +389,6 @@ async def send_messages_2_and_3(update: Update, context: ContextTypes.DEFAULT_TY
         asyncio.create_task(add_button_later())
     
     return tuple(ids) if ids else None
-
-# ============================================================================
-# FUNCIÓN DE LIMPIEZA Y REINICIO AUTOMÁTICO
-# ============================================================================
-async def auto_clean_and_restart(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await asyncio.sleep(2 * 60)   # antes era 20 * 60
-    # ... resto del código
-    chat_id = update.effective_chat.id
-    
-    all_ids = context.chat_data.get('all_msg_ids', [])
-    welcome_id = context.chat_data.get('welcome_msg_id')
-    
-    for mid in all_ids:
-        if mid == welcome_id:
-            continue
-        try:
-            await context.bot.delete_message(chat_id=chat_id, message_id=mid)
-        except Exception:
-            pass
-    
-    dev_mode = context.chat_data.get('dev_mode', False)
-    context.chat_data.clear()
-    if dev_mode:
-        context.chat_data['dev_mode'] = True
-    if welcome_id:
-        context.chat_data['welcome_msg_id'] = welcome_id
-
-def schedule_cleanup(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if 'cleanup_task' in context.chat_data:
-        try:
-            context.chat_data['cleanup_task'].cancel()
-        except Exception:
-            pass
-    task = asyncio.create_task(auto_clean_and_restart(update, context))
-    context.chat_data['cleanup_task'] = task
 
 # ============================================================================
 # REFRESCAR SOLO MENSAJES 2 y 3 (sin foto)
@@ -455,13 +450,11 @@ async def aggiornare_cabecera_callback(update: Update, context: ContextTypes.DEF
     estacion_key = query.data.split("_")[2]
     chat_id = query.message.chat_id
     
-    # Eliminar solo el mensaje2 (el que tiene el botón)
     try:
         await query.message.delete()
     except Exception:
         pass
     
-    # Generar nuevo mensaje2 (sin reenviar el mensaje1)
     await send_header_response(chat_id, context, estacion_key, is_update=True)
     schedule_cleanup(update, context)
 
@@ -494,9 +487,7 @@ async def send_header_response(chat_id, context, estacion_key, is_update=False):
             else:
                 msg1 = await context.bot.send_message(chat_id=chat_id, text=caption_station, parse_mode='Markdown')
             context.chat_data['main_msg_id'] = msg1.message_id
-            if 'all_msg_ids' not in context.chat_data:
-                context.chat_data['all_msg_ids'] = []
-            context.chat_data['all_msg_ids'].append(msg1.message_id)
+            await store_id(context, msg1)
         
         # Construir y enviar el mensaje2 (información del tren)
         if closed:
@@ -516,9 +507,7 @@ async def send_header_response(chat_id, context, estacion_key, is_update=False):
             cache_buster = int(time_module.time())
             img_url = f"{img_url}?v={cache_buster}"
             msg2 = await context.bot.send_photo(chat_id=chat_id, photo=img_url, caption=msg, parse_mode='Markdown', reply_markup=keyboard_inline)
-            if 'all_msg_ids' not in context.chat_data:
-                context.chat_data['all_msg_ids'] = []
-            context.chat_data['all_msg_ids'].append(msg2.message_id)
+            await store_id(context, msg2)
             return
         
         next_dep, minutes, seconds, has_trains = get_next_departure(station, now)
@@ -529,9 +518,7 @@ async def send_header_response(chat_id, context, estacion_key, is_update=False):
             cache_buster = int(time_module.time())
             img_url = f"{img_url}?v={cache_buster}"
             msg2 = await context.bot.send_photo(chat_id=chat_id, photo=img_url, caption=msg, parse_mode='Markdown', reply_markup=keyboard_inline)
-            if 'all_msg_ids' not in context.chat_data:
-                context.chat_data['all_msg_ids'] = []
-            context.chat_data['all_msg_ids'].append(msg2.message_id)
+            await store_id(context, msg2)
             return
         
         dest = "Stesicoro" if station == "Montepo" else "Monte Po"
@@ -588,10 +575,7 @@ async def send_header_response(chat_id, context, estacion_key, is_update=False):
             msg2 = await context.bot.send_photo(chat_id=chat_id, photo=img_url, caption=msg, parse_mode='Markdown', reply_markup=keyboard_inline)
         else:
             msg2 = await context.bot.send_message(chat_id=chat_id, text=msg, parse_mode='Markdown', reply_markup=keyboard_inline)
-        
-        if 'all_msg_ids' not in context.chat_data:
-            context.chat_data['all_msg_ids'] = []
-        context.chat_data['all_msg_ids'].append(msg2.message_id)
+        await store_id(context, msg2)
     
     except Exception as e:
         logger.error(f"Error en send_header_response: {e}")
@@ -613,19 +597,25 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
     context.chat_data['refresh_active'] = False
 
     simulated = context.chat_data.get('test_time')
+    demo_mode = context.chat_data.get('demo_mode', False)
     if simulated:
         if simulated.tzinfo is None:
             simulated = CATANIA_TZ.localize(simulated)
         now = simulated
     else:
         now = datetime.now(CATANIA_TZ)
-    test_indicator = "🧪 [TEST MODE] " if simulated else ""
+    
+    # Mostrar test indicator solo si NO es modo demo
+    test_indicator = ""
+    if simulated and not demo_mode:
+        test_indicator = "🧪 [TEST MODE] "
 
     if estacion_key in ["montepo", "stesicoro"]:
         await send_header_response(update.message.chat_id, context, estacion_key, is_update=False)
         schedule_cleanup(update, context)
         return
 
+    # ESTACIONES INTERMEDIAS
     closed, next_open, special_closing_msg = is_metro_closed(now, "Montepo")
     if closed:
         if next_open.date() > now.date():
@@ -645,9 +635,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
         else:
             msg1 = await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
         context.chat_data['main_msg_id'] = msg1.message_id
-        if 'all_msg_ids' not in context.chat_data:
-            context.chat_data['all_msg_ids'] = []
-        context.chat_data['all_msg_ids'].append(msg1.message_id)
+        await store_id(context, msg1)
         schedule_cleanup(update, context)
         return
 
@@ -676,18 +664,14 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
     img_station = get_station_image(estacion_key, now)
     if return_to_main:
         temp_msg = await update.message.reply_text("caricando informazione...", reply_markup=ReplyKeyboardRemove())
-        if 'all_msg_ids' not in context.chat_data:
-            context.chat_data['all_msg_ids'] = []
-        context.chat_data['all_msg_ids'].append(temp_msg.message_id)
+        await store_id(context, temp_msg)
     
     if img_station:
         msg1 = await update.message.reply_photo(photo=img_station, caption=permanent_caption, reply_markup=keyboard_main if return_to_main else keyboard_altri)
     else:
         msg1 = await update.message.reply_text(permanent_caption, reply_markup=keyboard_main if return_to_main else keyboard_altri)
     context.chat_data['main_msg_id'] = msg1.message_id
-    if 'all_msg_ids' not in context.chat_data:
-        context.chat_data['all_msg_ids'] = []
-    context.chat_data['all_msg_ids'].append(msg1.message_id)
+    await store_id(context, msg1)
 
     ids = await send_messages_2_and_3(update, context, estacion_key, now, simulated is not None, show_button=True)
     if ids:
@@ -772,9 +756,7 @@ async def start(update, context):
         reply_markup=keyboard_main
     )
     context.chat_data['welcome_msg_id'] = msg.message_id
-    if 'all_msg_ids' not in context.chat_data:
-        context.chat_data['all_msg_ids'] = []
-    context.chat_data['all_msg_ids'].append(msg.message_id)
+    await store_id(context, msg)
 
 async def help_command(update, context):
     msg = await update.message.reply_text(
@@ -795,9 +777,7 @@ async def help_command(update, context):
         "Oppure premi i pulsanti.",
         reply_markup=keyboard_main
     )
-    if 'all_msg_ids' not in context.chat_data:
-        context.chat_data['all_msg_ids'] = []
-    context.chat_data['all_msg_ids'].append(msg.message_id)
+    await store_id(context, msg)
 
 async def handle_button(update, context):
     text = update.message.text
@@ -826,9 +806,7 @@ async def test_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Esempio: `/test 09042026 0815 ML`",
             parse_mode='Markdown'
         )
-        if 'all_msg_ids' not in context.chat_data:
-            context.chat_data['all_msg_ids'] = []
-        context.chat_data['all_msg_ids'].append(msg.message_id)
+        await store_id(context, msg)
         return
     if len(args) == 2:
         date_str, time_str = args[0], args[1]
@@ -850,13 +828,12 @@ async def test_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         simulated = CATANIA_TZ.localize(simulated)
         context.chat_data['test_time'] = simulated
+        context.chat_data.pop('demo_mode', None)  # Asegurar que no está en demo
         msg = await update.message.reply_text(
             f"🧪 **Modalità test attivata**\nOra simulata: {simulated.strftime('%d/%m/%Y %H:%M')}\nUsa i bottoni. Per uscire: `/testfin`",
             parse_mode='Markdown'
         )
-        if 'all_msg_ids' not in context.chat_data:
-            context.chat_data['all_msg_ids'] = []
-        context.chat_data['all_msg_ids'].append(msg.message_id)
+        await store_id(context, msg)
         return
     if len(args) == 3:
         date_str, time_str, station_code = args[0], args[1], args[2].upper()
@@ -887,6 +864,7 @@ async def test_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         simulated = CATANIA_TZ.localize(simulated)
         context.chat_data['test_time'] = simulated
+        context.chat_data.pop('demo_mode', None)
         context.chat_data['last_station'] = station
         await send_station_response(update, context, station, return_to_main=False)
         return
@@ -895,9 +873,10 @@ async def test_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def testfin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if context.chat_data and 'test_time' in context.chat_data:
         del context.chat_data['test_time']
-        await update.message.reply_text("✅ Modalità test disattivata. Ora reale ripristinata.")
+        context.chat_data.pop('demo_mode', None)
+        await update.message.reply_text("✅ Modalità test/demo disattivata. Ora reale ripristinata.")
     else:
-        await update.message.reply_text("⚠️ Nessuna modalità test attiva.")
+        await update.message.reply_text("⚠️ Nessuna modalità test/demo attiva.")
 
 async def cmd_auto(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("⚠️ L'auto-refresh è stato disattivato. Usa il pulsante 'Aggiornare' per aggiornare manualmente i dati.")
@@ -922,10 +901,7 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
             result = await update.message.reply_photo(photo=img_url, caption=caption, parse_mode='Markdown')
         except Exception:
             result = await update.message.reply_text(caption, parse_mode='Markdown')
-        if result:
-            if 'all_msg_ids' not in context.chat_data:
-                context.chat_data['all_msg_ids'] = []
-            context.chat_data['all_msg_ids'].append(result.message_id)
+        await store_id(context, result)
         return
     
     # ========== RESPUESTA A "super" ==========
@@ -1160,9 +1136,7 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
         ", ".join(NOMBRE_MOSTRAR.values()) + ".\nPuoi anche usare alias come 'Misterbianco' (Monte Po) o 'Humanitas' (Nesima).",
         reply_markup=keyboard_main
     )
-    if 'all_msg_ids' not in context.chat_data:
-        context.chat_data['all_msg_ids'] = []
-    context.chat_data['all_msg_ids'].append(msg.message_id)
+    await store_id(context, msg)
 
 # ============================================================================
 # FUNCIONES PARA "SUPER"
@@ -1212,10 +1186,7 @@ async def send_super_response(update: Update, context: ContextTypes.DEFAULT_TYPE
         [InlineKeyboardButton("🔄 Aggiornare", callback_data="aggiornare_super")]
     ])
     result = await update.message.reply_text(msg, parse_mode='Markdown', reply_markup=keyboard)
-    if result:
-        if 'all_msg_ids' not in context.chat_data:
-            context.chat_data['all_msg_ids'] = []
-        context.chat_data['all_msg_ids'].append(result.message_id)
+    await store_id(context, result)
 
 async def aggiornare_super_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -1237,5 +1208,5 @@ async def aggiornare_super_callback(update: Update, context: ContextTypes.DEFAUL
         await query.edit_message_text(text=msg, parse_mode='Markdown', reply_markup=keyboard)
     except Exception:
         result = await query.message.reply_text(msg, parse_mode='Markdown', reply_markup=keyboard)
-        if result and 'all_msg_ids' in context.chat_data:
-            context.chat_data['all_msg_ids'].append(result.message_id)
+        if result:
+            await store_id(context, result)
