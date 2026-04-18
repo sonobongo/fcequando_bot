@@ -364,7 +364,8 @@ async def send_messages_2_and_3(update: Update, context: ContextTypes.DEFAULT_TY
 # FUNCIÓN DE LIMPIEZA Y REINICIO AUTOMÁTICO
 # ============================================================================
 async def auto_clean_and_restart(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await asyncio.sleep(20 * 60)
+    await asyncio.sleep(2 * 60)   # antes era 20 * 60
+    # ... resto del código
     chat_id = update.effective_chat.id
     
     all_ids = context.chat_data.get('all_msg_ids', [])
