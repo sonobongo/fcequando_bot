@@ -37,7 +37,7 @@ BOTON_TO_KEY = {
 }
 
 # ============================================================================
-# FUNCIÓN PARA ELIMINAR "[]"
+# FUNCIONES PARA ALMACENAR IDS Y LIMPIEZA
 # ============================================================================
 def clean_text_for_display(text: str) -> str:
     if not text:
@@ -48,9 +48,6 @@ def clean_text_for_display(text: str) -> str:
         return None
     return text
 
-# ============================================================================
-# FUNCIONES PARA ALMACENAR IDS (asegurar que todos los mensajes se guardan)
-# ============================================================================
 async def store_id(context, message):
     if message and hasattr(message, 'message_id'):
         if 'all_msg_ids' not in context.chat_data:
@@ -59,51 +56,34 @@ async def store_id(context, message):
             context.chat_data['all_msg_ids'].append(message.message_id)
 
 def schedule_cleanup(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Cancelar tarea anterior
     if 'cleanup_task' in context.chat_data:
         try:
             context.chat_data['cleanup_task'].cancel()
         except Exception:
             pass
-    # Crear nueva tarea
     task = asyncio.create_task(auto_clean_and_restart(update, context))
     context.chat_data['cleanup_task'] = task
 
 async def auto_clean_and_restart(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await asyncio.sleep(2 * 60)
+    await asyncio.sleep(2 * 60)  # 2 minutos para pruebas, cambiar a 20*60 después
     chat_id = update.effective_chat.id
-    
     all_ids = context.chat_data.get('all_msg_ids', [])
     welcome_id = context.chat_data.get('welcome_msg_id')
-    main_id = context.chat_data.get('main_msg_id')
-    
-    # IDs que no debemos borrar (los que tienen teclado)
-    keep_ids = set()
-    if welcome_id:
-        keep_ids.add(welcome_id)
-    if main_id:
-        keep_ids.add(main_id)
-    
     for mid in all_ids:
-        if mid in keep_ids:
+        if mid == welcome_id:
             continue
         try:
             await context.bot.delete_message(chat_id=chat_id, message_id=mid)
         except Exception:
             pass
-    
-    # Si el main_id o welcome_id no están en all_ids, asegurarse de que no se borren
-    # (ya los hemos excluido)
-    
-    dev_mode = context.chat_data.get('dev_mode', False)
+    demo_mode = context.chat_data.get('demo_mode', False)
     context.chat_data.clear()
-    if dev_mode:
-        context.chat_data['dev_mode'] = True
+    if demo_mode:
+        context.chat_data['demo_mode'] = True
     if welcome_id:
         context.chat_data['welcome_msg_id'] = welcome_id
-    if main_id:
-        context.chat_data['main_msg_id'] = main_id
-    # No es necesario restaurar el teclado, ya que el mensaje con el teclado sigue ahí
+        context.chat_data['all_msg_ids'] = [welcome_id]
+
 # ============================================================================
 # BUS NESIMA → HUMANITAS
 # ============================================================================
@@ -319,7 +299,7 @@ async def send_text_only(update: Update, context: ContextTypes.DEFAULT_TYPE, msg
     return result
 
 # ============================================================================
-# ENVÍO DE MENSAJE 2 y 3 (usando send_text_only o imágenes según el caso)
+# ENVÍO DE MENSAJE 2 y 3
 # ============================================================================
 async def send_message_2(update: Update, context: ContextTypes.DEFAULT_TYPE, msg: str, current_station_key: str, tiempo_restante: int, mins: int, estacion_key: str):
     msg = clean_text_for_display(msg)
@@ -454,7 +434,7 @@ async def aggiornare_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     await refresh_messages_only(fake_update, context, estacion_key)
 
 # ============================================================================
-# CALLBACK PARA EL BOTÓN EN CABECERAS (Monte Po y Stesicoro) - Solo elimina mensaje2
+# CALLBACK PARA EL BOTÓN EN CABECERAS (Monte Po y Stesicoro)
 # ============================================================================
 async def aggiornare_cabecera_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -471,7 +451,7 @@ async def aggiornare_cabecera_callback(update: Update, context: ContextTypes.DEF
     schedule_cleanup(update, context)
 
 # ============================================================================
-# FUNCIÓN AUXILIAR PARA ENVIAR RESPUESTA DE CABECERA (CON LÓGICA DE BINARIO)
+# FUNCIÓN AUXILIAR PARA ENVIAR RESPUESTA DE CABECERA
 # ============================================================================
 async def send_header_response(chat_id, context, estacion_key, is_update=False):
     try:
@@ -490,7 +470,6 @@ async def send_header_response(chat_id, context, estacion_key, is_update=False):
             [InlineKeyboardButton("🔄 Aggiornare", callback_data=f"agg_cabecera_{estacion_key}")]
         ])
         
-        # Solo si no es una actualización, enviamos el mensaje1 (foto de la estación)
         if not is_update:
             img_station = get_station_image(estacion_key, now)
             caption_station = f"🚇 {NOMBRE_MOSTRAR.get(estacion_key, estacion_key.capitalize())}"
@@ -501,7 +480,28 @@ async def send_header_response(chat_id, context, estacion_key, is_update=False):
             context.chat_data['main_msg_id'] = msg1.message_id
             await store_id(context, msg1)
         
-        # Construir y enviar el mensaje2 (información del tren)
+        # ========== MENSAJES ESPECIALES PARA FECHAS SEÑALADAS ==========
+        # Nochevieja (31/12 a partir de las 12:00)
+        if (now.month == 12 and now.day == 31 and now.hour >= 12) or (now.month == 1 and now.day == 1 and now.hour < 3):
+            msg = "🎉 Orario speciale di Capodanno: il servizio termina alle 03:00. Buon anno! 🎉"
+            img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_default.png"
+            cache_buster = int(time_module.time())
+            img_url = f"{img_url}?v={cache_buster}"
+            msg2 = await context.bot.send_photo(chat_id=chat_id, photo=img_url, caption=msg, parse_mode='Markdown', reply_markup=keyboard_inline)
+            await store_id(context, msg2)
+            return
+        
+        # Rangos especiales: 1/1 de 01:00 a 03:00 y 4-6/2 de 01:00 a 02:00
+        if (now.month == 1 and now.day == 1 and 1 <= now.hour < 3) or \
+           (now.month == 2 and now.day in [4,5,6] and 1 <= now.hour < 2):
+            msg = "🚇 Il metro è aperto fino alle 03:00. Nessun altro treno in programma."
+            img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_default.png"
+            cache_buster = int(time_module.time())
+            img_url = f"{img_url}?v={cache_buster}"
+            msg2 = await context.bot.send_photo(chat_id=chat_id, photo=img_url, caption=msg, parse_mode='Markdown', reply_markup=keyboard_inline)
+            await store_id(context, msg2)
+            return
+        
         if closed:
             if next_open.date() > now.date():
                 msg = f"{special_closing_msg}\n🚇 La metropolitana è chiusa in questo momento. Riaprirà domani alle {next_open.strftime('%H:%M')}."
@@ -570,7 +570,7 @@ async def send_header_response(chat_id, context, estacion_key, is_update=False):
                 bus_text_clean = bus_text.replace("**", "")
                 msg += f"\n\n{bus_text_clean}"
         
-        # ========== LÓGICA DE IMAGEN CORREGIDA ==========
+        # Lógica de imagen para cabeceras
         img_url = None
         if mins_rest <= 4:
             if total_seconds_rest <= 90:
@@ -617,7 +617,6 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
     else:
         now = datetime.now(CATANIA_TZ)
     
-    # Mostrar test indicator solo si NO es modo demo
     test_indicator = ""
     if simulated and not demo_mode:
         test_indicator = "🧪 [TEST MODE] "
@@ -675,7 +674,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
     
     img_station = get_station_image(estacion_key, now)
     if return_to_main:
-        temp_msg = await update.message.reply_text("caricando informazione...", reply_markup=ReplyKeyboardRemove())
+        temp_msg = await update.message.reply_text("caricando informazione...")
         await store_id(context, temp_msg)
     
     if img_station:
@@ -840,7 +839,7 @@ async def test_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         simulated = CATANIA_TZ.localize(simulated)
         context.chat_data['test_time'] = simulated
-        context.chat_data.pop('demo_mode', None)  # Asegurar que no está en demo
+        context.chat_data.pop('demo_mode', None)
         msg = await update.message.reply_text(
             f"🧪 **Modalità test attivata**\nOra simulata: {simulated.strftime('%d/%m/%Y %H:%M')}\nUsa i bottoni. Per uscire: `/testfin`",
             parse_mode='Markdown'
