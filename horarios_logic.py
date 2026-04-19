@@ -687,6 +687,11 @@ def format_time(minutes: int, seconds: int) -> str:
             return f"{minutes} minuti e 30 secondi"
 
 def get_last_train_message(now: datetime) -> str:
+    # Aviso especial para Nochevieja: desde el 31/12 12:00 hasta el 01/01 03:00
+    if (now.month == 12 and now.day == 31 and now.hour >= 12) or (now.month == 1 and now.day == 1 and now.hour < 3):
+        return "🎉 Oggi orario speciale: ultimo treno alle 03:00. Buon anno! 🎉"
+    
+    # Comportamiento normal para el resto del año
     if now.hour < 20 or (now.hour == 20 and now.minute < 30):
         return ""
     if is_sant_agata(now) or is_closed_all_day(now):
