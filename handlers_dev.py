@@ -70,28 +70,40 @@ def schedule_cleanup(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.chat_data['cleanup_task'] = task
 
 async def auto_clean_and_restart(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Esperar 2 minutos (para pruebas) - cambiar a 20*60 después
-    await asyncio.sleep(20 * 60)
+    await asyncio.sleep(2 * 60)
     chat_id = update.effective_chat.id
+    
     all_ids = context.chat_data.get('all_msg_ids', [])
     welcome_id = context.chat_data.get('welcome_msg_id')
+    main_id = context.chat_data.get('main_msg_id')
+    
+    # IDs que no debemos borrar (los que tienen teclado)
+    keep_ids = set()
+    if welcome_id:
+        keep_ids.add(welcome_id)
+    if main_id:
+        keep_ids.add(main_id)
+    
     for mid in all_ids:
-        if mid == welcome_id:
+        if mid in keep_ids:
             continue
         try:
             await context.bot.delete_message(chat_id=chat_id, message_id=mid)
         except Exception:
             pass
-    # Conservar solo el welcome_id y el flag demo_mode si estaba activo
-    demo_mode = context.chat_data.get('demo_mode', False)
+    
+    # Si el main_id o welcome_id no están en all_ids, asegurarse de que no se borren
+    # (ya los hemos excluido)
+    
+    dev_mode = context.chat_data.get('dev_mode', False)
     context.chat_data.clear()
-    if demo_mode:
-        context.chat_data['demo_mode'] = True
+    if dev_mode:
+        context.chat_data['dev_mode'] = True
     if welcome_id:
         context.chat_data['welcome_msg_id'] = welcome_id
-        # Asegurar que el mensaje de bienvenida no se pierda de la lista
-        context.chat_data['all_msg_ids'] = [welcome_id]
-
+    if main_id:
+        context.chat_data['main_msg_id'] = main_id
+    # No es necesario restaurar el teclado, ya que el mensaje con el teclado sigue ahí
 # ============================================================================
 # BUS NESIMA → HUMANITAS
 # ============================================================================
