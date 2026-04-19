@@ -118,16 +118,20 @@ def is_peak_hour(now: datetime) -> bool:
 # EXTRA DE 5 SEGUNDOS PARA GIOVANNI XXIII (13:00-18:00, laborables, sept-jun)
 # ============================================================================
 def should_add_giovanni_extra(now: datetime) -> bool:
-    if now.weekday() >= 5:
-        return False
-    if is_festivo_nazionale(now):
-        return False
-    month = now.month
-    if not (month >= 9 or month <= 6):
-        return False
-    hour = now.hour
-    if 13 <= hour < 18:
-        return True
+    # Condición original: laborables (lunes a viernes) no festivos, de 13 a 18, sept-jun
+    if now.weekday() < 5 and not is_festivo_nazionale(now):
+        month = now.month
+        if (month >= 9 or month <= 6) and 13 <= now.hour < 18:
+            return True
+    
+    # Nueva condición: domingos de 18 a 21, sept-jun, y el lunes siguiente es laborable
+    if now.weekday() == 6:  # domingo
+        month = now.month
+        if (month >= 9 or month <= 6) and 18 <= now.hour < 21:
+            # Comprobar si el lunes siguiente es laborable (no festivo)
+            tomorrow = now + timedelta(days=1)
+            if not is_festivo_nazionale(tomorrow) and tomorrow.weekday() < 5:
+                return True
     return False
 
 # ============================================================================
