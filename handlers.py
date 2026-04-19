@@ -37,7 +37,7 @@ BOTON_TO_KEY = {
 }
 
 # ============================================================================
-# FUNCIONES PARA ALMACENAR IDS Y LIMPIEZA
+# FUNCIÓN PARA ELIMINAR "[]"
 # ============================================================================
 def clean_text_for_display(text: str) -> str:
     if not text:
@@ -48,41 +48,15 @@ def clean_text_for_display(text: str) -> str:
         return None
     return text
 
+# ============================================================================
+# FUNCIÓN PARA ALMACENAR IDS (opcional, ya no se usa para limpieza pero se mantiene)
+# ============================================================================
 async def store_id(context, message):
     if message and hasattr(message, 'message_id'):
         if 'all_msg_ids' not in context.chat_data:
             context.chat_data['all_msg_ids'] = []
         if message.message_id not in context.chat_data['all_msg_ids']:
             context.chat_data['all_msg_ids'].append(message.message_id)
-
-def schedule_cleanup(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if 'cleanup_task' in context.chat_data:
-        try:
-            context.chat_data['cleanup_task'].cancel()
-        except Exception:
-            pass
-    task = asyncio.create_task(auto_clean_and_restart(update, context))
-    context.chat_data['cleanup_task'] = task
-
-async def auto_clean_and_restart(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await asyncio.sleep(2 * 60)  # 2 minutos para pruebas, cambiar a 20*60 después
-    chat_id = update.effective_chat.id
-    all_ids = context.chat_data.get('all_msg_ids', [])
-    welcome_id = context.chat_data.get('welcome_msg_id')
-    for mid in all_ids:
-        if mid == welcome_id:
-            continue
-        try:
-            await context.bot.delete_message(chat_id=chat_id, message_id=mid)
-        except Exception:
-            pass
-    demo_mode = context.chat_data.get('demo_mode', False)
-    context.chat_data.clear()
-    if demo_mode:
-        context.chat_data['demo_mode'] = True
-    if welcome_id:
-        context.chat_data['welcome_msg_id'] = welcome_id
-        context.chat_data['all_msg_ids'] = [welcome_id]
 
 # ============================================================================
 # BUS NESIMA → HUMANITAS
@@ -245,7 +219,7 @@ def build_temporary_messages(now: datetime, estacion_key: str):
     return msg2, msg3, current_station_key_mp, tiempo_restante_mp, current_station_key_st, tiempo_restante_st, mins_mp, mins_st
 
 # ============================================================================
-# FUNCIONES DE ENVÍO (guardan ID automáticamente)
+# FUNCIONES DE ENVÍO (guardan ID automáticamente, pero no se usan para limpieza)
 # ============================================================================
 async def send_treno_arrivo(update: Update, context: ContextTypes.DEFAULT_TYPE, msg: str, direction: str):
     img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_trenoarriva.png"
@@ -407,7 +381,7 @@ async def refresh_messages_only(update: Update, context: ContextTypes.DEFAULT_TY
     new_ids = await send_messages_2_and_3(update, context, estacion_key, now, simulated is not None, show_button=True)
     if new_ids:
         context.chat_data['refresh_msg_ids'] = list(new_ids)
-    schedule_cleanup(update, context)
+    # No se programa limpieza
 
 # ============================================================================
 # CALLBACK PARA EL BOTÓN "AGGIORNARE"
@@ -448,7 +422,7 @@ async def aggiornare_cabecera_callback(update: Update, context: ContextTypes.DEF
         pass
     
     await send_header_response(chat_id, context, estacion_key, is_update=True)
-    schedule_cleanup(update, context)
+    # No se programa limpieza
 
 # ============================================================================
 # FUNCIÓN AUXILIAR PARA ENVIAR RESPUESTA DE CABECERA
@@ -623,7 +597,6 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
 
     if estacion_key in ["montepo", "stesicoro"]:
         await send_header_response(update.message.chat_id, context, estacion_key, is_update=False)
-        schedule_cleanup(update, context)
         return
 
     # ESTACIONES INTERMEDIAS
@@ -647,7 +620,6 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
             msg1 = await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
         context.chat_data['main_msg_id'] = msg1.message_id
         await store_id(context, msg1)
-        schedule_cleanup(update, context)
         return
 
     nombre = NOMBRE_MOSTRAR.get(estacion_key, estacion_key.capitalize())
@@ -687,7 +659,6 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
     ids = await send_messages_2_and_3(update, context, estacion_key, now, simulated is not None, show_button=True)
     if ids:
         context.chat_data['refresh_msg_ids'] = list(ids)
-    schedule_cleanup(update, context)
 
 # ============================================================================
 # COMANDOS Y WRAPPERS
