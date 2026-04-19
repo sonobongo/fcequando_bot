@@ -556,7 +556,6 @@ def get_schedule_list(station: str, now: datetime) -> List[time]:
                 schedule_list = SCHEDULES[station]["sunday"]
             else:
                 schedule_list = SCHEDULES[station]["weekday"]
-    # Buscar primer tren del día
     current_time = now.time()
     first_train = schedule_list[0] if schedule_list else None
     if first_train and current_time < first_train:
@@ -588,7 +587,6 @@ def get_schedule_list(station: str, now: datetime) -> List[time]:
 def get_next_departure(station: str, now: datetime) -> Tuple[Optional[datetime], int, int, bool]:
     # Si la hora está entre 01:00 y 06:00 (excepto rangos especiales), no hay trenes
     if 1 <= now.hour < 6:
-        # Pero si es un rango especial (1/1 1-3 o 4-6/2 1-2), dejamos que pase
         if (now.month == 1 and now.day == 1 and 1 <= now.hour < 3) or \
            (now.month == 2 and now.day in [4,5,6] and 1 <= now.hour < 2):
             pass
@@ -669,6 +667,64 @@ def get_last_train_message(now: datetime) -> str:
     else:
         close_time = "22:30"
     return f"📌 Oggi la metro chiude alle {close_time}."
+
+# ============================================================================
+# FUNCIÓN PRINCIPAL IS_METRO_CLOSED
+# ============================================================================
+def is_metro_closed(now: datetime, station: str) -> Tuple[bool, Optional[datetime], str]:
+    if now.tzinfo is None:
+        now = CATANIA_TZ.localize(now)
+    
+    if is_closed_all_day(now):
+        tomorrow = now + timedelta(days=1)
+        open_h, open_m = get_opening_time(tomorrow, station)
+        next_open = datetime.combine(tomorrow.date(), time(open_h, open_m))
+        next_open = CATANIA_TZ.localize(next_open)
+        return (True, next_open, "")
+    
+    if is_new_years_eve(now):
+        if now.hour >= 23 or now.hour < 3:
+            open_h, open_m = get_opening_time(now, station)
+            next_open = datetime.combine(now.date(), time(open_h, open_m))
+            if next_open <= now:
+                next_open = datetime.combine(now.date() + timedelta(days=1), time(open_h, open_m))
+            next_open = CATANIA_TZ.localize(next_open)
+            special_msg = "🚇 Non ci sono informazioni disponibili. Ricorda che oggi l'ultima metropolitana è partita alle 03:00."
+            return (True, next_open, special_msg)
+    
+    # Cierre forzado de 01:00 a 06:00 (todos los días)
+    if 1 <= now.hour < 6:
+        open_h, open_m = get_opening_time(now, station)
+        next_open = datetime.combine(now.date(), time(open_h, open_m))
+        if next_open <= now:
+            next_open = datetime.combine(now.date() + timedelta(days=1), time(open_h, open_m))
+        next_open = CATANIA_TZ.localize(next_open)
+        return (True, next_open, "🚇 La metropolitana è chiusa in questo momento.")
+    
+    current_time = now.time()
+    open_h, open_m = get_opening_time(now, station)
+    close_h, close_m = get_closing_time(now, station)
+    opening_time = time(open_h, open_m)
+    closing_time = time(close_h, close_m)
+    
+    if close_h < open_h or (close_h == open_h and close_m < open_m):
+        if current_time >= opening_time or current_time < closing_time:
+            return (False, None, "")
+        else:
+            next_open = datetime.combine(now.date(), opening_time)
+            if next_open <= now:
+                next_open = datetime.combine(now.date() + timedelta(days=1), opening_time)
+            next_open = CATANIA_TZ.localize(next_open)
+            return (True, next_open, "")
+    else:
+        if current_time >= closing_time or current_time < opening_time:
+            if current_time < opening_time:
+                next_open = datetime.combine(now.date(), opening_time)
+            else:
+                next_open = datetime.combine(now.date() + timedelta(days=1), opening_time)
+            next_open = CATANIA_TZ.localize(next_open)
+            return (True, next_open, "")
+        return (False, None, "")
 
 # ============================================================================
 # FUNCIONES PARA ESTACIONES INTERMEDIAS (usando segundos exactos)
