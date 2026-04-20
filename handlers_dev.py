@@ -858,6 +858,7 @@ async def testfin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def get_super_status(now: datetime) -> str:
     estaciones_orden = ["montepo", "fontana", "nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "giovanni", "stesicoro"]
     lines = []
+    MAX_SEGUNDOS_PARA_FLECHA = 3600  # 1 hora: si el tren tarda más, no mostramos flecha
     
     for estacion in estaciones_orden:
         nombre = NOMBRE_MOSTRAR.get(estacion, estacion.capitalize())
@@ -871,10 +872,12 @@ async def get_super_status(now: datetime) -> str:
                     linea_estacion = f"{nombre} 🔻 Stesicoro: {total//60:02d}:{total%60:02d}"
                 elif total <= 240:
                     linea_estacion = f"{nombre} In binario"
-                else:
+                elif total <= MAX_SEGUNDOS_PARA_FLECHA:
                     linea_estacion = f"{nombre} 🔻"
+                # Si total > MAX, se queda solo el nombre
             else:
-                linea_estacion = f"{nombre} 🔻"  # Si no hay tren, igual mostramos flecha? Según tu petición, en cabeceras sí.
+                # Si no hay tren, no mostramos flecha (solo nombre)
+                linea_estacion = nombre
         
         elif estacion == "stesicoro":
             next_dep, mins, secs, has = get_next_departure("Stesicoro", now)
@@ -884,10 +887,10 @@ async def get_super_status(now: datetime) -> str:
                     linea_estacion = f"{nombre} 🔺 Monte Po: {total//60:02d}:{total%60:02d}"
                 elif total <= 240:
                     linea_estacion = f"{nombre} In binario"
-                else:
+                elif total <= MAX_SEGUNDOS_PARA_FLECHA:
                     linea_estacion = f"{nombre} 🔺"
             else:
-                linea_estacion = f"{nombre} 🔺"
+                linea_estacion = nombre
         
         else:
             # Estaciones intermedias
@@ -901,8 +904,8 @@ async def get_super_status(now: datetime) -> str:
                     texto = f"{nombre} 🔻 Stesicoro: {total//60:02d}:{total%60:02d}"
                     if mejor is None or total < mejor[0]:
                         mejor = (total, texto)
-                else:
-                    # Tiempo >59 segundos, pero hay tren: mostrar solo flecha
+                elif total <= MAX_SEGUNDOS_PARA_FLECHA:
+                    # Tiempo >59 segundos pero razonable (≤1h): mostrar solo flecha
                     texto = f"{nombre} 🔻"
                     if mejor is None:
                         mejor = (total, texto)
@@ -913,14 +916,14 @@ async def get_super_status(now: datetime) -> str:
                     texto = f"{nombre} 🔺 Monte Po: {total//60:02d}:{total%60:02d}"
                     if mejor is None or total < mejor[0]:
                         mejor = (total, texto)
-                else:
+                elif total <= MAX_SEGUNDOS_PARA_FLECHA:
                     texto = f"{nombre} 🔺"
                     if mejor is None:
                         mejor = (total, texto)
             
             if mejor:
                 linea_estacion = mejor[1]
-            # Si no hay ningún tren, se queda solo el nombre (sin flecha)
+            # Si no hay ningún tren (info_mp e info_st son None) o los tiempos superan MAX, se queda solo el nombre
         
         lines.append(linea_estacion)
         # Separador después de cada estación (excepto la última)
