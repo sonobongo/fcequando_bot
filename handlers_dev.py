@@ -861,74 +861,64 @@ async def get_super_status(now: datetime) -> str:
     
     for estacion in estaciones_orden:
         nombre = NOMBRE_MOSTRAR.get(estacion, estacion.capitalize())
-        texto_linea = nombre
         
         if estacion == "montepo":
             next_dep, mins, secs, has = get_next_departure("Montepo", now)
             if has:
                 total = mins*60 + secs
                 if total <= 59:
-                    texto_linea = f"{nombre} 🔻 Stesicoro: {total//60:02d}:{total%60:02d}"
+                    lines.append(f"{nombre} 🔻 Stesicoro: {total//60:02d}:{total%60:02d}")
                 elif total <= 240:
-                    texto_linea = f"{nombre} In binario"
+                    lines.append(f"{nombre} In binario")
                 else:
-                    texto_linea = f"{nombre} 🔻"  # Más de 4 minutos
+                    lines.append(f"{nombre} 🔻")
             else:
-                texto_linea = f"{nombre} 🔻"  # Sin tren, pero mostramos indicador por defecto? O lo dejamos sin flecha? Ajusta según prefieras.
+                lines.append(f"{nombre} 🔻")
         
         elif estacion == "stesicoro":
             next_dep, mins, secs, has = get_next_departure("Stesicoro", now)
             if has:
                 total = mins*60 + secs
                 if total <= 59:
-                    texto_linea = f"{nombre} 🔺 Monte Po: {total//60:02d}:{total%60:02d}"
+                    lines.append(f"{nombre} 🔺 Monte Po: {total//60:02d}:{total%60:02d}")
                 elif total <= 240:
-                    texto_linea = f"{nombre} In binario"
+                    lines.append(f"{nombre} In binario")
                 else:
-                    texto_linea = f"{nombre} 🔺"
+                    lines.append(f"{nombre} 🔺")
             else:
-                texto_linea = f"{nombre} 🔺"
+                lines.append(f"{nombre} 🔺")
         
         else:
             # Estaciones intermedias
             info_mp, info_st = get_next_train_at_station(now, estacion)
-            tiempos = []  # (total_seconds, direccion, texto_completo)
+            mejor_texto = None
             
             if info_mp:
                 paso, mins, secs, _ = info_mp
                 total = mins*60 + secs
                 if total <= 59:
-                    tiempos.append((total, "Stesicoro", f"{nombre} 🔻 Stesicoro: {total//60:02d}:{total%60:02d}"))
+                    mejor_texto = f"{nombre} 🔻 Stesicoro: {total//60:02d}:{total%60:02d}"
                 else:
-                    tiempos.append((total, "Stesicoro", f"{nombre} 🔻"))
+                    mejor_texto = f"{nombre} 🔻"
             if info_st:
                 paso, mins, secs, _ = info_st
                 total = mins*60 + secs
                 if total <= 59:
-                    tiempos.append((total, "Monte Po", f"{nombre} 🔺 Monte Po: {total//60:02d}:{total%60:02d}"))
+                    mejor_texto = f"{nombre} 🔺 Monte Po: {total//60:02d}:{total%60:02d}"
                 else:
-                    tiempos.append((total, "Monte Po", f"{nombre} 🔺"))
+                    if mejor_texto is None:
+                        mejor_texto = f"{nombre} 🔺"
+                    # Si ya había un texto de la otra dirección (con flecha), no lo sobrescribimos,
+                    # pero en este caso solo mostramos el tren más próximo. Para mostrar ambos,
+                    # habría que modificar, pero según tu diseño se muestra solo el más próximo.
+                    # Si quieres mostrar ambos, habría que cambiar la lógica.
             
-            if not tiempos:
-                # No hay tren en ninguna dirección
-                lines.append(nombre)
-                lines.append("⬜")
-                continue
+            if mejor_texto:
+                lines.append(mejor_texto)
             else:
-                # Ordenar por tiempo (menor a mayor)
-                tiempos.sort(key=lambda x: x[0])
-                mejor = tiempos[0]
-                if mejor[0] <= 59:
-                    texto_linea = mejor[2]
-                else:
-                    # Mostrar solo la flecha del tren más próximo (aunque falte >59s)
-                    if mejor[1] == "Stesicoro":
-                        texto_linea = f"{nombre} 🔻"
-                    else:
-                        texto_linea = f"{nombre} 🔺"
+                lines.append(nombre)
         
-        lines.append(texto_linea)
-        # Separador ⬜ después de cada estación (excepto la última)
+        # Añadir separador después de cada estación (excepto la última)
         if estacion != "stesicoro":
             lines.append("⬜")
     
