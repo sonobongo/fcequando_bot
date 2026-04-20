@@ -858,75 +858,92 @@ async def testfin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def get_super_status(now: datetime) -> str:
     estaciones_orden = ["montepo", "fontana", "nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "giovanni", "stesicoro"]
     lines = []
-    LIMITE = 150  # Cambia este valor si quieres otro límite (ej. 120, 180, etc.)
+    LIMITE = 150  # segundos para mostrar flecha en separador (entre 2 y LIMITE)
     
+    # Diccionario para acumular flechas que deben ir en el separador anterior a cada estación
+    flechas_en_separador = {estacion: [] for estacion in estaciones_orden}
+    
+    # Primera pasada: recolectar información de trenes para cada estación
     for idx, estacion in enumerate(estaciones_orden):
-        nombre = NOMBRE_MOSTRAR.get(estacion, estacion.capitalize())
-        
-        # ---- Línea de la estación (solo si hay tren con ≤59 segundos) ----
         if estacion == "montepo":
             next_dep, mins, secs, has = get_next_departure("Montepo", now)
             if has:
                 total = mins*60 + secs
-                if total <= 59:
-                    lines.append(f"{nombre} 🔻 Stesicoro: {total//60:02d}:{total%60:02d}")
+                if total <= 1:
+                    # Tren llegando (0 segundos) -> añadir flecha al separador anterior (no hay separador antes de Monte Po)
+                    pass
+                elif 2 <= total <= 59:
+                    # Mostrar en la estación
+                    lines.append(f"{NOMBRE_MOSTRAR[estacion]} 🔻 Stesicoro: {total//60:02d}:{total%60:02d}")
+                elif 60 < total <= LIMITE:
+                    # Añadir al separador de la estación actual (para la siguiente estación)
+                    flechas_en_separador[estacion].append(("🔻", total))
                 else:
-                    lines.append(nombre)
+                    lines.append(NOMBRE_MOSTRAR[estacion])
             else:
-                lines.append(nombre)
+                lines.append(NOMBRE_MOSTRAR[estacion])
         elif estacion == "stesicoro":
             next_dep, mins, secs, has = get_next_departure("Stesicoro", now)
             if has:
                 total = mins*60 + secs
-                if total <= 59:
-                    lines.append(f"{nombre} 🔺 Monte Po: {total//60:02d}:{total%60:02d}")
+                if total <= 1:
+                    pass
+                elif 2 <= total <= 59:
+                    lines.append(f"{NOMBRE_MOSTRAR[estacion]} 🔺 Monte Po: {total//60:02d}:{total%60:02d}")
+                elif 60 < total <= LIMITE:
+                    flechas_en_separador[estacion].append(("🔺", total))
                 else:
-                    lines.append(nombre)
+                    lines.append(NOMBRE_MOSTRAR[estacion])
             else:
-                lines.append(nombre)
+                lines.append(NOMBRE_MOSTRAR[estacion])
         else:
             info_mp, info_st = get_next_train_at_station(now, estacion)
-            mejor_tiempo = None
-            mejor_texto = None
+            mejor = None
             if info_mp:
-                paso, mins, secs, _ = info_mp
-                total = mins*60 + secs
-                if total <= 59:
-                    mejor_tiempo = total
-                    mejor_texto = f"{nombre} 🔻 Stesicoro: {total//60:02d}:{total%60:02d}"
+                total = info_mp[1]*60 + info_mp[2]
+                if total <= 1:
+                    # Tren llegando: añadir al separador anterior (estación previa)
+                    prev_estacion = estaciones_orden[idx-1] if idx > 0 else None
+                    if prev_estacion:
+                        flechas_en_separador[prev_estacion].append(("🔻", 0))  # tiempo 0 para ordenar
+                elif 2 <= total <= 59:
+                    if mejor is None or total < mejor[0]:
+                        mejor = (total, f"{NOMBRE_MOSTRAR[estacion]} 🔻 Stesicoro: {total//60:02d}:{total%60:02d}")
+                elif 60 < total <= LIMITE:
+                    flechas_en_separador[estacion].append(("🔻", total))
             if info_st:
-                paso, mins, secs, _ = info_st
-                total = mins*60 + secs
-                if total <= 59:
-                    if mejor_tiempo is None or total < mejor_tiempo:
-                        mejor_tiempo = total
-                        mejor_texto = f"{nombre} 🔺 Monte Po: {total//60:02d}:{total%60:02d}"
-            if mejor_texto:
-                lines.append(mejor_texto)
+                total = info_st[1]*60 + info_st[2]
+                if total <= 1:
+                    prev_estacion = estaciones_orden[idx-1] if idx > 0 else None
+                    if prev_estacion:
+                        flechas_en_separador[prev_estacion].append(("🔺", 0))
+                elif 2 <= total <= 59:
+                    if mejor is None or total < mejor[0]:
+                        mejor = (total, f"{NOMBRE_MOSTRAR[estacion]} 🔺 Monte Po: {total//60:02d}:{total%60:02d}")
+                elif 60 < total <= LIMITE:
+                    flechas_en_separador[estacion].append(("🔺", total))
+            if mejor:
+                lines.append(mejor[1])
             else:
-                lines.append(nombre)
-        
-        # ---- Separador: flechas si hay tren en rango (61-LIMITE segundos) hacia la SIGUIENTE estación ----
-        if estacion != "stesicoro":
-            siguiente = estaciones_orden[idx+1]
-            info_mp_next, info_st_next = get_next_train_at_station(now, siguiente)
-            flechas = []
-            if info_mp_next:
-                total = info_mp_next[1]*60 + info_mp_next[2]
-                if 60 < total <= LIMITE:
-                    flechas.append(("🔻", total))
-            if info_st_next:
-                total = info_st_next[1]*60 + info_st_next[2]
-                if 60 < total <= LIMITE:
-                    flechas.append(("🔺", total))
-            if flechas:
-                flechas.sort(key=lambda x: x[1])  # ordenar por tiempo (más próximo primero)
-                flechas_str = "".join([f for f, _ in flechas])
-                lines.append(f"⬜{flechas_str}")
-            else:
-                lines.append("⬜")
+                lines.append(NOMBRE_MOSTRAR[estacion])
     
-    return "🛂 **SUPERVISORE: Monitoraggio degli arrivi dei treni**\n\n" + "\n".join(lines)
+    # Segunda pasada: construir la salida final intercalando separadores con las flechas acumuladas
+    output_lines = []
+    for idx, estacion in enumerate(estaciones_orden):
+        # Añadir la línea de la estación (ya la tenemos en lines)
+        output_lines.append(lines[idx])
+        # Añadir separador después de cada estación (excepto la última)
+        if estacion != "stesicoro":
+            flechas = flechas_en_separador.get(estacion, [])
+            if flechas:
+                # Ordenar por tiempo (los de tiempo 0 primero, luego los más próximos)
+                flechas.sort(key=lambda x: x[1])
+                flechas_str = "".join([f for f, _ in flechas])
+                output_lines.append(f"⬜{flechas_str}")
+            else:
+                output_lines.append("⬜")
+    
+    return "🛂 **SUPERVISORE: Monitoraggio degli arrivi dei treni**\n\n" + "\n".join(output_lines)
 
 async def auto_update_super(context, chat_id, message_id, cycles=40, interval=3):
     for ciclo in range(1, cycles + 1):
