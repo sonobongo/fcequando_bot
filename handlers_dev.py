@@ -856,53 +856,54 @@ async def get_super_status(now: datetime) -> str:
     
     for estacion in estaciones_orden:
         nombre = NOMBRE_MOSTRAR.get(estacion, estacion.capitalize())
-        mejor_tiempo = None
+        tiempo_mon = None  # hacia Monte Po
+        tiempo_ste = None  # hacia Stesicoro
         
         if estacion == "montepo":
+            # Salida desde Monte Po hacia Stesicoro
             next_dep, mins, secs, has = get_next_departure("Montepo", now)
             if has:
                 total = mins*60 + secs
                 if total <= 59:
-                    mejor_tiempo = (total, f"{nombre} → Stesicoro (in binario): {total//60:02d}:{total%60:02d}")
+                    tiempo_ste = (total, f"{total//60:02d}:{total%60:02d}")
         elif estacion == "stesicoro":
+            # Salida desde Stesicoro hacia Monte Po
             next_dep, mins, secs, has = get_next_departure("Stesicoro", now)
             if has:
                 total = mins*60 + secs
                 if total <= 59:
-                    mejor_tiempo = (total, f"{nombre} → Monte Po (in binario): {total//60:02d}:{total%60:02d}")
+                    tiempo_mon = (total, f"{total//60:02d}:{total%60:02d}")
         else:
+            # Estaciones intermedias
             info_mp, info_st = get_next_train_at_station(now, estacion)
-            tiempos = []
             if info_mp:
                 paso, mins, secs, _ = info_mp
                 total = mins*60 + secs
                 if total <= 59:
-                    tiempos.append((total, f"{nombre} → Stesicoro: {total//60:02d}:{total%60:02d}"))
+                    tiempo_ste = (total, f"{total//60:02d}:{total%60:02d}")
             if info_st:
                 paso, mins, secs, _ = info_st
                 total = mins*60 + secs
                 if total <= 59:
-                    tiempos.append((total, f"{nombre} → Monte Po: {total//60:02d}:{total%60:02d}"))
-            if tiempos:
-                mejor_tiempo = min(tiempos, key=lambda x: x[0])
+                    tiempo_mon = (total, f"{total//60:02d}:{total%60:02d}")
         
-        if mejor_tiempo:
-            lines.append(mejor_tiempo[1])
-        else:
-            lines.append(nombre)
+        mon_text = tiempo_mon[1] if tiempo_mon else "    "
+        ste_text = tiempo_ste[1] if tiempo_ste else "    "
+        lines.append(f"{nombre} → MON: {mon_text} | → STE: {ste_text}")
     
-    if not any(":" in line for line in lines):
+    if all("    " in line for line in lines):
         return "🚇 Nessun treno in arrivo o in partenza imminente."
     return "🚇 **Treni in arrivo o in partenza imminenti (≤59 secondi):**\n\n" + "\n".join(lines)
 
 async def auto_update_super_from_context(context, chat_id, message_id):
-    for ciclo in range(1, 8):  # 7 ciclos
-        for _ in range(8):     # 8 segundos
+    for ciclo in range(1, 8):  # 7 ciclos (1..7)
+        for _ in range(8):     # espera 8 segundos
             await asyncio.sleep(1)
             if not context.chat_data.get('super_active', False):
                 return
         if not context.chat_data.get('super_active', False):
             return
+        
         simulated = context.chat_data.get('test_time')
         if simulated:
             if simulated.tzinfo is None:
@@ -916,7 +917,7 @@ async def auto_update_super_from_context(context, chat_id, message_id):
         except Exception as e:
             logger.error(f"Error al actualizar super: {e}")
             break
-    # Después de los 7 ciclos, mostrar botón
+    
     if context.chat_data.get('super_active', False):
         keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔄 Aggiornare", callback_data="aggiornare_super")]])
         try:
