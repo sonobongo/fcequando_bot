@@ -855,9 +855,6 @@ async def testfin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ============================================================================
 # FUNCIONES PARA "SUPER" (actualización automática cada 8s, 7 ciclos, luego botón)
 # ============================================================================
-# ============================================================================
-# FUNCIONES PARA "SUPER" (actualización automática cada 8s, 7 ciclos, luego botón)
-# ============================================================================
 async def get_super_status(now: datetime) -> str:
     estaciones_orden = ["montepo", "fontana", "nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "giovanni", "stesicoro"]
     lines = []
@@ -902,10 +899,7 @@ async def get_super_status(now: datetime) -> str:
         
         lines.append(texto_linea)
     
-    # Si no hay ningún tren en ninguna estación (todas las líneas son solo nombres)
-    if not any(":" in line or "In binario" in line for line in lines):
-        return "🚇 Nessun treno in arrivo o in partenza imminente."
-    
+    # Siempre devolvemos el encabezado y la lista (aunque solo haya nombres)
     return "🚇 **Treni in arrivo o in partenza imminenti (≤59 secondi) o in binario:**\n\n" + "\n".join(lines)
 
 async def auto_update_super(context, chat_id, message_id, cycles=7, interval=8):
