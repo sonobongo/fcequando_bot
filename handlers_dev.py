@@ -858,40 +858,34 @@ async def testfin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def get_super_status(now: datetime) -> str:
     estaciones_orden = ["montepo", "fontana", "nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "giovanni", "stesicoro"]
     lines = []
-    LIMITE = 1800  # 30 minutos
+    LIMITE_FLECHA = 1800  # 30 segundos? No, 1800 segundos = 30 minutos (pero para flecha en separador usamos >60 y <=1800)
     
     for idx, estacion in enumerate(estaciones_orden):
         nombre = NOMBRE_MOSTRAR.get(estacion, estacion.capitalize())
         
-        # Procesar la estación actual
+        # ---- Línea de la estación (tiempo ≤59 segundos) ----
         if estacion == "montepo":
             next_dep, mins, secs, has = get_next_departure("Montepo", now)
             if has:
                 total = mins*60 + secs
                 if total <= 59:
                     linea = f"{nombre} 🔻 Stesicoro: {total//60:02d}:{total%60:02d}"
-                elif total <= LIMITE:
-                    linea = f"{nombre} 🔻"
                 else:
                     linea = nombre
             else:
                 linea = nombre
-        
         elif estacion == "stesicoro":
             next_dep, mins, secs, has = get_next_departure("Stesicoro", now)
             if has:
                 total = mins*60 + secs
                 if total <= 59:
                     linea = f"{nombre} 🔺 Monte Po: {total//60:02d}:{total%60:02d}"
-                elif total <= LIMITE:
-                    linea = f"{nombre} 🔺"
                 else:
                     linea = nombre
             else:
                 linea = nombre
-        
         else:
-            # Estaciones intermedias: mostrar tiempo solo si <=59 segundos
+            # Estaciones intermedias
             info_mp, info_st = get_next_train_at_station(now, estacion)
             mejor_tiempo = None
             mejor_texto = None
@@ -915,23 +909,22 @@ async def get_super_status(now: datetime) -> str:
         
         lines.append(linea)
         
-        # Separador con flecha hacia la siguiente estación (si aplica)
+        # ---- Separador (flecha si hay tren hacia la siguiente estación con tiempo >60s) ----
         if estacion != "stesicoro":
             siguiente = estaciones_orden[idx+1]
-            # Buscar tren que llegue a la siguiente estación con tiempo entre 61 y LIMITE segundos
             info_mp_next, info_st_next = get_next_train_at_station(now, siguiente)
             flecha = None
             mejor_tiempo_next = None
             if info_mp_next:
                 paso, mins, secs, _ = info_mp_next
                 total = mins*60 + secs
-                if 60 < total <= LIMITE:
+                if 60 < total <= LIMITE_FLECHA:  # entre 1 minuto y 30 minutos
                     flecha = "🔻"
                     mejor_tiempo_next = total
             if info_st_next:
                 paso, mins, secs, _ = info_st_next
                 total = mins*60 + secs
-                if 60 < total <= LIMITE:
+                if 60 < total <= LIMITE_FLECHA:
                     if mejor_tiempo_next is None or total < mejor_tiempo_next:
                         flecha = "🔺"
                         mejor_tiempo_next = total
