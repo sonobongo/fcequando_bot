@@ -857,8 +857,23 @@ async def testfin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ============================================================================
 async def get_super_status(now: datetime) -> str:
     estaciones_orden = ["montepo", "fontana", "nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "giovanni", "stesicoro"]
+    
+    # Tiempos base de viaje entre estaciones (en segundos) para dirección Monte Po → Stesicoro
+    tiempos_base = {
+        ("montepo", "fontana"): 108,   # 1:48
+        ("fontana", "nesima"): 110,    # 1:50
+        ("nesima", "sannullo"): 142,   # 2:22
+        ("sannullo", "cibali"): 113,   # 1:53
+        ("cibali", "milo"): 115,       # 1:55
+        ("milo", "borgo"): 115,        # 1:55
+        ("borgo", "giuffrida"): 112,   # 1:52
+        ("giuffrida", "italia"): 85,   # 1:25
+        ("italia", "galatea"): 99,     # 1:39
+        ("galatea", "giovanni"): 180,  # 3:00
+        ("giovanni", "stesicoro"): 128 # 2:08
+    }
+    
     lines = []
-    LIMITE = 150  # 2 minutos y 30 segundos
     
     for idx, estacion in enumerate(estaciones_orden):
         nombre = NOMBRE_MOSTRAR.get(estacion, estacion.capitalize())
@@ -906,25 +921,27 @@ async def get_super_status(now: datetime) -> str:
             else:
                 lines.append(nombre)
         
-        # ---- Separador: solo añadir flechas si hay tren en rango (61-LIMITE segundos) hacia la SIGUIENTE estación ----
+        # ---- Separador: mostrar flecha si el tren que viene de Monte Po tiene retraso (tiempo real > tiempo base) ----
         if estacion != "stesicoro":
             siguiente = estaciones_orden[idx+1]
             info_mp_next, info_st_next = get_next_train_at_station(now, siguiente)
-            flechas = []  # (tiempo, símbolo, letra)
+            flechas = []
+            # Solo consideramos trenes que vienen de Monte Po (info_mp_next), ya que los tiempos base son para esa dirección
             if info_mp_next:
                 total = info_mp_next[1]*60 + info_mp_next[2]
-                if 60 < total <= LIMITE:
+                clave = (estacion, siguiente)
+                if clave in tiempos_base and total > tiempos_base[clave]:
+                    # Hay retraso: mostrar flecha hacia Stesicoro
                     flechas.append((total, "🔻", "S"))
-            if info_st_next:
-                total = info_st_next[1]*60 + info_st_next[2]
-                if 60 < total <= LIMITE:
-                    flechas.append((total, "🔺", "M"))
+            # Para la dirección contraria (Stesicoro → Monte Po) necesitaríamos otros tiempos base.
+            # Por ahora no mostramos flechas para esa dirección a menos que quieras.
+            
             if flechas:
-                flechas.sort(key=lambda x: x[0])  # ordenar por tiempo (más próximo primero)
+                flechas.sort(key=lambda x: x[0])
                 flechas_str = "".join([f"{sym}{let}" for _, sym, let in flechas])
                 lines.append(f"⬜{flechas_str}")
             else:
-                lines.append("⬜")   # sin flechas
+                lines.append("⬜")
     
     return "🛂 **SUPERVISORE: Monitoraggio degli arrivi dei treni**\n\n" + "\n".join(lines)
 
