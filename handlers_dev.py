@@ -796,6 +796,9 @@ async def handle_button(update, context):
     else:
         await update.message.reply_text("Scelta non valida. Usa i pulsanti.", reply_markup=keyboard_main)
 
+# ============================================================================
+# MODO TEST (con avance/retroceso en segundos y minutos)
+# ============================================================================
 async def test_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Detener actualización automática de super
     stop_super_update(context)
@@ -807,7 +810,8 @@ async def test_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Per fissare una data/ora simulata:\n"
             "`/test DDMMYYYY HHMM`\n"
             "Esempio: `/test 11022026 1102`\n\n"
-            "Per tornare alla realtà: `/testfin`",
+            "Per tornare alla realtà: `/testfin`\n\n"
+            "In modalità test, puoi avanzare/retrocedere di secondi (es. +10s, -30s) o minuti (es. +5m, -2m).",
             parse_mode='Markdown'
         )
         await store_id(context, msg)
@@ -834,7 +838,7 @@ async def test_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.chat_data['test_time'] = simulated
         context.chat_data.pop('demo_mode', None)
         msg = await update.message.reply_text(
-            f"🧪 **Modalità test attivata**\nOra simulata: {simulated.strftime('%d/%m/%Y %H:%M')}\nUsa i bottoni. Per uscire: `/testfin`",
+            f"🧪 **Modalità test attivata**\nOra simulata: {simulated.strftime('%d/%m/%Y %H:%M')}\nUsa i bottoni. Per uscire: `/testfin`\nPer avanzare/retrocedere scrivi +10s, -30s, +5m, -2m, ecc.",
             parse_mode='Markdown'
         )
         await store_id(context, msg)
@@ -858,92 +862,75 @@ async def testfin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def get_super_status(now: datetime) -> str:
     estaciones_orden = ["montepo", "fontana", "nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "giovanni", "stesicoro"]
     lines = []
-    LIMITE = 150  # segundos para mostrar flecha en separador (entre 2 y LIMITE)
+    LIMITE = 150  # segundos para mostrar flecha en separador (entre 61 y LIMITE)
     
-    # Diccionario para acumular flechas que deben ir en el separador anterior a cada estación
-    flechas_en_separador = {estacion: [] for estacion in estaciones_orden}
-    
-    # Primera pasada: recolectar información de trenes para cada estación
     for idx, estacion in enumerate(estaciones_orden):
+        nombre = NOMBRE_MOSTRAR.get(estacion, estacion.capitalize())
+        
+        # ---- Línea de la estación (solo si hay tren con ≤59 segundos) ----
         if estacion == "montepo":
             next_dep, mins, secs, has = get_next_departure("Montepo", now)
             if has:
                 total = mins*60 + secs
-                if total <= 1:
-                    # Tren llegando (0 segundos) -> añadir flecha al separador anterior (no hay separador antes de Monte Po)
-                    pass
-                elif 2 <= total <= 59:
-                    # Mostrar en la estación
-                    lines.append(f"{NOMBRE_MOSTRAR[estacion]} 🔻 Stesicoro: {total//60:02d}:{total%60:02d}")
-                elif 60 < total <= LIMITE:
-                    # Añadir al separador de la estación actual (para la siguiente estación)
-                    flechas_en_separador[estacion].append(("🔻", total))
+                if total <= 59:
+                    lines.append(f"{nombre} 🔻 Stesicoro: {total//60:02d}:{total%60:02d}")
                 else:
-                    lines.append(NOMBRE_MOSTRAR[estacion])
+                    lines.append(nombre)
             else:
-                lines.append(NOMBRE_MOSTRAR[estacion])
+                lines.append(nombre)
         elif estacion == "stesicoro":
             next_dep, mins, secs, has = get_next_departure("Stesicoro", now)
             if has:
                 total = mins*60 + secs
-                if total <= 1:
-                    pass
-                elif 2 <= total <= 59:
-                    lines.append(f"{NOMBRE_MOSTRAR[estacion]} 🔺 Monte Po: {total//60:02d}:{total%60:02d}")
-                elif 60 < total <= LIMITE:
-                    flechas_en_separador[estacion].append(("🔺", total))
+                if total <= 59:
+                    lines.append(f"{nombre} 🔺 Monte Po: {total//60:02d}:{total%60:02d}")
                 else:
-                    lines.append(NOMBRE_MOSTRAR[estacion])
+                    lines.append(nombre)
             else:
-                lines.append(NOMBRE_MOSTRAR[estacion])
+                lines.append(nombre)
         else:
             info_mp, info_st = get_next_train_at_station(now, estacion)
-            mejor = None
+            mejor_tiempo = None
+            mejor_texto = None
             if info_mp:
-                total = info_mp[1]*60 + info_mp[2]
-                if total <= 1:
-                    # Tren llegando: añadir al separador anterior (estación previa)
-                    prev_estacion = estaciones_orden[idx-1] if idx > 0 else None
-                    if prev_estacion:
-                        flechas_en_separador[prev_estacion].append(("🔻", 0))  # tiempo 0 para ordenar
-                elif 2 <= total <= 59:
-                    if mejor is None or total < mejor[0]:
-                        mejor = (total, f"{NOMBRE_MOSTRAR[estacion]} 🔻 Stesicoro: {total//60:02d}:{total%60:02d}")
-                elif 60 < total <= LIMITE:
-                    flechas_en_separador[estacion].append(("🔻", total))
+                paso, mins, secs, _ = info_mp
+                total = mins*60 + secs
+                if total <= 59:
+                    mejor_tiempo = total
+                    mejor_texto = f"{nombre} 🔻 Stesicoro: {total//60:02d}:{total%60:02d}"
             if info_st:
-                total = info_st[1]*60 + info_st[2]
-                if total <= 1:
-                    prev_estacion = estaciones_orden[idx-1] if idx > 0 else None
-                    if prev_estacion:
-                        flechas_en_separador[prev_estacion].append(("🔺", 0))
-                elif 2 <= total <= 59:
-                    if mejor is None or total < mejor[0]:
-                        mejor = (total, f"{NOMBRE_MOSTRAR[estacion]} 🔺 Monte Po: {total//60:02d}:{total%60:02d}")
-                elif 60 < total <= LIMITE:
-                    flechas_en_separador[estacion].append(("🔺", total))
-            if mejor:
-                lines.append(mejor[1])
+                paso, mins, secs, _ = info_st
+                total = mins*60 + secs
+                if total <= 59:
+                    if mejor_tiempo is None or total < mejor_tiempo:
+                        mejor_tiempo = total
+                        mejor_texto = f"{nombre} 🔺 Monte Po: {total//60:02d}:{total%60:02d}"
+            if mejor_texto:
+                lines.append(mejor_texto)
             else:
-                lines.append(NOMBRE_MOSTRAR[estacion])
-    
-    # Segunda pasada: construir la salida final intercalando separadores con las flechas acumuladas
-    output_lines = []
-    for idx, estacion in enumerate(estaciones_orden):
-        # Añadir la línea de la estación (ya la tenemos en lines)
-        output_lines.append(lines[idx])
-        # Añadir separador después de cada estación (excepto la última)
+                lines.append(nombre)
+        
+        # ---- Separador: flechas si hay tren en rango (61-LIMITE segundos) hacia la SIGUIENTE estación ----
         if estacion != "stesicoro":
-            flechas = flechas_en_separador.get(estacion, [])
+            siguiente = estaciones_orden[idx+1]
+            info_mp_next, info_st_next = get_next_train_at_station(now, siguiente)
+            flechas = []
+            if info_mp_next:
+                total = info_mp_next[1]*60 + info_mp_next[2]
+                if 60 < total <= LIMITE:
+                    flechas.append(("🔻", total))
+            if info_st_next:
+                total = info_st_next[1]*60 + info_st_next[2]
+                if 60 < total <= LIMITE:
+                    flechas.append(("🔺", total))
             if flechas:
-                # Ordenar por tiempo (los de tiempo 0 primero, luego los más próximos)
-                flechas.sort(key=lambda x: x[1])
+                flechas.sort(key=lambda x: x[1])  # ordenar por tiempo (más próximo primero)
                 flechas_str = "".join([f for f, _ in flechas])
-                output_lines.append(f"⬜{flechas_str}")
+                lines.append(f"⬜{flechas_str}")
             else:
-                output_lines.append("⬜")
+                lines.append("⬜")
     
-    return "🛂 **SUPERVISORE: Monitoraggio degli arrivi dei treni**\n\n" + "\n".join(output_lines)
+    return "🛂 **SUPERVISORE: Monitoraggio degli arrivi dei treni**\n\n" + "\n".join(lines)
 
 async def auto_update_super(context, chat_id, message_id, cycles=40, interval=3):
     for ciclo in range(1, cycles + 1):
@@ -1041,6 +1028,7 @@ async def aggiornare_super_callback(update: Update, context: ContextTypes.DEFAUL
     context.chat_data['super_active'] = True
     task = asyncio.create_task(auto_update_super(context, chat_id, message_id, cycles=40, interval=3))
     context.chat_data['super_task'] = task
+
 # ============================================================================
 # MODO NONNA: DETECCIÓN DE NOMBRE DE ESTACIÓN CON ERRORES TIPOGRÁFICOS Y ALIAS
 # ============================================================================
@@ -1069,35 +1057,50 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await send_super_response(update, context)
         return
     
-       # ========== AVANCE/RETROCESO DE TIEMPO EN MODO TEST (+/- segundos o minutos) ==========
+    # ========== AVANCE/RETROCESO DE TIEMPO EN MODO TEST (+/- segundos o minutos) ==========
     if 'test_time' in context.chat_data:
-        # Detectar formato: +10s, -30s, +5m, -2m, +30 (minutos por defecto)
         match = re.match(r'^([+-])(\d+)([sm]?)$', texto_normalized)
         if match:
             signo = match.group(1)
             cantidad = int(match.group(2))
-            unidad = match.group(3) if match.group(3) else 'm'  # por defecto minutos
-            
+            unidad = match.group(3) if match.group(3) else 'm'
             if unidad == 's':
                 delta = timedelta(seconds=cantidad)
-            else:  # 'm' o sin unidad
+            else:
                 delta = timedelta(minutes=cantidad)
-            
             if signo == '-':
                 delta = -delta
-            
             simulated = context.chat_data['test_time']
             if simulated.tzinfo is None:
                 simulated = CATANIA_TZ.localize(simulated)
             nueva_simulacion = simulated + delta
             context.chat_data['test_time'] = nueva_simulacion
-            
             last_station = context.chat_data.get('last_station')
             if last_station:
                 await send_station_response(update, context, last_station, return_to_main=False)
             else:
-                await update.message.reply_text(f"⏩ Avanzato/Indietro di {cantidad}{unidad}. Nuovo orario simulato: {nueva_simulacion.strftime('%d/%m/%Y %H:%M:%S')}")
+                await update.message.reply_text(f"⏩ Modifica di {cantidad}{unidad}. Nuovo orario simulato: {nueva_simulacion.strftime('%d/%m/%Y %H:%M:%S')}")
             return
+    
+    # ========== AVANCE DE TIEMPO EN MODO TEST (formato antiguo, solo minutos) ==========
+    if 'test_time' in context.chat_data and texto_normalized.startswith('+'):
+        try:
+            minutos = int(texto_normalized[1:])
+            if 1 <= minutos <= 99:
+                simulated = context.chat_data['test_time']
+                if simulated.tzinfo is None:
+                    simulated = CATANIA_TZ.localize(simulated)
+                nueva_simulacion = simulated + timedelta(minutes=minutos)
+                context.chat_data['test_time'] = nueva_simulacion
+                last_station = context.chat_data.get('last_station')
+                if last_station:
+                    await send_station_response(update, context, last_station, return_to_main=False)
+                else:
+                    await update.message.reply_text(f"⏩ Avanzati {minutos} minuti. Nuovo orario simulato: {nueva_simulacion.strftime('%d/%m/%Y %H:%M')}")
+                return
+            else:
+                await update.message.reply_text("Puoi avanzare da 1 a 99 minuti. Esempio: +5")
+                return
         except ValueError:
             pass
     
