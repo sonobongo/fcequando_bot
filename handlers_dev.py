@@ -49,7 +49,7 @@ def clean_text_for_display(text: str) -> str:
     return text
 
 # ============================================================================
-# FUNCIÓN PARA ALMACENAR IDS (opcional, ya no se usa para limpieza)
+# FUNCIÓN PARA ALMACENAR IDS (opcional)
 # ============================================================================
 async def store_id(context, message):
     if message and hasattr(message, 'message_id'):
@@ -566,7 +566,7 @@ async def send_header_response(chat_id, context, estacion_key, is_update=False):
             pass
 
 # ============================================================================
-# RESPUESTA PRINCIPAL (foto + msg2/msg3)
+# RESPUESTA PRINCIPAL (foto + msg2/msg3) - SIN MENSAJE "caricando informazione..."
 # ============================================================================
 async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str, return_to_main: bool = True):
     context.chat_data['last_return_to_main'] = return_to_main
@@ -633,10 +633,9 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
             permanent_caption += f"\n\n{bus_msg}"
     
     img_station = get_station_image(estacion_key, now)
-    if return_to_main:
-        temp_msg = await update.message.reply_text("caricando informazione...")
-        await store_id(context, temp_msg)
     
+    # Ya no se envía el mensaje "caricando informazione..."
+    # El teclado se envía directamente con la respuesta
     if img_station:
         msg1 = await update.message.reply_photo(photo=img_station, caption=permanent_caption, reply_markup=keyboard_main if return_to_main else keyboard_altri)
     else:
