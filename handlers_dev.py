@@ -980,7 +980,20 @@ async def send_super_response(update: Update, context: ContextTypes.DEFAULT_TYPE
     else:
         now = datetime.now(CATANIA_TZ)
     msg = await get_super_status(now)
-    result = await update.message.reply_text(msg, parse_mode='Markdown')
+    # Envolver el mensaje en spoiler usando MarkdownV2
+    # Escapamos caracteres especiales para MarkdownV2
+    import re
+    def escape_md(text):
+        # Escapa caracteres especiales: _ * [ ] ( ) ~ ` > # + - = | { } . !
+        return re.sub(r'([_*\[\]()~`>#+\-=|{}.!])', r'\\\1', text)
+    msg_escaped = escape_md(msg)
+    spoiler_msg = f"||{msg_escaped}||"
+    try:
+        result = await update.message.reply_text(spoiler_msg, parse_mode='MarkdownV2')
+    except Exception as e:
+        # Si falla, enviar sin spoiler pero con Markdown normal
+        logger.error(f"Error enviando spoiler: {e}")
+        result = await update.message.reply_text(msg, parse_mode='Markdown')
     message_id = result.message_id
     chat_id = update.effective_chat.id
     context.chat_data['super_msg_id'] = message_id
