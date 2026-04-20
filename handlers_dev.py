@@ -909,7 +909,7 @@ async def get_super_status(now: datetime) -> str:
     
     return "🛂 **SUPERVISORE: Monitoraggio degli arrivi dei treni**\n\n" + "\n".join(lines)
 
-async def auto_update_super(context, chat_id, message_id, cycles=14, interval=6):
+async def auto_update_super(context, chat_id, message_id, cycles=120, interval=1):
     for ciclo in range(1, cycles + 1):
         for _ in range(interval):
             await asyncio.sleep(1)
@@ -963,7 +963,7 @@ async def send_super_response(update: Update, context: ContextTypes.DEFAULT_TYPE
     context.chat_data['super_msg_id'] = message_id
     context.chat_data['super_chat_id'] = chat_id
     context.chat_data['super_active'] = True
-    task = asyncio.create_task(auto_update_super(context, chat_id, message_id, cycles=14, interval=8))
+    task = asyncio.create_task(auto_update_super(context, chat_id, message_id, cycles=120, interval=1))
     context.chat_data['super_task'] = task
 
 async def aggiornare_super_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
