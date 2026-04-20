@@ -858,12 +858,12 @@ async def testfin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def get_super_status(now: datetime) -> str:
     estaciones_orden = ["montepo", "fontana", "nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "giovanni", "stesicoro"]
     lines = []
-    LIMITE_FLECHA = 1800  # 30 segundos? No, 1800 segundos = 30 minutos (pero para flecha en separador usamos >60 y <=1800)
+    LIMITE_FLECHA = 1800  # 30 minutos
     
     for idx, estacion in enumerate(estaciones_orden):
         nombre = NOMBRE_MOSTRAR.get(estacion, estacion.capitalize())
         
-        # ---- Línea de la estación (tiempo ≤59 segundos) ----
+        # ---- Línea de la estación (solo si hay tren con ≤59 segundos) ----
         if estacion == "montepo":
             next_dep, mins, secs, has = get_next_departure("Montepo", now)
             if has:
@@ -909,27 +909,26 @@ async def get_super_status(now: datetime) -> str:
         
         lines.append(linea)
         
-        # ---- Separador (flecha si hay tren hacia la siguiente estación con tiempo >60s) ----
+        # ---- Separador (flechas hacia la siguiente estación si hay trenes en rango 60-1800s) ----
         if estacion != "stesicoro":
             siguiente = estaciones_orden[idx+1]
             info_mp_next, info_st_next = get_next_train_at_station(now, siguiente)
-            flecha = None
-            mejor_tiempo_next = None
+            flechas = []  # lista de tuplas (tiempo, flecha)
             if info_mp_next:
                 paso, mins, secs, _ = info_mp_next
                 total = mins*60 + secs
-                if 60 < total <= LIMITE_FLECHA:  # entre 1 minuto y 30 minutos
-                    flecha = "🔻"
-                    mejor_tiempo_next = total
+                if 60 < total <= LIMITE_FLECHA:
+                    flechas.append((total, "🔻"))
             if info_st_next:
                 paso, mins, secs, _ = info_st_next
                 total = mins*60 + secs
                 if 60 < total <= LIMITE_FLECHA:
-                    if mejor_tiempo_next is None or total < mejor_tiempo_next:
-                        flecha = "🔺"
-                        mejor_tiempo_next = total
-            if flecha:
-                lines.append(f"⬜{flecha}")
+                    flechas.append((total, "🔺"))
+            # Ordenar por tiempo (menor a mayor) y luego extraer solo las flechas
+            flechas.sort(key=lambda x: x[0])
+            flechas_str = "".join([f for _, f in flechas])
+            if flechas_str:
+                lines.append(f"⬜{flechas_str}")
             else:
                 lines.append("⬜")
     
