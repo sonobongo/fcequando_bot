@@ -853,7 +853,7 @@ async def testfin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⚠️ Nessuna modalità test/demo attiva.")
 
 # ============================================================================
-# FUNCIONES PARA "SUPER" (actualización automática cada 8s, 14 ciclos, luego botón)
+# FUNCIONES PARA "SUPER" (actualización automática cada 3s, 40 ciclos, luego botón)
 # ============================================================================
 async def get_super_status(now: datetime) -> str:
     estaciones_orden = ["montepo", "fontana", "nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "giovanni", "stesicoro"]
@@ -861,7 +861,7 @@ async def get_super_status(now: datetime) -> str:
     
     for estacion in estaciones_orden:
         nombre = NOMBRE_MOSTRAR.get(estacion, estacion.capitalize())
-        texto_linea = nombre  # valor por defecto (solo nombre)
+        texto_linea = nombre
         
         if estacion == "montepo":
             next_dep, mins, secs, has = get_next_departure("Montepo", now)
@@ -870,7 +870,12 @@ async def get_super_status(now: datetime) -> str:
                 if total <= 59:
                     texto_linea = f"{nombre} 🔻 Stesicoro: {total//60:02d}:{total%60:02d}"
                 elif total <= 240:
-                    texto_linea = f"{nombre} In binario"  # Sin flecha
+                    texto_linea = f"{nombre} In binario"
+                else:
+                    texto_linea = f"{nombre} 🔻"  # Más de 4 minutos
+            else:
+                texto_linea = f"{nombre} 🔻"  # Sin tren, pero mostramos indicador por defecto? O lo dejamos sin flecha? Ajusta según prefieras.
+        
         elif estacion == "stesicoro":
             next_dep, mins, secs, has = get_next_departure("Stesicoro", now)
             if has:
@@ -878,34 +883,54 @@ async def get_super_status(now: datetime) -> str:
                 if total <= 59:
                     texto_linea = f"{nombre} 🔺 Monte Po: {total//60:02d}:{total%60:02d}"
                 elif total <= 240:
-                    texto_linea = f"{nombre} In binario"  # Sin flecha
+                    texto_linea = f"{nombre} In binario"
+                else:
+                    texto_linea = f"{nombre} 🔺"
+            else:
+                texto_linea = f"{nombre} 🔺"
+        
         else:
-            # Estaciones intermedias: mostrar ambos sentidos si existen (dentro de 59s)
+            # Estaciones intermedias
             info_mp, info_st = get_next_train_at_station(now, estacion)
-            tiempos = []
+            tiempos = []  # (total_seconds, direccion, texto_completo)
+            
             if info_mp:
                 paso, mins, secs, _ = info_mp
                 total = mins*60 + secs
                 if total <= 59:
-                    tiempos.append((total, "Stesicoro", f"{total//60:02d}:{total%60:02d}"))
+                    tiempos.append((total, "Stesicoro", f"{nombre} 🔻 Stesicoro: {total//60:02d}:{total%60:02d}"))
+                else:
+                    tiempos.append((total, "Stesicoro", f"{nombre} 🔻"))
             if info_st:
                 paso, mins, secs, _ = info_st
                 total = mins*60 + secs
                 if total <= 59:
-                    tiempos.append((total, "Monte Po", f"{total//60:02d}:{total%60:02d}"))
+                    tiempos.append((total, "Monte Po", f"{nombre} 🔺 Monte Po: {total//60:02d}:{total%60:02d}"))
+                else:
+                    tiempos.append((total, "Monte Po", f"{nombre} 🔺"))
             
             if not tiempos:
+                # No hay tren en ninguna dirección
                 lines.append(nombre)
+                lines.append("⬜")
                 continue
             else:
+                # Ordenar por tiempo (menor a mayor)
                 tiempos.sort(key=lambda x: x[0])
-                partes = [nombre]
-                for total, direccion, tiempo_str in tiempos:
-                    flecha = "🔺" if direccion == "Monte Po" else "🔻"
-                    partes.append(f"{flecha} {direccion}: {tiempo_str}")
-                texto_linea = " ".join(partes)
+                mejor = tiempos[0]
+                if mejor[0] <= 59:
+                    texto_linea = mejor[2]
+                else:
+                    # Mostrar solo la flecha del tren más próximo (aunque falte >59s)
+                    if mejor[1] == "Stesicoro":
+                        texto_linea = f"{nombre} 🔻"
+                    else:
+                        texto_linea = f"{nombre} 🔺"
         
         lines.append(texto_linea)
+        # Separador ⬜ después de cada estación (excepto la última)
+        if estacion != "stesicoro":
+            lines.append("⬜")
     
     return "🛂 **SUPERVISORE: Monitoraggio degli arrivi dei treni**\n\n" + "\n".join(lines)
 
@@ -1003,9 +1028,8 @@ async def aggiornare_super_callback(update: Update, context: ContextTypes.DEFAUL
     context.chat_data['super_msg_id'] = message_id
     context.chat_data['super_chat_id'] = chat_id
     context.chat_data['super_active'] = True
-    task = asyncio.create_task(auto_update_super(context, chat_id, message_id, cycles=14, interval=8))
+    task = asyncio.create_task(auto_update_super(context, chat_id, message_id, cycles=40, interval=3))
     context.chat_data['super_task'] = task
-
 # ============================================================================
 # MODO NONNA: DETECCIÓN DE NOMBRE DE ESTACIÓN CON ERRORES TIPOGRÁFICOS Y ALIAS
 # ============================================================================
