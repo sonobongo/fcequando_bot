@@ -855,50 +855,52 @@ async def testfin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ============================================================================
 # FUNCIONES PARA "SUPER" (actualización automática cada 8s, 7 ciclos, luego botón)
 # ============================================================================
+# ============================================================================
+# FUNCIONES PARA "SUPER" (actualización automática cada 8s, 7 ciclos, luego botón)
+# ============================================================================
 async def get_super_status(now: datetime) -> str:
     estaciones_orden = ["montepo", "fontana", "nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "giovanni", "stesicoro"]
     lines = []
     
     for estacion in estaciones_orden:
         nombre = NOMBRE_MOSTRAR.get(estacion, estacion.capitalize())
-        mejor_tiempo = None  # (total_seconds, texto_formateado)
+        texto_linea = nombre  # valor por defecto (solo nombre)
         
         if estacion == "montepo":
             next_dep, mins, secs, has = get_next_departure("Montepo", now)
             if has:
                 total = mins*60 + secs
                 if total <= 59:
-                    mejor_tiempo = (total, f"{nombre} → Stesicoro: {total//60:02d}:{total%60:02d}")
-                elif total <= 240:  # 4 minutos
-                    mejor_tiempo = (total, f"{nombre} → In binario")
+                    texto_linea = f"{nombre} → Stesicoro: {total//60:02d}:{total%60:02d}"
+                elif total <= 240:
+                    texto_linea = f"{nombre} → In binario"
         elif estacion == "stesicoro":
             next_dep, mins, secs, has = get_next_departure("Stesicoro", now)
             if has:
                 total = mins*60 + secs
                 if total <= 59:
-                    mejor_tiempo = (total, f"{nombre} → Monte Po: {total//60:02d}:{total%60:02d}")
+                    texto_linea = f"{nombre} → Monte Po: {total//60:02d}:{total%60:02d}"
                 elif total <= 240:
-                    mejor_tiempo = (total, f"{nombre} → In binario")
+                    texto_linea = f"{nombre} → In binario"
         else:
+            # Estaciones intermedias
             info_mp, info_st = get_next_train_at_station(now, estacion)
-            tiempos = []
+            mejor_tiempo = None
             if info_mp:
                 paso, mins, secs, _ = info_mp
                 total = mins*60 + secs
                 if total <= 59:
-                    tiempos.append((total, f"{nombre} → Stesicoro: {total//60:02d}:{total%60:02d}"))
+                    mejor_tiempo = (total, f"{nombre} → Stesicoro: {total//60:02d}:{total%60:02d}")
             if info_st:
                 paso, mins, secs, _ = info_st
                 total = mins*60 + secs
                 if total <= 59:
-                    tiempos.append((total, f"{nombre} → Monte Po: {total//60:02d}:{total%60:02d}"))
-            if tiempos:
-                mejor_tiempo = min(tiempos, key=lambda x: x[0])
+                    if mejor_tiempo is None or total < mejor_tiempo[0]:
+                        mejor_tiempo = (total, f"{nombre} → Monte Po: {total//60:02d}:{total%60:02d}")
+            if mejor_tiempo:
+                texto_linea = mejor_tiempo[1]
         
-        if mejor_tiempo:
-            lines.append(mejor_tiempo[1])
-        else:
-            lines.append(nombre)
+        lines.append(texto_linea)
     
     # Si no hay ningún tren en ninguna estación (todas las líneas son solo nombres)
     if not any(":" in line or "In binario" in line for line in lines):
@@ -937,7 +939,15 @@ async def auto_update_super(context, chat_id, message_id, cycles=7, interval=8):
         context.chat_data.pop('super_task', None)
 
 async def send_super_response(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    stop_super_update(context)
+    # Detener cualquier tarea anterior
+    if 'super_task' in context.chat_data:
+        context.chat_data['super_active'] = False
+        try:
+            context.chat_data['super_task'].cancel()
+        except Exception:
+            pass
+        context.chat_data.pop('super_task', None)
+    
     simulated = context.chat_data.get('test_time')
     if simulated:
         if simulated.tzinfo is None:
@@ -977,11 +987,12 @@ async def aggiornare_super_callback(update: Update, context: ContextTypes.DEFAUL
     else:
         now = datetime.now(CATANIA_TZ)
     new_msg = await get_super_status(now)
-    # Quitar el botón y actualizar el contenido
+    # Editar el mensaje para quitar el botón y actualizar contenido
     try:
         await query.edit_message_text(text=new_msg, parse_mode='Markdown')
     except Exception as e:
         logger.error(f"Error al editar super: {e}")
+        # Si falla, enviamos uno nuevo y eliminamos el viejo
         new_result = await message.reply_text(new_msg, parse_mode='Markdown')
         message_id = new_result.message_id
         try:
