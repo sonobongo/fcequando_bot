@@ -892,3 +892,23 @@ def get_current_station_from_stesicoro(now: datetime, seconds_passed: int) -> st
     if seconds_passed == 0:
         return "non ancora partito da Stesicoro"
     return NOMBRE_MOSTRAR["stesicoro"]
+def format_time_precise(minutes: int, seconds: int) -> str:
+    total_seconds = minutes * 60 + seconds
+    if total_seconds > 90:
+        return format_time(minutes, seconds)
+    rounded_seconds = (seconds // 10) * 10
+    if minutes == 0:
+        if rounded_seconds == 0:
+            return "subito"
+        else:
+            return f"{rounded_seconds} secondi"
+    elif minutes == 1:
+        if rounded_seconds == 0:
+            return "1 minuto"
+        else:
+            return f"1 minuto e {rounded_seconds} secondi"
+    else:
+        if rounded_seconds == 0:
+            return f"{minutes} minuti"
+        else:
+            return f"{minutes} minuti e {rounded_seconds} secondi"
