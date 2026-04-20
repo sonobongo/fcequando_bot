@@ -51,9 +51,12 @@ def clean_text_for_display(text: str) -> str:
 # ============================================================================
 # FUNCIÓN PARA ALMACENAR IDS
 # ============================================================================
-def cancel_super_key_wait(context):
-    if context.chat_data.get('awaiting_super_key', False):
-        context.chat_data['awaiting_super_key'] = False
+async def store_id(context, message):
+    if message and hasattr(message, 'message_id'):
+        if 'all_msg_ids' not in context.chat_data:
+            context.chat_data['all_msg_ids'] = []
+        if message.message_id not in context.chat_data['all_msg_ids']:
+            context.chat_data['all_msg_ids'].append(message.message_id)
 
 # ============================================================================
 # DETENER ACTUALIZACIÓN AUTOMÁTICA DE SUPER
@@ -771,7 +774,7 @@ async def help_command(update, context):
         "/testfin - Disattiva modalità test\n"
         "/about - Info sul bot\n"
         "/grazie - Info sul bot\n"
-        "super - Mostra treni in arrivo in ≤1 minuto (si aggiorna ogni 10s per 6 volte)\n"
+        "super - Mostra treni in arrivo o in partenza (≤59 secondi)\n"
         "Oppure premi i pulsanti.",
         reply_markup=keyboard_main
     )
@@ -794,7 +797,9 @@ async def handle_button(update, context):
         await update.message.reply_text("Scelta non valida. Usa i pulsanti.", reply_markup=keyboard_main)
 
 async def test_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Detener actualización automática de super
     stop_super_update(context)
+    
     args = context.args
     if not args:
         msg = await update.message.reply_text(
@@ -837,7 +842,9 @@ async def test_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Comando non riconosciuto. Usa /test DDMMYYYY HHMM")
 
 async def testfin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Detener actualización automática de super
     stop_super_update(context)
+    
     if context.chat_data and 'test_time' in context.chat_data:
         del context.chat_data['test_time']
         context.chat_data.pop('demo_mode', None)
@@ -849,32 +856,25 @@ async def testfin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # FUNCIONES PARA "SUPER" (actualización automática cada 8s, 7 ciclos, luego botón)
 # ============================================================================
 async def get_super_status(now: datetime) -> str:
-    # Orden de estaciones desde Monte Po hasta Stesicoro
     estaciones_orden = ["montepo", "fontana", "nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "giovanni", "stesicoro"]
-    
     lines = []
-    
     for estacion in estaciones_orden:
         nombre = NOMBRE_MOSTRAR.get(estacion, estacion.capitalize())
-        tiempo_mon = None  # hacia Monte Po
-        tiempo_ste = None  # hacia Stesicoro
-        
+        tiempo_mon = None
+        tiempo_ste = None
         if estacion == "montepo":
-            # Salida desde Monte Po hacia Stesicoro
             next_dep, mins, secs, has = get_next_departure("Montepo", now)
             if has:
                 total = mins*60 + secs
                 if total <= 59:
                     tiempo_ste = (total, f"{total//60:02d}:{total%60:02d}")
         elif estacion == "stesicoro":
-            # Salida desde Stesicoro hacia Monte Po
             next_dep, mins, secs, has = get_next_departure("Stesicoro", now)
             if has:
                 total = mins*60 + secs
                 if total <= 59:
                     tiempo_mon = (total, f"{total//60:02d}:{total%60:02d}")
         else:
-            # Estaciones intermedias
             info_mp, info_st = get_next_train_at_station(now, estacion)
             if info_mp:
                 paso, mins, secs, _ = info_mp
@@ -886,24 +886,19 @@ async def get_super_status(now: datetime) -> str:
                 total = mins*60 + secs
                 if total <= 59:
                     tiempo_mon = (total, f"{total//60:02d}:{total%60:02d}")
-        
         mon_text = tiempo_mon[1] if tiempo_mon else "    "
         ste_text = tiempo_ste[1] if tiempo_ste else "    "
         lines.append(f"{nombre} → MON: {mon_text} | → STE: {ste_text}")
-    
-    if all("    " in line for line in lines):
-        return "🚇 Nessun treno in arrivo o in partenza imminente."
     return "🚇 **Treni in arrivo o in partenza imminenti (≤59 secondi):**\n\n" + "\n".join(lines)
 
-async def auto_update_super_from_context(context, chat_id, message_id):
-    for ciclo in range(1, 8):  # 7 ciclos (1..7)
-        for _ in range(8):     # espera 8 segundos
+async def auto_update_super(context, chat_id, message_id, cycles=7, interval=8):
+    for ciclo in range(1, cycles + 1):
+        for _ in range(interval):
             await asyncio.sleep(1)
             if not context.chat_data.get('super_active', False):
                 return
         if not context.chat_data.get('super_active', False):
             return
-        
         simulated = context.chat_data.get('test_time')
         if simulated:
             if simulated.tzinfo is None:
@@ -917,7 +912,6 @@ async def auto_update_super_from_context(context, chat_id, message_id):
         except Exception as e:
             logger.error(f"Error al actualizar super: {e}")
             break
-    
     if context.chat_data.get('super_active', False):
         keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔄 Aggiornare", callback_data="aggiornare_super")]])
         try:
@@ -942,20 +936,50 @@ async def send_super_response(update: Update, context: ContextTypes.DEFAULT_TYPE
     chat_id = update.effective_chat.id
     context.chat_data['super_msg_id'] = message_id
     context.chat_data['super_chat_id'] = chat_id
-    context.chat_data['super_update_count'] = 0
     context.chat_data['super_active'] = True
-    task = asyncio.create_task(auto_update_super_from_context(context, chat_id, message_id))
+    task = asyncio.create_task(auto_update_super(context, chat_id, message_id, cycles=7, interval=8))
     context.chat_data['super_task'] = task
 
 async def aggiornare_super_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    stop_super_update(context)
+    # Detener la tarea actual
+    if 'super_task' in context.chat_data:
+        context.chat_data['super_active'] = False
+        try:
+            context.chat_data['super_task'].cancel()
+        except Exception:
+            pass
+        context.chat_data.pop('super_task', None)
+    message = query.message
+    chat_id = message.chat_id
+    message_id = message.message_id
+    simulated = context.chat_data.get('test_time')
+    if simulated:
+        if simulated.tzinfo is None:
+            simulated = CATANIA_TZ.localize(simulated)
+        now = simulated
+    else:
+        now = datetime.now(CATANIA_TZ)
+    new_msg = await get_super_status(now)
+    # Quitar el botón y actualizar el contenido
     try:
-        await query.message.delete()
+        await query.edit_message_text(text=new_msg, parse_mode='Markdown')
     except Exception as e:
-        logger.error(f"Error al eliminar mensaje en super callback: {e}")
-    await send_super_response(update, context)
+        logger.error(f"Error al editar super: {e}")
+        new_result = await message.reply_text(new_msg, parse_mode='Markdown')
+        message_id = new_result.message_id
+        try:
+            await message.delete()
+        except:
+            pass
+    # Reiniciar ciclo
+    context.chat_data['super_msg_id'] = message_id
+    context.chat_data['super_chat_id'] = chat_id
+    context.chat_data['super_active'] = True
+    task = asyncio.create_task(auto_update_super(context, chat_id, message_id, cycles=7, interval=8))
+    context.chat_data['super_task'] = task
+
 # ============================================================================
 # MODO NONNA: DETECCIÓN DE NOMBRE DE ESTACIÓN CON ERRORES TIPOGRÁFICOS Y ALIAS
 # ============================================================================
@@ -979,20 +1003,9 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await store_id(context, result)
         return
     
-        # ========== RESPUESTA A "super" (solicitar clave) ==========
+    # ========== RESPUESTA A "super" ==========
     if texto_normalized == "super":
-        context.chat_data['awaiting_super_key'] = True
-        await update.message.reply_text("Modalità Supervisore, scrive codice di quattro cifre")
-        return
-    
-    # ========== ESPERA DE CLAVE PARA SUPER ==========
-    if context.chat_data.get('awaiting_super_key', False):
-        if texto_normalized == "9999":
-            context.chat_data['awaiting_super_key'] = False
-            await send_super_response(update, context)
-        else:
-            # Código incorrecto: no responder y cancelar silenciosamente
-            context.chat_data['awaiting_super_key'] = False
+        await send_super_response(update, context)
         return
     
     # ========== AVANCE DE TIEMPO EN MODO TEST (+NUM) ==========
