@@ -873,21 +873,21 @@ async def get_super_status(now: datetime) -> str:
             if has:
                 total = mins*60 + secs
                 if total <= 59:
-                    lines.append(f"{nombre} 🔻 Stesicoro: {total//60:02d}:{total%60:02d}")
+                    lines.append(f"⚪️ {nombre} 🔻 Stesicoro: {total//60:02d}:{total%60:02d}")
                 else:
-                    lines.append(nombre)
+                    lines.append(f"⚪️ {nombre}")
             else:
-                lines.append(nombre)
+                lines.append(f"⚪️ {nombre}")
         elif estacion == "stesicoro":
             next_dep, mins, secs, has = get_next_departure("Stesicoro", now)
             if has:
                 total = mins*60 + secs
                 if total <= 59:
-                    lines.append(f"{nombre} 🔺 Monte Po: {total//60:02d}:{total%60:02d}")
+                    lines.append(f"⚪️ {nombre} 🔺 Monte Po: {total//60:02d}:{total%60:02d}")
                 else:
-                    lines.append(nombre)
+                    lines.append(f"⚪️ {nombre}")
             else:
-                lines.append(nombre)
+                lines.append(f"⚪️ {nombre}")
         else:
             info_mp, info_st = get_next_train_at_station(now, estacion)
             mejor_tiempo = None
@@ -906,9 +906,9 @@ async def get_super_status(now: datetime) -> str:
                         mejor_tiempo = total
                         mejor_texto = f"{nombre} 🔺 Monte Po: {total//60:02d}:{total%60:02d}"
             if mejor_texto:
-                lines.append(mejor_texto)
+                lines.append(f"⚪️ {mejor_texto}")
             else:
-                lines.append(nombre)
+                lines.append(f"⚪️ {nombre}")
         
         # ---- Separador: flechas si hay tren en rango (61-LIMITE segundos) hacia la SIGUIENTE estación ----
         if estacion != "stesicoro":
@@ -926,9 +926,9 @@ async def get_super_status(now: datetime) -> str:
             if flechas:
                 flechas.sort(key=lambda x: x[1])  # ordenar por tiempo (más próximo primero)
                 flechas_str = "".join([f for f, _ in flechas])
-                lines.append(f"⬜{flechas_str}")
+                lines.append(f"▫️{flechas_str}")
             else:
-                lines.append("⬜")
+                lines.append("▫️")
     
     return "🛂 **SUPERVISORE: Monitoraggio degli arrivi dei treni**\n\n" + "\n".join(lines)
 
