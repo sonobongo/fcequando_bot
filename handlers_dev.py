@@ -858,7 +858,7 @@ async def testfin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def get_super_status(now: datetime) -> str:
     estaciones_orden = ["montepo", "fontana", "nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "giovanni", "stesicoro"]
     lines = []
-    LIMITE = 180
+    LIMITE = 150  # 2 minutos y 30 segundos
     
     for idx, estacion in enumerate(estaciones_orden):
         nombre = NOMBRE_MOSTRAR.get(estacion, estacion.capitalize())
@@ -906,7 +906,7 @@ async def get_super_status(now: datetime) -> str:
             else:
                 lines.append(nombre)
         
-        # ---- Separador: solo añadir flechas si hay tren en rango (61-180s) hacia la SIGUIENTE estación ----
+        # ---- Separador: solo añadir flechas si hay tren en rango (61-LIMITE segundos) hacia la SIGUIENTE estación ----
         if estacion != "stesicoro":
             siguiente = estaciones_orden[idx+1]
             info_mp_next, info_st_next = get_next_train_at_station(now, siguiente)
