@@ -885,7 +885,6 @@ async def get_super_status(now: datetime) -> str:
 async def auto_update_super_from_context(context, chat_id, message_id):
     """Actualiza automáticamente el mensaje super cada 10 segundos hasta 6 ciclos."""
     for ciclo in range(1, 7):
-        # Esperar 10 segundos (con comprobación de cancelación cada segundo)
         for _ in range(10):
             await asyncio.sleep(1)
             if not context.chat_data.get('super_active', False):
@@ -951,7 +950,7 @@ async def aggiornare_super_callback(update: Update, context: ContextTypes.DEFAUL
     query = update.callback_query
     await query.answer()
     
-    # Detener la tarea anterior
+    # Detener la tarea anterior si existe
     if 'super_task' in context.chat_data:
         context.chat_data['super_active'] = False
         try:
@@ -960,7 +959,7 @@ async def aggiornare_super_callback(update: Update, context: ContextTypes.DEFAUL
             pass
         context.chat_data.pop('super_task', None)
     
-    # Obtener el mensaje original (el que tiene el botón)
+    # Obtener el mensaje actual (el que tiene el botón)
     message = query.message
     chat_id = message.chat_id
     message_id = message.message_id
@@ -976,16 +975,20 @@ async def aggiornare_super_callback(update: Update, context: ContextTypes.DEFAUL
     
     new_msg = await get_super_status(now)
     
-    # Editar el mensaje para quitar el botón y reiniciar el ciclo
+    # Editar el mensaje para quitar el botón y mostrar el nuevo contenido
     try:
         await query.edit_message_text(text=new_msg, parse_mode='Markdown')
-    except Exception:
-        await message.reply_text(new_msg, parse_mode='Markdown')
-        # Si no se pudo editar, obtenemos el nuevo mensaje (pero no tenemos su ID fácilmente)
-        # Para simplificar, asumimos que se editó correctamente o usamos el ID original
-        pass
+    except Exception as e:
+        logger.error(f"Error al editar mensaje en aggiornare_super_callback: {e}")
+        # Si falla la edición, enviamos un nuevo mensaje y eliminamos el antiguo
+        new_result = await message.reply_text(new_msg, parse_mode='Markdown')
+        message_id = new_result.message_id
+        try:
+            await message.delete()
+        except:
+            pass
     
-    # Reiniciar estado
+    # Reiniciar estado con el nuevo mensaje
     context.chat_data['super_msg_id'] = message_id
     context.chat_data['super_chat_id'] = chat_id
     context.chat_data['super_update_count'] = 0
