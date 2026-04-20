@@ -853,11 +853,63 @@ async def testfin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⚠️ Nessuna modalità test/demo attiva.")
 
 # ============================================================================
-# FUNCIONES PARA "SUPER" (actualización automática cada 8s, 7 ciclos, luego botón)
+# FUNCIONES PARA "SUPER" (actualización automática cada 8s, 14 ciclos, luego botón)
 # ============================================================================
+async def get_super_status(now: datetime) -> str:
+    estaciones_orden = ["montepo", "fontana", "nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "giovanni", "stesicoro"]
+    lines = []
+    
+    for estacion in estaciones_orden:
+        nombre = NOMBRE_MOSTRAR.get(estacion, estacion.capitalize())
+        texto_linea = nombre  # valor por defecto (solo nombre)
+        
+        if estacion == "montepo":
+            next_dep, mins, secs, has = get_next_departure("Montepo", now)
+            if has:
+                total = mins*60 + secs
+                if total <= 59:
+                    texto_linea = f"{nombre} 🔻 Stesicoro: {total//60:02d}:{total%60:02d}"
+                elif total <= 240:
+                    texto_linea = f"{nombre} In binario"  # Sin flecha
+        elif estacion == "stesicoro":
+            next_dep, mins, secs, has = get_next_departure("Stesicoro", now)
+            if has:
+                total = mins*60 + secs
+                if total <= 59:
+                    texto_linea = f"{nombre} 🔺 Monte Po: {total//60:02d}:{total%60:02d}"
+                elif total <= 240:
+                    texto_linea = f"{nombre} In binario"  # Sin flecha
+        else:
+            # Estaciones intermedias: mostrar ambos sentidos si existen (dentro de 59s)
+            info_mp, info_st = get_next_train_at_station(now, estacion)
+            tiempos = []
+            if info_mp:
+                paso, mins, secs, _ = info_mp
+                total = mins*60 + secs
+                if total <= 59:
+                    tiempos.append((total, "Stesicoro", f"{total//60:02d}:{total%60:02d}"))
+            if info_st:
+                paso, mins, secs, _ = info_st
+                total = mins*60 + secs
+                if total <= 59:
+                    tiempos.append((total, "Monte Po", f"{total//60:02d}:{total%60:02d}"))
+            
+            if not tiempos:
+                lines.append(nombre)
+                continue
+            else:
+                tiempos.sort(key=lambda x: x[0])
+                partes = [nombre]
+                for total, direccion, tiempo_str in tiempos:
+                    flecha = "🔺" if direccion == "Monte Po" else "🔻"
+                    partes.append(f"{flecha} {direccion}: {tiempo_str}")
+                texto_linea = " ".join(partes)
+        
+        lines.append(texto_linea)
+    
     return "🛂 **SUPERVISORE: Monitoraggio degli arrivi dei treni**\n\n" + "\n".join(lines)
 
-async def auto_update_super(context, chat_id, message_id, cycles=14, interval=6):
+async def auto_update_super(context, chat_id, message_id, cycles=14, interval=8):
     for ciclo in range(1, cycles + 1):
         for _ in range(interval):
             await asyncio.sleep(1)
@@ -941,7 +993,6 @@ async def aggiornare_super_callback(update: Update, context: ContextTypes.DEFAUL
         await query.edit_message_text(text=new_msg, parse_mode='Markdown')
     except Exception as e:
         logger.error(f"Error al editar super: {e}")
-        # Si falla, enviamos uno nuevo y eliminamos el viejo
         new_result = await message.reply_text(new_msg, parse_mode='Markdown')
         message_id = new_result.message_id
         try:
@@ -952,7 +1003,7 @@ async def aggiornare_super_callback(update: Update, context: ContextTypes.DEFAUL
     context.chat_data['super_msg_id'] = message_id
     context.chat_data['super_chat_id'] = chat_id
     context.chat_data['super_active'] = True
-    task = asyncio.create_task(auto_update_super(context, chat_id, message_id, cycles=7, interval=8))
+    task = asyncio.create_task(auto_update_super(context, chat_id, message_id, cycles=14, interval=8))
     context.chat_data['super_task'] = task
 
 # ============================================================================
