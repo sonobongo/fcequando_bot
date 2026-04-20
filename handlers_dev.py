@@ -855,7 +855,6 @@ async def get_super_status(now: datetime) -> str:
     lines = []
     estaciones_intermedias = ["fontana", "nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "giovanni"]
     
-    # 1. Trenes que llegan a estaciones intermedias (desde ambas direcciones) con ≤ 60 segundos
     for estacion in estaciones_intermedias:
         info_mp, info_st = get_next_train_at_station(now, estacion)
         nombre = NOMBRE_MOSTRAR.get(estacion, estacion.capitalize())
@@ -878,7 +877,7 @@ async def get_super_status(now: datetime) -> str:
                 else:
                     lines.append(f"{nombre} → Monte Po: **{mins} minuti**")
     
-    # 2. Trenes en binario en Monte Po (≤ 4 minutos)
+    # Cabeceras en binario (≤ 4 minutos)
     next_dep_mp, mins_mp, secs_mp, has_mp = get_next_departure("Montepo", now)
     if has_mp and (mins_mp*60 + secs_mp) <= 240:
         if mins_mp == 0:
@@ -886,7 +885,6 @@ async def get_super_status(now: datetime) -> str:
         else:
             lines.append(f"Monte Po → Stesicoro (in binario): **{mins_mp} minuti**")
     
-    # 3. Trenes en binario en Stesicoro (≤ 4 minutos)
     next_dep_st, mins_st, secs_st, has_st = get_next_departure("Stesicoro", now)
     if has_st and (mins_st*60 + secs_st) <= 240:
         if mins_st == 0:
@@ -895,7 +893,7 @@ async def get_super_status(now: datetime) -> str:
             lines.append(f"Stesicoro → Monte Po (in binario): **{mins_st} minuti**")
     
     if not lines:
-        return "🚇 Nessun treno in arrivo o in partenza imminente (≤1 minuto) o in binario (≤4 minuti) in questo momento."
+        return "🚇 Nessun treno in arrivo o in partenza imminente."
     
     return "🚇 **Treni in arrivo o in partenza imminenti:**\n\n" + "\n".join(lines)
 
