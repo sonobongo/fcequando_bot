@@ -909,7 +909,7 @@ async def get_super_status(now: datetime) -> str:
     
     return "🛂 **SUPERVISORE: Monitoraggio degli arrivi dei treni**\n\n" + "\n".join(lines)
 
-async def auto_update_super(context, chat_id, message_id, cycles=14, interval=8):
+async def auto_update_super(context, chat_id, message_id, cycles=14, interval=6):
     for ciclo in range(1, cycles + 1):
         for _ in range(interval):
             await asyncio.sleep(1)
