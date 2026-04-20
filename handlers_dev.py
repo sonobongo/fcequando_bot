@@ -51,12 +51,9 @@ def clean_text_for_display(text: str) -> str:
 # ============================================================================
 # FUNCIÓN PARA ALMACENAR IDS
 # ============================================================================
-async def store_id(context, message):
-    if message and hasattr(message, 'message_id'):
-        if 'all_msg_ids' not in context.chat_data:
-            context.chat_data['all_msg_ids'] = []
-        if message.message_id not in context.chat_data['all_msg_ids']:
-            context.chat_data['all_msg_ids'].append(message.message_id)
+def cancel_super_key_wait(context):
+    if context.chat_data.get('awaiting_super_key', False):
+        context.chat_data['awaiting_super_key'] = False
 
 # ============================================================================
 # DETENER ACTUALIZACIÓN AUTOMÁTICA DE SUPER
@@ -862,23 +859,18 @@ async def get_super_status(now: datetime) -> str:
         mejor_tiempo = None  # (total_seconds, texto_formateado)
         
         if estacion == "montepo":
-            # Tren en binario desde Monte Po hacia Stesicoro (salida)
             next_dep, mins, secs, has = get_next_departure("Montepo", now)
             if has:
                 total = mins*60 + secs
                 if total <= 59:
                     mejor_tiempo = (total, f"{nombre} → Stesicoro (in binario): {total//60:02d}:{total%60:02d}")
-        
         elif estacion == "stesicoro":
-            # Tren en binario desde Stesicoro hacia Monte Po (salida)
             next_dep, mins, secs, has = get_next_departure("Stesicoro", now)
             if has:
                 total = mins*60 + secs
                 if total <= 59:
                     mejor_tiempo = (total, f"{nombre} → Monte Po (in binario): {total//60:02d}:{total%60:02d}")
-        
         else:
-            # Estaciones intermedias: obtener trenes que llegan desde ambas direcciones
             info_mp, info_st = get_next_train_at_station(now, estacion)
             tiempos = []
             if info_mp:
@@ -894,17 +886,13 @@ async def get_super_status(now: datetime) -> str:
             if tiempos:
                 mejor_tiempo = min(tiempos, key=lambda x: x[0])
         
-        # Construir la línea para esta estación
         if mejor_tiempo:
             lines.append(mejor_tiempo[1])
         else:
-            # Si no hay tren en ninguna dirección dentro de 59 segundos, mostrar solo el nombre
             lines.append(nombre)
     
-    # Si no hay ningún tren en ninguna estación (todas las líneas son solo nombres)
     if not any(":" in line for line in lines):
         return "🚇 Nessun treno in arrivo o in partenza imminente."
-    
     return "🚇 **Treni in arrivo o in partenza imminenti (≤59 secondi):**\n\n" + "\n".join(lines)
 
 async def auto_update_super_from_context(context, chat_id, message_id):
@@ -989,9 +977,20 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await store_id(context, result)
         return
     
-    # ========== RESPUESTA A "super" ==========
+        # ========== RESPUESTA A "super" (solicitar clave) ==========
     if texto_normalized == "super":
-        await send_super_response(update, context)
+        context.chat_data['awaiting_super_key'] = True
+        await update.message.reply_text("Modalità Supervisore, scrive codice di quattro cifre")
+        return
+    
+    # ========== ESPERA DE CLAVE PARA SUPER ==========
+    if context.chat_data.get('awaiting_super_key', False):
+        if texto_normalized == "9999":
+            context.chat_data['awaiting_super_key'] = False
+            await send_super_response(update, context)
+        else:
+            # Código incorrecto: no responder y cancelar silenciosamente
+            context.chat_data['awaiting_super_key'] = False
         return
     
     # ========== AVANCE DE TIEMPO EN MODO TEST (+NUM) ==========
