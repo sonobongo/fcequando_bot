@@ -869,12 +869,16 @@ async def get_super_status(now: datetime) -> str:
                 total = mins*60 + secs
                 if total <= 59:
                     mejor_tiempo = (total, f"{nombre} → Stesicoro: {total//60:02d}:{total%60:02d}")
+                elif total <= 240:  # 4 minutos
+                    mejor_tiempo = (total, f"{nombre} → In binario")
         elif estacion == "stesicoro":
             next_dep, mins, secs, has = get_next_departure("Stesicoro", now)
             if has:
                 total = mins*60 + secs
                 if total <= 59:
                     mejor_tiempo = (total, f"{nombre} → Monte Po: {total//60:02d}:{total%60:02d}")
+                elif total <= 240:
+                    mejor_tiempo = (total, f"{nombre} → In binario")
         else:
             info_mp, info_st = get_next_train_at_station(now, estacion)
             tiempos = []
@@ -897,10 +901,10 @@ async def get_super_status(now: datetime) -> str:
             lines.append(nombre)
     
     # Si no hay ningún tren en ninguna estación (todas las líneas son solo nombres)
-    if not any(":" in line for line in lines):
+    if not any(":" in line or "In binario" in line for line in lines):
         return "🚇 Nessun treno in arrivo o in partenza imminente."
     
-    return "🚇 **Treni in arrivo o in partenza imminenti (≤59 secondi):**\n\n" + "\n".join(lines)
+    return "🚇 **Treni in arrivo o in partenza imminenti (≤59 secondi) o in binario:**\n\n" + "\n".join(lines)
 
 async def auto_update_super(context, chat_id, message_id, cycles=7, interval=8):
     for ciclo in range(1, cycles + 1):
