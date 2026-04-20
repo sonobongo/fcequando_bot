@@ -73,10 +73,6 @@ def main():
         await dev_handlers.test_command_wrapper(update, context)
     async def testfin_command_wrapper(update, context):
         await dev_handlers.testfin_command_wrapper(update, context)
-    async def auto_wrapper(update, context):
-        await dev_handlers.auto_wrapper(update, context)
-    async def stop_wrapper(update, context):
-        await dev_handlers.stop_wrapper(update, context)
 
     # Callbacks
     async def aggiornare_callback_wrapper(update, context):
@@ -108,8 +104,8 @@ def main():
         except Exception:
             await update.message.reply_text(CREDITI_MSG, parse_mode='Markdown')
 
-    # Nuevo comando /demo
-    async def demo_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Nuovo comando /demo
+    async def demo_command(update: Update, context):
         args = context.args
         if not args:
             await update.message.reply_text(
@@ -147,40 +143,7 @@ def main():
                 parse_mode='Markdown'
             )
             return
-        if len(args) == 3:
-            date_str, time_str, station_code = args[0], args[1], args[2].upper()
-            if station_code == "M":
-                station = "montepo"
-            elif station_code == "S":
-                station = "stesicoro"
-            elif station_code == "ML":
-                station = "milo"
-            else:
-                await update.message.reply_text("Codice stazione non valido. Usa M, S o ML.")
-                return
-            if len(date_str) != 8 or not date_str.isdigit():
-                await update.message.reply_text("Data non valida. Usa DDMMYYYY.")
-                return
-            if len(time_str) != 4 or not time_str.isdigit():
-                await update.message.reply_text("Ora non valida. Usa HHMM.")
-                return
-            day, month, year = int(date_str[0:2]), int(date_str[2:4]), int(date_str[4:8])
-            hour, minute = int(time_str[0:2]), int(time_str[2:4])
-            if hour > 23 or minute > 59:
-                await update.message.reply_text("Ora non valida.")
-                return
-            try:
-                simulated = datetime(year, month, day, hour, minute)
-            except Exception as e:
-                await update.message.reply_text(f"Data non valida: {e}")
-                return
-            simulated = CATANIA_TZ.localize(simulated)
-            context.chat_data['test_time'] = simulated
-            context.chat_data['demo_mode'] = True
-            context.chat_data['last_station'] = station
-            await dev_handlers.send_station_response(update, context, station, return_to_main=False)
-            return
-        await update.message.reply_text("Comando non riconosciuto. Usa /demo DDMMYYYY HHMM o /demo DDMMYYYY HHMM X")
+        await update.message.reply_text("Comando non riconosciuto. Usa /demo DDMMYYYY HHMM")
 
     # Registro comandi
     commands = [
@@ -193,7 +156,6 @@ def main():
         ("italia", cmd_italia_wrapper), ("galatea", cmd_galatea_wrapper),
         ("giovanni", cmd_giovanni_wrapper), ("test", test_command_wrapper),
         ("testfin", testfin_command_wrapper), ("testgif", cmd_testgif_wrapper),
-        ("auto", auto_wrapper), ("stop", stop_wrapper),
         ("about", about_cmd), ("grazie", grazie_cmd),
         ("demo", demo_command)
     ]
@@ -217,15 +179,17 @@ def main():
     
     app.add_handler(MessageHandler(filters.Text(button_texts), handle_button_wrapper))
 
-    # Callbacks
+    # ========================================================================
+    # CALLBACKS (orden importante: super primero)
+    # ========================================================================
+    app.add_handler(CallbackQueryHandler(dev_handlers.aggiornare_super_callback, pattern="^aggiornare_super$"))
     app.add_handler(CallbackQueryHandler(aggiornare_callback_wrapper, pattern="^aggiornare_"))
     app.add_handler(CallbackQueryHandler(aggiornare_cabecera_callback_wrapper, pattern="^agg_cabecera_"))
-    app.add_handler(CallbackQueryHandler(dev_handlers.aggiornare_super_callback, pattern="^aggiornare_super$"))
 
     # ========================================================================
     # MANEJADOR DE TEXTO PRINCIPALE (con excepción para "← Menu")
     # ========================================================================
-    async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    async def text_handler(update: Update, context):
         text = update.message.text.strip()
         # Manejo especial para volver al menú
         if text == "← Menu":
@@ -240,7 +204,6 @@ def main():
         if context.chat_data.get('acces_mode', False):
             await acc_handlers.normal_handle_text(update, context)
         else:
-            # Normalizza per eliminare accenti
             text_norm = unicodedata.normalize('NFKD', text.lower()).encode('ASCII', 'ignore').decode('ASCII')
             if " " not in text and text_norm.startswith("acces"):
                 await acc_handlers.activate_acces_mode(update, context)
