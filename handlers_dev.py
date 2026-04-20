@@ -852,131 +852,60 @@ async def testfin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # FUNCIONES PARA "SUPER" (actualización automática cada 10s, 6 ciclos, luego botón)
 # ============================================================================
 async def get_super_status(now: datetime) -> str:
+    # Orden de estaciones desde Monte Po hasta Stesicoro
+    estaciones_orden = ["montepo", "fontana", "nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "giovanni", "stesicoro"]
+    
     lines = []
-    estaciones_intermedias = ["fontana", "nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "giovanni"]
     
-    for estacion in estaciones_intermedias:
-        info_mp, info_st = get_next_train_at_station(now, estacion)
+    for estacion in estaciones_orden:
         nombre = NOMBRE_MOSTRAR.get(estacion, estacion.capitalize())
+        mejor_tiempo = None  # (total_seconds, texto_formateado)
         
-        if info_mp:
-            paso, mins, secs, _ = info_mp
-            total = mins*60 + secs
-            if total <= 60:
-                if mins == 0:
-                    lines.append(f"{nombre} → Stesicoro: **{secs} secondi**")
-                else:
-                    lines.append(f"{nombre} → Stesicoro: **{mins} minuti**")
+        if estacion == "montepo":
+            # Tren en binario desde Monte Po hacia Stesicoro (salida)
+            next_dep, mins, secs, has = get_next_departure("Montepo", now)
+            if has:
+                total = mins*60 + secs
+                if total <= 59:
+                    mejor_tiempo = (total, f"{nombre} → Stesicoro (in binario): {total//60:02d}:{total%60:02d}")
         
-        if info_st:
-            paso, mins, secs, _ = info_st
-            total = mins*60 + secs
-            if total <= 60:
-                if mins == 0:
-                    lines.append(f"{nombre} → Monte Po: **{secs} secondi**")
-                else:
-                    lines.append(f"{nombre} → Monte Po: **{mins} minuti**")
-    
-    # Cabeceras en binario (≤ 4 minutos)
-    next_dep_mp, mins_mp, secs_mp, has_mp = get_next_departure("Montepo", now)
-    if has_mp and (mins_mp*60 + secs_mp) <= 240:
-        if mins_mp == 0:
-            lines.append(f"Monte Po → Stesicoro (in binario): **{secs_mp} secondi**")
+        elif estacion == "stesicoro":
+            # Tren en binario desde Stesicoro hacia Monte Po (salida)
+            next_dep, mins, secs, has = get_next_departure("Stesicoro", now)
+            if has:
+                total = mins*60 + secs
+                if total <= 59:
+                    mejor_tiempo = (total, f"{nombre} → Monte Po (in binario): {total//60:02d}:{total%60:02d}")
+        
         else:
-            lines.append(f"Monte Po → Stesicoro (in binario): **{mins_mp} minuti**")
-    
-    next_dep_st, mins_st, secs_st, has_st = get_next_departure("Stesicoro", now)
-    if has_st and (mins_st*60 + secs_st) <= 240:
-        if mins_st == 0:
-            lines.append(f"Stesicoro → Monte Po (in binario): **{secs_st} secondi**")
+            # Estaciones intermedias: obtener trenes que llegan desde ambas direcciones
+            info_mp, info_st = get_next_train_at_station(now, estacion)
+            tiempos = []
+            if info_mp:
+                paso, mins, secs, _ = info_mp
+                total = mins*60 + secs
+                if total <= 59:
+                    tiempos.append((total, f"{nombre} → Stesicoro: {total//60:02d}:{total%60:02d}"))
+            if info_st:
+                paso, mins, secs, _ = info_st
+                total = mins*60 + secs
+                if total <= 59:
+                    tiempos.append((total, f"{nombre} → Monte Po: {total//60:02d}:{total%60:02d}"))
+            if tiempos:
+                mejor_tiempo = min(tiempos, key=lambda x: x[0])
+        
+        # Construir la línea para esta estación
+        if mejor_tiempo:
+            lines.append(mejor_tiempo[1])
         else:
-            lines.append(f"Stesicoro → Monte Po (in binario): **{mins_st} minuti**")
+            # Si no hay tren en ninguna dirección dentro de 59 segundos, mostrar solo el nombre
+            lines.append(nombre)
     
-    if not lines:
-        return "🚇 Nessun treno in arrivo o in partenza imminente."
-    
-    return "🚇 **Treni in arrivo o in partenza imminenti:**\n\n" + "\n".join(lines)
-
-async def auto_update_super_from_context(context, chat_id, message_id):
-    """Actualiza automáticamente el mensaje super cada 10 segundos hasta 6 ciclos."""
-    for ciclo in range(1, 7):
-        # Esperar 10 segundos (con comprobación de cancelación cada segundo)
-        for _ in range(10):
-            await asyncio.sleep(1)
-            if not context.chat_data.get('super_active', False):
-                return
-        
-        if not context.chat_data.get('super_active', False):
-            return
-        
-        simulated = context.chat_data.get('test_time')
-        if simulated:
-            if simulated.tzinfo is None:
-                simulated = CATANIA_TZ.localize(simulated)
-            now = simulated
-        else:
-            now = datetime.now(CATANIA_TZ)
-        
-        new_msg = await get_super_status(now)
-        try:
-            await context.bot.edit_message_text(text=new_msg, chat_id=chat_id, message_id=message_id, parse_mode='Markdown')
-        except Exception as e:
-            logger.error(f"Error al actualizar super: {e}")
-            break
-    
-    if context.chat_data.get('super_active', False):
-        keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("🔄 Aggiornare", callback_data="aggiornare_super")]
-        ])
-        try:
-            await context.bot.edit_message_text(text=new_msg, chat_id=chat_id, message_id=message_id, parse_mode='Markdown', reply_markup=keyboard)
-        except Exception:
-            await context.bot.send_message(chat_id=chat_id, text=new_msg, parse_mode='Markdown', reply_markup=keyboard)
-        
-        context.chat_data['super_active'] = False
-        context.chat_data.pop('super_task', None)
-
-async def send_super_response(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Detener cualquier tarea anterior
-    stop_super_update(context)
-    
-    simulated = context.chat_data.get('test_time')
-    if simulated:
-        if simulated.tzinfo is None:
-            simulated = CATANIA_TZ.localize(simulated)
-        now = simulated
-    else:
-        now = datetime.now(CATANIA_TZ)
-    
-    msg = await get_super_status(now)
-    result = await update.message.reply_text(msg, parse_mode='Markdown')
-    message_id = result.message_id
-    chat_id = update.effective_chat.id
-    
-    context.chat_data['super_msg_id'] = message_id
-    context.chat_data['super_chat_id'] = chat_id
-    context.chat_data['super_update_count'] = 0
-    context.chat_data['super_active'] = True
-    
-    task = asyncio.create_task(auto_update_super_from_context(context, chat_id, message_id))
-    context.chat_data['super_task'] = task
-
-async def aggiornare_super_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    
-    # Detener la tarea anterior si existe
-    stop_super_update(context)
-    
-    # Eliminar el mensaje que contenía el botón
-    try:
-        await query.message.delete()
-    except Exception as e:
-        logger.error(f"Error al eliminar mensaje en super callback: {e}")
-    
-    # Volver a ejecutar super (envía un nuevo mensaje y comienza el ciclo)
-    await send_super_response(update, context)
-
+    # Si no hay ningún tren en ninguna estación (pero aún así se muestran los nombres),
+    # podemos devolver la lista completa o un mensaje especial. Según tu petición,
+    # "muestras todas las estaciones... sino hay tren muestra en blanco (solo el nombre)".
+    # Por lo tanto, siempre devolvemos la lista.
+    return "🚇 **Treni in arrivo o in partenza imminenti (≤59 secondi):**\n\n" + "\n".join(lines)
 # ============================================================================
 # MODO NONNA: DETECCIÓN DE NOMBRE DE ESTACIÓN CON ERRORES TIPOGRÁFICOS Y ALIAS
 # ============================================================================
