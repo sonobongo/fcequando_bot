@@ -906,29 +906,25 @@ async def get_super_status(now: datetime) -> str:
             else:
                 lines.append(nombre)
         
-        # ---- Separador (flechas hacia la siguiente estación si 60 < tiempo ≤ LIMITE) ----
+        # ---- Separador: solo añadir flechas si hay tren en rango (61-1800s) hacia la SIGUIENTE estación ----
         if estacion != "stesicoro":
             siguiente = estaciones_orden[idx+1]
             info_mp_next, info_st_next = get_next_train_at_station(now, siguiente)
-            flechas = []  # lista de (tiempo, flecha, letra)
+            flechas = []  # (tiempo, símbolo, letra)
             if info_mp_next:
-                paso, mins, secs, _ = info_mp_next
-                total = mins*60 + secs
+                total = info_mp_next[1]*60 + info_mp_next[2]
                 if 60 < total <= LIMITE:
                     flechas.append((total, "🔻", "S"))
             if info_st_next:
-                paso, mins, secs, _ = info_st_next
-                total = mins*60 + secs
+                total = info_st_next[1]*60 + info_st_next[2]
                 if 60 < total <= LIMITE:
                     flechas.append((total, "🔺", "M"))
-            # Ordenar por tiempo (menor a mayor)
-            flechas.sort(key=lambda x: x[0])
             if flechas:
-                # Construir: ⬜ + flecha + letra (por cada una)
-                flechas_str = "".join([f"{f[1]}{f[2]}" for f in flechas])
+                flechas.sort(key=lambda x: x[0])  # ordenar por tiempo (más próximo primero)
+                flechas_str = "".join([f"{sym}{let}" for _, sym, let in flechas])
                 lines.append(f"⬜{flechas_str}")
             else:
-                lines.append("⬜")
+                lines.append("⬜")   # sin flechas
     
     return "🛂 **SUPERVISORE: Monitoraggio degli arrivi dei treni**\n\n" + "\n".join(lines)
 
