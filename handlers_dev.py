@@ -1069,25 +1069,35 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await send_super_response(update, context)
         return
     
-    # ========== AVANCE DE TIEMPO EN MODO TEST (+NUM) ==========
-    if 'test_time' in context.chat_data and texto_normalized.startswith('+'):
-        try:
-            minutos = int(texto_normalized[1:])
-            if 1 <= minutos <= 99:
-                simulated = context.chat_data['test_time']
-                if simulated.tzinfo is None:
-                    simulated = CATANIA_TZ.localize(simulated)
-                nueva_simulacion = simulated + timedelta(minutes=minutos)
-                context.chat_data['test_time'] = nueva_simulacion
-                last_station = context.chat_data.get('last_station')
-                if last_station:
-                    await send_station_response(update, context, last_station, return_to_main=False)
-                else:
-                    await update.message.reply_text(f"⏩ Avanzati {minutos} minuti. Nuovo orario simulato: {nueva_simulacion.strftime('%d/%m/%Y %H:%M')}")
-                return
+       # ========== AVANCE/RETROCESO DE TIEMPO EN MODO TEST (+/- segundos o minutos) ==========
+    if 'test_time' in context.chat_data:
+        # Detectar formato: +10s, -30s, +5m, -2m, +30 (minutos por defecto)
+        match = re.match(r'^([+-])(\d+)([sm]?)$', texto_normalized)
+        if match:
+            signo = match.group(1)
+            cantidad = int(match.group(2))
+            unidad = match.group(3) if match.group(3) else 'm'  # por defecto minutos
+            
+            if unidad == 's':
+                delta = timedelta(seconds=cantidad)
+            else:  # 'm' o sin unidad
+                delta = timedelta(minutes=cantidad)
+            
+            if signo == '-':
+                delta = -delta
+            
+            simulated = context.chat_data['test_time']
+            if simulated.tzinfo is None:
+                simulated = CATANIA_TZ.localize(simulated)
+            nueva_simulacion = simulated + delta
+            context.chat_data['test_time'] = nueva_simulacion
+            
+            last_station = context.chat_data.get('last_station')
+            if last_station:
+                await send_station_response(update, context, last_station, return_to_main=False)
             else:
-                await update.message.reply_text("Puoi avanzare da 1 a 99 minuti. Esempio: +5")
-                return
+                await update.message.reply_text(f"⏩ Avanzato/Indietro di {cantidad}{unidad}. Nuovo orario simulato: {nueva_simulacion.strftime('%d/%m/%Y %H:%M:%S')}")
+            return
         except ValueError:
             pass
     
