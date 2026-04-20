@@ -855,71 +855,7 @@ async def testfin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ============================================================================
 # FUNCIONES PARA "SUPER" (actualización automática cada 8s, 7 ciclos, luego botón)
 # ============================================================================
-async def get_super_status(now: datetime) -> str:
-    estaciones_orden = ["montepo", "fontana", "nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "giovanni", "stesicoro"]
-    lines = []
-    
-    for estacion in estaciones_orden:
-        nombre = NOMBRE_MOSTRAR.get(estacion, estacion.capitalize())
-        
-        # Caso Monte Po (solo salida hacia Stesicoro)
-        if estacion == "montepo":
-            next_dep, mins, secs, has = get_next_departure("Montepo", now)
-            if has:
-                total = mins*60 + secs
-                if total <= 59:
-                    lines.append(f"{nombre} 🔻 Stesicoro: {total//60:02d}:{total%60:02d}")
-                elif total <= 240:
-                    lines.append(f"{nombre} In binario")  # Sin flecha
-                else:
-                    lines.append(nombre)
-            else:
-                lines.append(nombre)
-        
-        # Caso Stesicoro (solo salida hacia Monte Po)
-        elif estacion == "stesicoro":
-            next_dep, mins, secs, has = get_next_departure("Stesicoro", now)
-            if has:
-                total = mins*60 + secs
-                if total <= 59:
-                    lines.append(f"{nombre} 🔺 Monte Po: {total//60:02d}:{total%60:02d}")
-                elif total <= 240:
-                    lines.append(f"{nombre} In binario")  # Sin flecha
-                else:
-                    lines.append(nombre)
-            else:
-                lines.append(nombre)
-        
-        # Estaciones intermedias: mostrar ambos sentidos si existen (dentro de 59s)
-        else:
-            info_mp, info_st = get_next_train_at_station(now, estacion)
-            tiempos = []  # lista de (segundos, direccion, texto)
-            
-            if info_mp:
-                paso, mins, secs, _ = info_mp
-                total = mins*60 + secs
-                if total <= 59:
-                    tiempos.append((total, "Stesicoro", f"{total//60:02d}:{total%60:02d}"))
-            if info_st:
-                paso, mins, secs, _ = info_st
-                total = mins*60 + secs
-                if total <= 59:
-                    tiempos.append((total, "Monte Po", f"{total//60:02d}:{total%60:02d}"))
-            
-            if not tiempos:
-                lines.append(nombre)
-            else:
-                tiempos.sort(key=lambda x: x[0])
-                partes = [nombre]
-                for total, direccion, tiempo_str in tiempos:
-                    if direccion == "Monte Po":
-                        flecha = "🔺"
-                    else:
-                        flecha = "🔻"
-                    partes.append(f"{flecha} {direccion}: {tiempo_str}")
-                lines.append(" ".join(partes))
-    
-    return "🚇 **Treni in arrivo o in partenza imminenti (≤59 secondi) o in binario:**\n\n" + "\n".join(lines)
+    return "🛂 **SUPERVISORE: Monitoraggio degli arrivi dei treni**\n\n" + "\n".join(lines)
 
 async def auto_update_super(context, chat_id, message_id, cycles=7, interval=8):
     for ciclo in range(1, cycles + 1):
