@@ -868,9 +868,9 @@ async def get_super_status(now: datetime) -> str:
             if has:
                 total = mins*60 + secs
                 if total <= 59:
-                    lines.append(f"{nombre} → Stesicoro: {total//60:02d}:{total%60:02d}")
+                    lines.append(f"{nombre} 🔻 Stesicoro: {total//60:02d}:{total%60:02d}")
                 elif total <= 240:
-                    lines.append(f"{nombre} → In binario")
+                    lines.append(f"{nombre} In binario")  # Sin flecha
                 else:
                     lines.append(nombre)
             else:
@@ -882,9 +882,9 @@ async def get_super_status(now: datetime) -> str:
             if has:
                 total = mins*60 + secs
                 if total <= 59:
-                    lines.append(f"{nombre} → Monte Po: {total//60:02d}:{total%60:02d}")
+                    lines.append(f"{nombre} 🔺 Monte Po: {total//60:02d}:{total%60:02d}")
                 elif total <= 240:
-                    lines.append(f"{nombre} → In binario")
+                    lines.append(f"{nombre} In binario")  # Sin flecha
                 else:
                     lines.append(nombre)
             else:
@@ -893,7 +893,7 @@ async def get_super_status(now: datetime) -> str:
         # Estaciones intermedias: mostrar ambos sentidos si existen (dentro de 59s)
         else:
             info_mp, info_st = get_next_train_at_station(now, estacion)
-            tiempos = []  # lista de (segundos, dirección, texto)
+            tiempos = []  # lista de (segundos, direccion, texto)
             
             if info_mp:
                 paso, mins, secs, _ = info_mp
@@ -907,15 +907,16 @@ async def get_super_status(now: datetime) -> str:
                     tiempos.append((total, "Monte Po", f"{total//60:02d}:{total%60:02d}"))
             
             if not tiempos:
-                # No hay trenes en ninguna dirección
                 lines.append(nombre)
             else:
-                # Ordenar por tiempo (menor a mayor)
                 tiempos.sort(key=lambda x: x[0])
-                # Construir la línea con ambos sentidos separados por " | "
-                partes = [f"{nombre}"]
-                for t in tiempos:
-                    partes.append(f"→ {t[1]}: {t[2]}")
+                partes = [nombre]
+                for total, direccion, tiempo_str in tiempos:
+                    if direccion == "Monte Po":
+                        flecha = "🔺"
+                    else:
+                        flecha = "🔻"
+                    partes.append(f"{flecha} {direccion}: {tiempo_str}")
                 lines.append(" ".join(partes))
     
     return "🚇 **Treni in arrivo o in partenza imminenti (≤59 secondi) o in binario:**\n\n" + "\n".join(lines)
