@@ -901,11 +901,71 @@ async def get_super_status(now: datetime) -> str:
             # Si no hay tren en ninguna dirección dentro de 59 segundos, mostrar solo el nombre
             lines.append(nombre)
     
-    # Si no hay ningún tren en ninguna estación (pero aún así se muestran los nombres),
-    # podemos devolver la lista completa o un mensaje especial. Según tu petición,
-    # "muestras todas las estaciones... sino hay tren muestra en blanco (solo el nombre)".
-    # Por lo tanto, siempre devolvemos la lista.
+    # Si no hay ningún tren en ninguna estación (todas las líneas son solo nombres)
+    if not any(":" in line for line in lines):
+        return "🚇 Nessun treno in arrivo o in partenza imminente."
+    
     return "🚇 **Treni in arrivo o in partenza imminenti (≤59 secondi):**\n\n" + "\n".join(lines)
+
+async def auto_update_super_from_context(context, chat_id, message_id):
+    for ciclo in range(1, 7):
+        for _ in range(10):
+            await asyncio.sleep(1)
+            if not context.chat_data.get('super_active', False):
+                return
+        if not context.chat_data.get('super_active', False):
+            return
+        simulated = context.chat_data.get('test_time')
+        if simulated:
+            if simulated.tzinfo is None:
+                simulated = CATANIA_TZ.localize(simulated)
+            now = simulated
+        else:
+            now = datetime.now(CATANIA_TZ)
+        new_msg = await get_super_status(now)
+        try:
+            await context.bot.edit_message_text(text=new_msg, chat_id=chat_id, message_id=message_id, parse_mode='Markdown')
+        except Exception as e:
+            logger.error(f"Error al actualizar super: {e}")
+            break
+    if context.chat_data.get('super_active', False):
+        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔄 Aggiornare", callback_data="aggiornare_super")]])
+        try:
+            await context.bot.edit_message_text(text=new_msg, chat_id=chat_id, message_id=message_id, parse_mode='Markdown', reply_markup=keyboard)
+        except Exception:
+            await context.bot.send_message(chat_id=chat_id, text=new_msg, parse_mode='Markdown', reply_markup=keyboard)
+        context.chat_data['super_active'] = False
+        context.chat_data.pop('super_task', None)
+
+async def send_super_response(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    stop_super_update(context)
+    simulated = context.chat_data.get('test_time')
+    if simulated:
+        if simulated.tzinfo is None:
+            simulated = CATANIA_TZ.localize(simulated)
+        now = simulated
+    else:
+        now = datetime.now(CATANIA_TZ)
+    msg = await get_super_status(now)
+    result = await update.message.reply_text(msg, parse_mode='Markdown')
+    message_id = result.message_id
+    chat_id = update.effective_chat.id
+    context.chat_data['super_msg_id'] = message_id
+    context.chat_data['super_chat_id'] = chat_id
+    context.chat_data['super_update_count'] = 0
+    context.chat_data['super_active'] = True
+    task = asyncio.create_task(auto_update_super_from_context(context, chat_id, message_id))
+    context.chat_data['super_task'] = task
+
+async def aggiornare_super_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    stop_super_update(context)
+    try:
+        await query.message.delete()
+    except Exception as e:
+        logger.error(f"Error al eliminar mensaje en super callback: {e}")
+    await send_super_response(update, context)
 # ============================================================================
 # MODO NONNA: DETECCIÓN DE NOMBRE DE ESTACIÓN CON ERRORES TIPOGRÁFICOS Y ALIAS
 # ============================================================================
