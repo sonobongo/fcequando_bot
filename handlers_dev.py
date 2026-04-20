@@ -858,37 +858,49 @@ async def testfin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def get_super_status(now: datetime) -> str:
     estaciones_orden = ["montepo", "fontana", "nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "giovanni", "stesicoro"]
     lines = []
+    
     for estacion in estaciones_orden:
         nombre = NOMBRE_MOSTRAR.get(estacion, estacion.capitalize())
-        tiempo_mon = None
-        tiempo_ste = None
+        tiempo_mon = "---"  # hacia Monte Po
+        tiempo_ste = "---"  # hacia Stesicoro
+        
         if estacion == "montepo":
+            # Solo salida hacia Stesicoro
             next_dep, mins, secs, has = get_next_departure("Montepo", now)
             if has:
                 total = mins*60 + secs
                 if total <= 59:
-                    tiempo_ste = (total, f"{total//60:02d}:{total%60:02d}")
+                    tiempo_ste = f"{total//60:02d}:{total%60:02d}"
         elif estacion == "stesicoro":
+            # Solo salida hacia Monte Po
             next_dep, mins, secs, has = get_next_departure("Stesicoro", now)
             if has:
                 total = mins*60 + secs
                 if total <= 59:
-                    tiempo_mon = (total, f"{total//60:02d}:{total%60:02d}")
+                    tiempo_mon = f"{total//60:02d}:{total%60:02d}"
         else:
+            # Estaciones intermedias: ambas direcciones
             info_mp, info_st = get_next_train_at_station(now, estacion)
             if info_mp:
                 paso, mins, secs, _ = info_mp
                 total = mins*60 + secs
                 if total <= 59:
-                    tiempo_ste = (total, f"{total//60:02d}:{total%60:02d}")
+                    tiempo_ste = f"{total//60:02d}:{total%60:02d}"
             if info_st:
                 paso, mins, secs, _ = info_st
                 total = mins*60 + secs
                 if total <= 59:
-                    tiempo_mon = (total, f"{total//60:02d}:{total%60:02d}")
-        mon_text = tiempo_mon[1] if tiempo_mon else "    "
-        ste_text = tiempo_ste[1] if tiempo_ste else "    "
-        lines.append(f"{nombre} → MON: {mon_text} | → STE: {ste_text}")
+                    tiempo_mon = f"{total//60:02d}:{total%60:02d}"
+        
+        # Formatear la línea de la estación
+        lines.append(f"**{nombre}**")
+        lines.append(f"  → Monte Po: {tiempo_mon} | → Stesicoro: {tiempo_ste}")
+        lines.append("")  # línea en blanco entre estaciones
+    
+    # Eliminar la última línea en blanco
+    if lines and lines[-1] == "":
+        lines.pop()
+    
     return "🚇 **Treni in arrivo o in partenza imminenti (≤59 secondi):**\n\n" + "\n".join(lines)
 
 async def auto_update_super(context, chat_id, message_id, cycles=7, interval=8):
