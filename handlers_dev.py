@@ -846,7 +846,7 @@ async def testfin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⚠️ Nessuna modalità test/demo attiva.")
 
 # ============================================================================
-# FUNCIONES PARA "SUPER" (actualización automática cada 10s, 6 ciclos, luego botón)
+# FUNCIONES PARA "SUPER" (actualización automática cada 8s, 7 ciclos, luego botón)
 # ============================================================================
 async def get_super_status(now: datetime) -> str:
     # Orden de estaciones desde Monte Po hasta Stesicoro
@@ -856,7 +856,7 @@ async def get_super_status(now: datetime) -> str:
     
     for estacion in estaciones_orden:
         nombre = NOMBRE_MOSTRAR.get(estacion, estacion.capitalize())
-        mejor_tiempo = None  # (total_seconds, texto_formateado)
+        mejor_tiempo = None
         
         if estacion == "montepo":
             next_dep, mins, secs, has = get_next_departure("Montepo", now)
@@ -896,8 +896,8 @@ async def get_super_status(now: datetime) -> str:
     return "🚇 **Treni in arrivo o in partenza imminenti (≤59 secondi):**\n\n" + "\n".join(lines)
 
 async def auto_update_super_from_context(context, chat_id, message_id):
-    for ciclo in range(1, 7):
-        for _ in range(10):
+    for ciclo in range(1, 8):  # 7 ciclos
+        for _ in range(8):     # 8 segundos
             await asyncio.sleep(1)
             if not context.chat_data.get('super_active', False):
                 return
@@ -916,6 +916,7 @@ async def auto_update_super_from_context(context, chat_id, message_id):
         except Exception as e:
             logger.error(f"Error al actualizar super: {e}")
             break
+    # Después de los 7 ciclos, mostrar botón
     if context.chat_data.get('super_active', False):
         keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔄 Aggiornare", callback_data="aggiornare_super")]])
         try:
