@@ -861,7 +861,7 @@ async def get_super_status(now: datetime) -> str:
     
     for estacion in estaciones_orden:
         nombre = NOMBRE_MOSTRAR.get(estacion, estacion.capitalize())
-        linea_estacion = nombre  # valor por defecto
+        linea_estacion = nombre  # por defecto, solo el nombre
         
         if estacion == "montepo":
             next_dep, mins, secs, has = get_next_departure("Montepo", now)
@@ -874,7 +874,7 @@ async def get_super_status(now: datetime) -> str:
                 else:
                     linea_estacion = f"{nombre} 🔻"
             else:
-                linea_estacion = f"{nombre} 🔻"
+                linea_estacion = f"{nombre} 🔻"  # Si no hay tren, igual mostramos flecha? Según tu petición, en cabeceras sí.
         
         elif estacion == "stesicoro":
             next_dep, mins, secs, has = get_next_departure("Stesicoro", now)
@@ -902,7 +902,7 @@ async def get_super_status(now: datetime) -> str:
                     if mejor is None or total < mejor[0]:
                         mejor = (total, texto)
                 else:
-                    # Tiempo >59 segundos: mostrar solo flecha
+                    # Tiempo >59 segundos, pero hay tren: mostrar solo flecha
                     texto = f"{nombre} 🔻"
                     if mejor is None:
                         mejor = (total, texto)
@@ -920,7 +920,7 @@ async def get_super_status(now: datetime) -> str:
             
             if mejor:
                 linea_estacion = mejor[1]
-            # Si no hay ningún tren, se queda con el nombre (sin flecha)
+            # Si no hay ningún tren, se queda solo el nombre (sin flecha)
         
         lines.append(linea_estacion)
         # Separador después de cada estación (excepto la última)
