@@ -861,45 +861,63 @@ async def get_super_status(now: datetime) -> str:
     
     for estacion in estaciones_orden:
         nombre = NOMBRE_MOSTRAR.get(estacion, estacion.capitalize())
-        texto_linea = nombre  # valor por defecto (solo nombre)
         
+        # Caso Monte Po (solo salida hacia Stesicoro)
         if estacion == "montepo":
             next_dep, mins, secs, has = get_next_departure("Montepo", now)
             if has:
                 total = mins*60 + secs
                 if total <= 59:
-                    texto_linea = f"{nombre} → Stesicoro: {total//60:02d}:{total%60:02d}"
+                    lines.append(f"{nombre} → Stesicoro: {total//60:02d}:{total%60:02d}")
                 elif total <= 240:
-                    texto_linea = f"{nombre} → In binario"
+                    lines.append(f"{nombre} → In binario")
+                else:
+                    lines.append(nombre)
+            else:
+                lines.append(nombre)
+        
+        # Caso Stesicoro (solo salida hacia Monte Po)
         elif estacion == "stesicoro":
             next_dep, mins, secs, has = get_next_departure("Stesicoro", now)
             if has:
                 total = mins*60 + secs
                 if total <= 59:
-                    texto_linea = f"{nombre} → Monte Po: {total//60:02d}:{total%60:02d}"
+                    lines.append(f"{nombre} → Monte Po: {total//60:02d}:{total%60:02d}")
                 elif total <= 240:
-                    texto_linea = f"{nombre} → In binario"
+                    lines.append(f"{nombre} → In binario")
+                else:
+                    lines.append(nombre)
+            else:
+                lines.append(nombre)
+        
+        # Estaciones intermedias: mostrar ambos sentidos si existen (dentro de 59s)
         else:
-            # Estaciones intermedias
             info_mp, info_st = get_next_train_at_station(now, estacion)
-            mejor_tiempo = None
+            tiempos = []  # lista de (segundos, dirección, texto)
+            
             if info_mp:
                 paso, mins, secs, _ = info_mp
                 total = mins*60 + secs
                 if total <= 59:
-                    mejor_tiempo = (total, f"{nombre} → Stesicoro: {total//60:02d}:{total%60:02d}")
+                    tiempos.append((total, "Stesicoro", f"{total//60:02d}:{total%60:02d}"))
             if info_st:
                 paso, mins, secs, _ = info_st
                 total = mins*60 + secs
                 if total <= 59:
-                    if mejor_tiempo is None or total < mejor_tiempo[0]:
-                        mejor_tiempo = (total, f"{nombre} → Monte Po: {total//60:02d}:{total%60:02d}")
-            if mejor_tiempo:
-                texto_linea = mejor_tiempo[1]
-        
-        lines.append(texto_linea)
+                    tiempos.append((total, "Monte Po", f"{total//60:02d}:{total%60:02d}"))
+            
+            if not tiempos:
+                # No hay trenes en ninguna dirección
+                lines.append(nombre)
+            else:
+                # Ordenar por tiempo (menor a mayor)
+                tiempos.sort(key=lambda x: x[0])
+                # Construir la línea con ambos sentidos separados por " | "
+                partes = [f"{nombre}"]
+                for t in tiempos:
+                    partes.append(f"→ {t[1]}: {t[2]}")
+                lines.append(" ".join(partes))
     
-    # Siempre devolvemos el encabezado y la lista (aunque solo haya nombres)
     return "🚇 **Treni in arrivo o in partenza imminenti (≤59 secondi) o in binario:**\n\n" + "\n".join(lines)
 
 async def auto_update_super(context, chat_id, message_id, cycles=7, interval=8):
