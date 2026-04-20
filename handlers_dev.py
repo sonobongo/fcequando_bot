@@ -966,52 +966,16 @@ async def aggiornare_super_callback(update: Update, context: ContextTypes.DEFAUL
     await query.answer()
     
     # Detener la tarea anterior si existe
-    if 'super_task' in context.chat_data:
-        context.chat_data['super_active'] = False
-        try:
-            context.chat_data['super_task'].cancel()
-        except Exception:
-            pass
-        context.chat_data.pop('super_task', None)
+    stop_super_update(context)
     
-    # Obtener el mensaje actual (el que tiene el botón)
-    message = query.message
-    chat_id = message.chat_id
-    message_id = message.message_id
-    
-    # Obtener hora actual
-    simulated = context.chat_data.get('test_time')
-    if simulated:
-        if simulated.tzinfo is None:
-            simulated = CATANIA_TZ.localize(simulated)
-        now = simulated
-    else:
-        now = datetime.now(CATANIA_TZ)
-    
-    new_msg = await get_super_status(now)
-    
-    # Editar el mensaje para quitar el botón y mostrar el nuevo contenido
+    # Eliminar el mensaje que contenía el botón
     try:
-        await query.edit_message_text(text=new_msg, parse_mode='Markdown')
+        await query.message.delete()
     except Exception as e:
-        logger.error(f"Error al editar mensaje en super callback: {e}")
-        # Si falla, intentamos enviar uno nuevo y eliminar el viejo
-        new_result = await message.reply_text(new_msg, parse_mode='Markdown')
-        message_id = new_result.message_id
-        try:
-            await message.delete()
-        except:
-            pass
+        logger.error(f"Error al eliminar mensaje en super callback: {e}")
     
-    # Reiniciar estado con el nuevo mensaje
-    context.chat_data['super_msg_id'] = message_id
-    context.chat_data['super_chat_id'] = chat_id
-    context.chat_data['super_update_count'] = 0
-    context.chat_data['super_active'] = True
-    
-    # Iniciar nueva tarea
-    task = asyncio.create_task(auto_update_super_from_context(context, chat_id, message_id))
-    context.chat_data['super_task'] = task
+    # Volver a ejecutar super (envía un nuevo mensaje y comienza el ciclo)
+    await send_super_response(update, context)
 
 # ============================================================================
 # MODO NONNA: DETECCIÓN DE NOMBRE DE ESTACIÓN CON ERRORES TIPOGRÁFICOS Y ALIAS
