@@ -861,45 +861,44 @@ async def get_super_status(now: datetime) -> str:
     
     for estacion in estaciones_orden:
         nombre = NOMBRE_MOSTRAR.get(estacion, estacion.capitalize())
-        tiempo_mon = "---"  # hacia Monte Po
-        tiempo_ste = "---"  # hacia Stesicoro
+        mejor_tiempo = None  # (total_seconds, texto_formateado)
         
         if estacion == "montepo":
-            # Solo salida hacia Stesicoro
             next_dep, mins, secs, has = get_next_departure("Montepo", now)
             if has:
                 total = mins*60 + secs
                 if total <= 59:
-                    tiempo_ste = f"{total//60:02d}:{total%60:02d}"
+                    mejor_tiempo = (total, f"{nombre} → Stesicoro: {total//60:02d}:{total%60:02d}")
         elif estacion == "stesicoro":
-            # Solo salida hacia Monte Po
             next_dep, mins, secs, has = get_next_departure("Stesicoro", now)
             if has:
                 total = mins*60 + secs
                 if total <= 59:
-                    tiempo_mon = f"{total//60:02d}:{total%60:02d}"
+                    mejor_tiempo = (total, f"{nombre} → Monte Po: {total//60:02d}:{total%60:02d}")
         else:
-            # Estaciones intermedias: ambas direcciones
             info_mp, info_st = get_next_train_at_station(now, estacion)
+            tiempos = []
             if info_mp:
                 paso, mins, secs, _ = info_mp
                 total = mins*60 + secs
                 if total <= 59:
-                    tiempo_ste = f"{total//60:02d}:{total%60:02d}"
+                    tiempos.append((total, f"{nombre} → Stesicoro: {total//60:02d}:{total%60:02d}"))
             if info_st:
                 paso, mins, secs, _ = info_st
                 total = mins*60 + secs
                 if total <= 59:
-                    tiempo_mon = f"{total//60:02d}:{total%60:02d}"
+                    tiempos.append((total, f"{nombre} → Monte Po: {total//60:02d}:{total%60:02d}"))
+            if tiempos:
+                mejor_tiempo = min(tiempos, key=lambda x: x[0])
         
-        # Formatear la línea de la estación
-        lines.append(f"**{nombre}**")
-        lines.append(f"  → Monte Po: {tiempo_mon} | → Stesicoro: {tiempo_ste}")
-        lines.append("")  # línea en blanco entre estaciones
+        if mejor_tiempo:
+            lines.append(mejor_tiempo[1])
+        else:
+            lines.append(nombre)
     
-    # Eliminar la última línea en blanco
-    if lines and lines[-1] == "":
-        lines.pop()
+    # Si no hay ningún tren en ninguna estación (todas las líneas son solo nombres)
+    if not any(":" in line for line in lines):
+        return "🚇 Nessun treno in arrivo o in partenza imminente."
     
     return "🚇 **Treni in arrivo o in partenza imminenti (≤59 secondi):**\n\n" + "\n".join(lines)
 
