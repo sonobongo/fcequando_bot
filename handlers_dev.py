@@ -858,12 +858,13 @@ async def testfin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def get_super_status(now: datetime) -> str:
     estaciones_orden = ["montepo", "fontana", "nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "giovanni", "stesicoro"]
     lines = []
-    MAX_SEGUNDOS_PARA_FLECHA = 1800  # 30 minutos: si el tren tarda más, no mostramos flecha
+    LIMITE_FLECHA = 1800  # 30 minutos
     
-    for estacion in estaciones_orden:
+    for idx, estacion in enumerate(estaciones_orden):
         nombre = NOMBRE_MOSTRAR.get(estacion, estacion.capitalize())
-        linea_estacion = nombre  # por defecto, solo el nombre
+        linea_estacion = nombre
         
+        # Manejar la estación actual (tiempos ≤60s o "In binario" para cabeceras)
         if estacion == "montepo":
             next_dep, mins, secs, has = get_next_departure("Montepo", now)
             if has:
@@ -872,11 +873,8 @@ async def get_super_status(now: datetime) -> str:
                     linea_estacion = f"{nombre} 🔻 Stesicoro: {total//60:02d}:{total%60:02d}"
                 elif total <= 240:
                     linea_estacion = f"{nombre} In binario"
-                elif total <= MAX_SEGUNDOS_PARA_FLECHA:
+                elif total <= LIMITE_FLECHA:
                     linea_estacion = f"{nombre} 🔻"
-                # Si total > MAX, se queda solo el nombre
-            # Si no hay tren, no mostramos flecha (solo nombre)
-        
         elif estacion == "stesicoro":
             next_dep, mins, secs, has = get_next_departure("Stesicoro", now)
             if has:
@@ -885,26 +883,20 @@ async def get_super_status(now: datetime) -> str:
                     linea_estacion = f"{nombre} 🔺 Monte Po: {total//60:02d}:{total%60:02d}"
                 elif total <= 240:
                     linea_estacion = f"{nombre} In binario"
-                elif total <= MAX_SEGUNDOS_PARA_FLECHA:
+                elif total <= LIMITE_FLECHA:
                     linea_estacion = f"{nombre} 🔺"
-            # Si no hay tren, solo nombre
-        
         else:
-            # Estaciones intermedias
             info_mp, info_st = get_next_train_at_station(now, estacion)
-            mejor = None  # (total_seconds, texto)
-            
+            mejor = None
             if info_mp:
                 paso, mins, secs, _ = info_mp
                 total = mins*60 + secs
                 if total <= 59:
                     texto = f"{nombre} 🔻 Stesicoro: {total//60:02d}:{total%60:02d}"
-                    if mejor is None or total < mejor[0]:
-                        mejor = (total, texto)
-                elif total <= MAX_SEGUNDOS_PARA_FLECHA:
+                    mejor = (total, texto)
+                elif total <= LIMITE_FLECHA:
                     texto = f"{nombre} 🔻"
-                    if mejor is None:
-                        mejor = (total, texto)
+                    mejor = (total, texto)
             if info_st:
                 paso, mins, secs, _ = info_st
                 total = mins*60 + secs
@@ -912,19 +904,38 @@ async def get_super_status(now: datetime) -> str:
                     texto = f"{nombre} 🔺 Monte Po: {total//60:02d}:{total%60:02d}"
                     if mejor is None or total < mejor[0]:
                         mejor = (total, texto)
-                elif total <= MAX_SEGUNDOS_PARA_FLECHA:
+                elif total <= LIMITE_FLECHA:
                     texto = f"{nombre} 🔺"
-                    if mejor is None:
+                    if mejor is None or total < mejor[0]:
                         mejor = (total, texto)
-            
             if mejor:
                 linea_estacion = mejor[1]
-            # Si no hay ningún tren (info_mp e info_st son None) o los tiempos superan MAX, se queda solo el nombre
         
         lines.append(linea_estacion)
+        
         # Separador después de cada estación (excepto la última)
         if estacion != "stesicoro":
-            lines.append("⬜")
+            siguiente = estaciones_orden[idx+1]
+            info_mp_next, info_st_next = get_next_train_at_station(now, siguiente)
+            flecha = None
+            mejor_tiempo_next = None
+            if info_mp_next:
+                paso, mins, secs, _ = info_mp_next
+                total = mins*60 + secs
+                if 60 < total <= LIMITE_FLECHA:
+                    flecha = "🔻"  # hacia Stesicoro
+                    mejor_tiempo_next = total
+            if info_st_next:
+                paso, mins, secs, _ = info_st_next
+                total = mins*60 + secs
+                if 60 < total <= LIMITE_FLECHA:
+                    if mejor_tiempo_next is None or total < mejor_tiempo_next:
+                        flecha = "🔺"  # hacia Monte Po
+                        mejor_tiempo_next = total
+            if flecha:
+                lines.append(f"⬜{flecha}")
+            else:
+                lines.append("⬜")
     
     return "🛂 **SUPERVISORE: Monitoraggio degli arrivi dei treni**\n\n" + "\n".join(lines)
 
