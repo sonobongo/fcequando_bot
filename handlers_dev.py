@@ -855,12 +855,11 @@ async def get_super_status(now: datetime) -> str:
     lines = []
     estaciones_intermedias = ["fontana", "nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "giovanni"]
     
-    # 1. Trenes que llegan a estaciones intermedias (desde ambas direcciones)
+    # 1. Trenes que llegan a estaciones intermedias (desde ambas direcciones) con ≤ 60 segundos
     for estacion in estaciones_intermedias:
         info_mp, info_st = get_next_train_at_station(now, estacion)
         nombre = NOMBRE_MOSTRAR.get(estacion, estacion.capitalize())
         
-        # Tren que viene de Monte Po hacia Stesicoro (info_mp)
         if info_mp:
             paso, mins, secs, _ = info_mp
             total = mins*60 + secs
@@ -870,7 +869,6 @@ async def get_super_status(now: datetime) -> str:
                 else:
                     lines.append(f"{nombre} → Stesicoro: **{mins} minuti**")
         
-        # Tren que viene de Stesicoro hacia Monte Po (info_st)
         if info_st:
             paso, mins, secs, _ = info_st
             total = mins*60 + secs
@@ -880,25 +878,21 @@ async def get_super_status(now: datetime) -> str:
                 else:
                     lines.append(f"{nombre} → Monte Po: **{mins} minuti**")
     
-    # 2. Trenes a punto de salir de Monte Po (hacia Stesicoro) - en binario (≤4 min)
+    # 2. Trenes en binario en Monte Po (≤ 4 minutos)
     next_dep_mp, mins_mp, secs_mp, has_mp = get_next_departure("Montepo", now)
-    if has_mp:
-        total_mp = mins_mp*60 + secs_mp
-        if total_mp <= 240:  # 4 minutos
-            if mins_mp == 0:
-                lines.append(f"Monte Po → Stesicoro (in binario): **{secs_mp} secondi**")
-            else:
-                lines.append(f"Monte Po → Stesicoro (in binario): **{mins_mp} minuti**")
+    if has_mp and (mins_mp*60 + secs_mp) <= 240:
+        if mins_mp == 0:
+            lines.append(f"Monte Po → Stesicoro (in binario): **{secs_mp} secondi**")
+        else:
+            lines.append(f"Monte Po → Stesicoro (in binario): **{mins_mp} minuti**")
     
-    # 3. Trenes a punto de salir de Stesicoro (hacia Monte Po) - en binario (≤4 min)
+    # 3. Trenes en binario en Stesicoro (≤ 4 minutos)
     next_dep_st, mins_st, secs_st, has_st = get_next_departure("Stesicoro", now)
-    if has_st:
-        total_st = mins_st*60 + secs_st
-        if total_st <= 240:
-            if mins_st == 0:
-                lines.append(f"Stesicoro → Monte Po (in binario): **{secs_st} secondi**")
-            else:
-                lines.append(f"Stesicoro → Monte Po (in binario): **{mins_st} minuti**")
+    if has_st and (mins_st*60 + secs_st) <= 240:
+        if mins_st == 0:
+            lines.append(f"Stesicoro → Monte Po (in binario): **{secs_st} secondi**")
+        else:
+            lines.append(f"Stesicoro → Monte Po (in binario): **{mins_st} minuti**")
     
     if not lines:
         return "🚇 Nessun treno in arrivo o in partenza imminente (≤1 minuto) o in binario (≤4 minuti) in questo momento."
@@ -908,6 +902,7 @@ async def get_super_status(now: datetime) -> str:
 async def auto_update_super_from_context(context, chat_id, message_id):
     """Actualiza automáticamente el mensaje super cada 10 segundos hasta 6 ciclos."""
     for ciclo in range(1, 7):
+        # Esperar 10 segundos (con comprobación de cancelación cada segundo)
         for _ in range(10):
             await asyncio.sleep(1)
             if not context.chat_data.get('super_active', False):
@@ -927,7 +922,6 @@ async def auto_update_super_from_context(context, chat_id, message_id):
         new_msg = await get_super_status(now)
         try:
             await context.bot.edit_message_text(text=new_msg, chat_id=chat_id, message_id=message_id, parse_mode='Markdown')
-            context.chat_data['super_update_count'] = ciclo
         except Exception as e:
             logger.error(f"Error al actualizar super: {e}")
             break
@@ -1002,8 +996,8 @@ async def aggiornare_super_callback(update: Update, context: ContextTypes.DEFAUL
     try:
         await query.edit_message_text(text=new_msg, parse_mode='Markdown')
     except Exception as e:
-        logger.error(f"Error al editar mensaje en aggiornare_super_callback: {e}")
-        # Si falla la edición, enviamos un nuevo mensaje y eliminamos el antiguo
+        logger.error(f"Error al editar mensaje en super callback: {e}")
+        # Si falla, intentamos enviar uno nuevo y eliminar el viejo
         new_result = await message.reply_text(new_msg, parse_mode='Markdown')
         message_id = new_result.message_id
         try:
