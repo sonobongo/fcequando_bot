@@ -169,7 +169,7 @@ def get_bus_message_montepo_advanced(now: datetime) -> str:
              ("14:00", 14*60), ("14:15", 14*60+15), ("14:30", 14*60+30)]
     for hora_str, hora_min in manana + tarde:
         if hora_min > ahora_min and (hora_min - ahora_min) <= 15:
-            return f"🚌 **Autobus gratuito per Misterbianco** alle {hora_str}"
+            return f"🚌 **Navetta gratuita per Misterbianco** alle {hora_str}"
     return ""
 
 # ============================================================================
