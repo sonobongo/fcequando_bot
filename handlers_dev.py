@@ -864,6 +864,9 @@ async def get_super_status(now: datetime) -> str:
     lines = []
     LIMITE = 150  # segundos para mostrar flecha en separador (entre 61 y LIMITE)
     
+    # Para controlar la distancia mínima entre flechas de la misma dirección (3 estaciones)
+    ultima_flecha = {"🔻": -10, "🔺": -10}  # guarda el índice de la estación donde se mostró la última flecha
+    
     for idx, estacion in enumerate(estaciones_orden):
         nombre = NOMBRE_MOSTRAR.get(estacion, estacion.capitalize())
         
@@ -914,7 +917,7 @@ async def get_super_status(now: datetime) -> str:
         if estacion != "stesicoro":
             siguiente = estaciones_orden[idx+1]
             info_mp_next, info_st_next = get_next_train_at_station(now, siguiente)
-            flechas = []
+            flechas = []  # (flecha, tiempo)
             if info_mp_next:
                 total = info_mp_next[1]*60 + info_mp_next[2]
                 if 60 < total <= LIMITE:
@@ -923,9 +926,18 @@ async def get_super_status(now: datetime) -> str:
                 total = info_st_next[1]*60 + info_st_next[2]
                 if 60 < total <= LIMITE:
                     flechas.append(("🔺", total))
-            if flechas:
-                flechas.sort(key=lambda x: x[1])  # ordenar por tiempo (más próximo primero)
-                flechas_str = "".join([f for f, _ in flechas])
+            
+            # Filtrar flechas según distancia mínima de 3 estaciones
+            flechas_filtradas = []
+            for flecha, total in flechas:
+                if idx - ultima_flecha.get(flecha, -10) >= 3:
+                    flechas_filtradas.append((flecha, total))
+                    ultima_flecha[flecha] = idx
+                # Si ya hay una flecha reciente de la misma dirección, no la mostramos
+            
+            if flechas_filtradas:
+                flechas_filtradas.sort(key=lambda x: x[1])  # ordenar por tiempo
+                flechas_str = "".join([f for f, _ in flechas_filtradas])
                 lines.append(f"▫️{flechas_str}")
             else:
                 lines.append("▫️")
