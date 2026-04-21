@@ -95,41 +95,46 @@ def stop_super_update(context):
         context.chat_data.pop('super_task', None)
 
 # ============================================================================
-# COUNTDOWN PARA CABECERAS
+# COUNTDOWN PARA CABECERAS (con actualizaciones hasta 10 segundos)
 # ============================================================================
-async def update_countdown(context, chat_id, message_id, remaining_seconds, station, dest, next_dep, dev_mode):
-    for i in range(5):
+async def update_countdown(context, chat_id, message_id, initial_remaining, station, dest, next_dep, dev_mode):
+    """
+    Actualiza el caption del mensaje cada 10 segundos hasta que falten <= 10 segundos.
+    """
+    remaining = initial_remaining
+    while remaining > 10:
         await asyncio.sleep(10)
         if not context.chat_data.get('countdown_active', False):
             return
         try:
             now = get_simulated_now(context)
-            remaining = next_dep - now
-            if remaining.total_seconds() <= 0:
+            remaining_calc = (next_dep - now).total_seconds()
+            if remaining_calc <= 0:
                 new_msg = f"🚇 Il treno per {dest} è partito."
-                await context.bot.edit_message_text(text=new_msg, chat_id=chat_id, message_id=message_id, parse_mode='Markdown')
+                await context.bot.edit_message_caption(chat_id=chat_id, message_id=message_id, caption=new_msg, parse_mode='Markdown')
                 context.chat_data['countdown_active'] = False
                 return
-            mins_rest = int(remaining.total_seconds() // 60)
-            secs_rest = int(remaining.total_seconds() % 60)
+            mins_rest = int(remaining_calc // 60)
+            secs_rest = int(remaining_calc % 60)
             if dev_mode:
                 time_str = format_time_precise(mins_rest, secs_rest)
             else:
                 time_str = format_time(mins_rest, secs_rest)
             new_msg = f"Il treno è in binario. Partirà tra **{time_str}**."
-            await context.bot.edit_message_text(text=new_msg, chat_id=chat_id, message_id=message_id, parse_mode='Markdown')
+            await context.bot.edit_message_caption(chat_id=chat_id, message_id=message_id, caption=new_msg, parse_mode='Markdown')
+            remaining = remaining_calc
         except Exception as e:
             logger.error(f"Error en countdown: {e}")
             break
     if context.chat_data.get('countdown_active', False):
         try:
             now = get_simulated_now(context)
-            remaining = next_dep - now
-            if remaining.total_seconds() <= 0:
+            remaining_final = (next_dep - now).total_seconds()
+            if remaining_final <= 0:
                 new_msg = f"🚇 Il treno per {dest} è partito."
             else:
                 new_msg = f"🚇 Il treno per {dest} è in ritardo? Controlla con Aggiornare."
-            await context.bot.edit_message_text(text=new_msg, chat_id=chat_id, message_id=message_id, parse_mode='Markdown')
+            await context.bot.edit_message_caption(chat_id=chat_id, message_id=message_id, caption=new_msg, parse_mode='Markdown')
         except Exception:
             pass
         context.chat_data['countdown_active'] = False
@@ -596,7 +601,10 @@ async def send_header_response(chat_id, context, estacion_key, is_update=False):
             else:
                 time_str = format_time(mins_rest, secs_rest)
             msg = f"Il treno è in binario. Partirà tra **{time_str}**."
-            msg2 = await context.bot.send_message(chat_id=chat_id, text=msg, parse_mode='Markdown')
+            img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_trenoarriva_cabeceras.png"
+            cache_buster = int(time_module.time())
+            img_url = f"{img_url}?v={cache_buster}"
+            msg2 = await context.bot.send_photo(chat_id=chat_id, photo=img_url, caption=msg, parse_mode='Markdown')
             await store_id(context, msg2)
             if 'countdown_task' in context.chat_data:
                 try:
@@ -608,7 +616,7 @@ async def send_header_response(chat_id, context, estacion_key, is_update=False):
             context.chat_data['countdown_task'] = task
             return
         
-        # Mensaje normal
+        # Mensaje normal (cuando faltan más de 60 segundos)
         if dev_mode:
             time_str_rest = format_time_precise(mins_rest, secs_rest)
             time_str = format_time_precise(minutes, seconds)
@@ -643,6 +651,7 @@ async def send_header_response(chat_id, context, estacion_key, is_update=False):
                 last_msg = last_msg.replace("📌", "🕙")
             msg += f"\n\n{last_msg}"
         
+        # Añadir información del autobús gratuito en Monte Po (solo si no estamos en countdown)
         if estacion_key == "montepo":
             bus_text = get_bus_message_montepo_advanced(now)
             if bus_text:
