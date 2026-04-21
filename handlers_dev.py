@@ -862,15 +862,22 @@ async def testfin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def get_super_status(now: datetime) -> str:
     estaciones_orden = ["montepo", "fontana", "nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "giovanni", "stesicoro"]
     lines = []
-    LIMITE = 150
-    # Distancia mínima desde cabecera para primera flecha: 3 estaciones (índice destino >= 3)
-    # Distancia mínima entre flechas de la misma dirección: 6
-    ultima_flecha = {"🔻": -10, "🔺": -10}
+    LIMITE = 150  # segundos para mostrar flecha en separador (61-150)
+    
+    # Registro de la última posición (índice de estación) donde se produjo un evento de cada dirección
+    # Un evento puede ser: una flecha en el separador O un tren con tiempo ≤59s en la estación
+    ultimo_evento = {"🔻": -10, "🔺": -10}
     
     for idx, estacion in enumerate(estaciones_orden):
         nombre = NOMBRE_MOSTRAR.get(estacion, estacion.capitalize())
+        info_mp = None
+        info_st = None
         
-        # Estación actual: mostrar tiempo o in binario
+        # ---- Obtener información de trenes para esta estación (si es intermedia) ----
+        if estacion not in ["montepo", "stesicoro"]:
+            info_mp, info_st = get_next_train_at_station(now, estacion)
+        
+        # ---- Línea de la estación (tiempos exactos o "In binario") ----
         if estacion == "montepo":
             next_dep, mins, secs, has = get_next_departure("Montepo", now)
             if has:
@@ -896,55 +903,61 @@ async def get_super_status(now: datetime) -> str:
             else:
                 lines.append(f"⚪️ {nombre}")
         else:
-            info_mp, info_st = get_next_train_at_station(now, estacion)
-            mejor_texto = None
+            # Estaciones intermedias
             mejor_tiempo = None
+            mejor_texto = None
             if info_mp:
                 total = info_mp[1]*60 + info_mp[2]
                 if total <= 59:
                     mejor_tiempo = total
                     mejor_texto = f"{nombre} 🔻 Stesicoro: {total//60:02d}:{total%60:02d}"
+                    # Registrar este evento (tren en estación)
+                    if idx > ultimo_evento["🔻"]:
+                        ultimo_evento["🔻"] = idx
             if info_st:
                 total = info_st[1]*60 + info_st[2]
                 if total <= 59:
                     if mejor_tiempo is None or total < mejor_tiempo:
                         mejor_tiempo = total
                         mejor_texto = f"{nombre} 🔺 Monte Po: {total//60:02d}:{total%60:02d}"
+                    if idx > ultimo_evento["🔺"]:
+                        ultimo_evento["🔺"] = idx
             if mejor_texto:
                 lines.append(f"⚪️ {mejor_texto}")
             else:
                 lines.append(f"⚪️ {nombre}")
         
-        # Separador (excepto después de la última estación)
+        # ---- Separador (flechas hacia la siguiente estación) ----
         if estacion != "stesicoro":
             siguiente = estaciones_orden[idx+1]
             info_mp_next, info_st_next = get_next_train_at_station(now, siguiente)
             
-            # Verificar si la estación actual ya tiene un tren próximo (para evitar duplicados)
+            # Evitar duplicados: no mostrar flecha si la estación actual ya tiene un tren mostrado en esa dirección
             tiene_tren_mp = info_mp and (info_mp[1]*60 + info_mp[2] <= 59) if info_mp else False
             tiene_tren_st = info_st and (info_st[1]*60 + info_st[2] <= 59) if info_st else False
             
-            flechas = []
-            # Tren hacia Stesicoro (🔻) que llegará a la siguiente estación
+            flechas = []  # (flecha, tiempo)
+            # Tren hacia Stesicoro (🔻)
             if info_mp_next and not tiene_tren_mp:
                 total = info_mp_next[1]*60 + info_mp_next[2]
                 if 60 < total <= LIMITE:
                     dest_idx = idx+1
-                    # Distancia mínima: desde cabecera (dest_idx >= 3) y luego cada 6
-                    if dest_idx >= 3 and (dest_idx - ultima_flecha.get("🔻", -10) >= 6):
+                    # La primera flecha desde cabecera: destino >= índice 3 (San Nullo)
+                    # Luego distancia mínima de 6 desde el último evento (flecha o tren en estación) de la misma dirección
+                    if dest_idx >= 3 and (dest_idx - ultimo_evento.get("🔻", -10) >= 6):
                         flechas.append(("🔻", total))
-                        ultima_flecha["🔻"] = dest_idx
-            # Tren hacia Monte Po (🔺) que llegará a la siguiente estación
+                        ultimo_evento["🔻"] = dest_idx
+            # Tren hacia Monte Po (🔺)
             if info_st_next and not tiene_tren_st:
                 total = info_st_next[1]*60 + info_st_next[2]
                 if 60 < total <= LIMITE:
                     dest_idx = idx+1
-                    if dest_idx >= 3 and (dest_idx - ultima_flecha.get("🔺", -10) >= 6):
+                    if dest_idx >= 3 and (dest_idx - ultimo_evento.get("🔺", -10) >= 6):
                         flechas.append(("🔺", total))
-                        ultima_flecha["🔺"] = dest_idx
+                        ultimo_evento["🔺"] = dest_idx
             
             if flechas:
-                flechas.sort(key=lambda x: x[1])
+                flechas.sort(key=lambda x: x[1])  # ordenar por tiempo
                 flechas_str = "".join([f for f, _ in flechas])
                 lines.append(f"▫️{flechas_str}")
             else:
