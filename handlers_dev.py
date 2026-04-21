@@ -860,30 +860,30 @@ async def testfin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # FUNCIONES PARA "SUPER" - Tracking de posición de trenes en tiempo real
 # ============================================================================
 
-def _get_all_departures_super(station: str, now: datetime):
-    """Devuelve lista de datetime de todas las salidas del día (pasadas y futuras) para la cabecera."""
-    from horarios_logic import get_schedule_list, CATANIA_TZ
-    schedule_list = get_schedule_list(station, now)
-    result = []
-    for t in schedule_list:
-        dt = datetime.combine(now.date(), t)
-        dt = CATANIA_TZ.localize(dt)
-        result.append(dt)
-    return result
+# ============================================================================
+# FUNCIONES PARA "SUPER" - Tracking de posición de trenes en tiempo real
+# ============================================================================
 
 def _build_train_positions(now: datetime):
     """
-    Calcula la posición de todos los trenes en servicio en este momento.
-    
-    Retorna dos listas de diccionarios, una por sentido:
-      forward_trains: trenes Monte Po → Stesicoro
-        cada uno: {'seg_from_montepo': int, 'seconds_to_next_station': int, 'next_station_idx': int}
-      reverse_trains: trenes Stesicoro → Monte Po
-        cada uno: {'seg_from_stesicoro': int, 'seconds_to_next_station': int, 'next_station_idx': int}
-    
-    La 'posición' de un tren entre estaciones se expresa como el índice del SEGMENTO (▫️)
-    en el que se encuentra (0 = entre montepo y fontana, 1 = entre fontana y nesima, etc.)
-    Si está ≤59s de la siguiente estación, se considera "en" esa estación.
+    Para cada tren en ruta, calcula su posición actual en la línea.
+
+    STATIONS (idx 0..11): montepo, fontana, nesima, sannullo, cibali, milo,
+                           borgo, giuffrida, italia, galatea, giovanni, stesicoro
+
+    Los tiempos acumulados desde cada cabecera son:
+      t_fwd[i] = segundos desde montepo hasta STATIONS[i]   (dirección 🔻)
+      t_rev[i] = segundos desde stesicoro hasta STATIONS[i] (dirección 🔺)
+                 donde el recorrido reverse es 11→10→...→0
+
+    Para un tren que lleva 'elapsed' segundos en ruta:
+      - Si t_fwd[i] <= elapsed < t_fwd[i+1]: está en el segmento ▫️ entre i e i+1
+          * Si (t_fwd[i+1] - elapsed) <= 59: pos_type='arriving', station_idx=i+1
+          * Si no:                            pos_type='between',  segment_idx=i
+      - Análogo para reverse.
+
+    El 'segment_idx' siempre es el índice menor de los dos extremos del segmento,
+    de modo que coincide con el ▫️ entre STATIONS[segment_idx] y STATIONS[segment_idx+1].
     """
     from horarios_logic import (
         get_schedule_list, get_total_seconds_from_montepo,
@@ -892,130 +892,98 @@ def _build_train_positions(now: datetime):
 
     STATIONS = ["montepo", "fontana", "nesima", "sannullo", "cibali", "milo",
                 "borgo", "giuffrida", "italia", "galatea", "giovanni", "stesicoro"]
-    N = len(STATIONS)  # 12
+    N = len(STATIONS)
 
-    # Tiempos acumulados (en segundos) desde cada cabecera a cada estación
-    t_from_mp = [get_total_seconds_from_montepo(st, now) for st in STATIONS]
-    t_from_mp[0] = 0  # montepo a sí mismo = 0
+    # Tiempos acumulados forward (montepo=0, fontana=t1, ..., stesicoro=T)
+    t_fwd = [get_total_seconds_from_montepo(st, now) for st in STATIONS]
+    t_fwd[0] = 0
 
-    t_from_st = [get_total_seconds_from_stesicoro(st, now) for st in STATIONS]
-    t_from_st[-1] = 0  # stesicoro a sí mismo = 0
-    # t_from_st está en orden stesicoro→montepo, pero indexado igual que STATIONS
-    # Necesitamos reindexar: para la dirección reverse, el tren sale de stesicoro (idx 11)
-    # y llega a montepo (idx 0). t_from_stesicoro("fontana") = tiempo desde stesicoro a fontana.
+    # Tiempos acumulados reverse en orden de recorrido: stesicoro→giovanni→...→montepo
+    # rev_route[k] = STATIONS index del k-ésimo punto del recorrido reverse
+    # rev_times[k] = segundos acumulados desde stesicoro hasta rev_route[k]
+    rev_route = list(reversed(range(N)))  # [11, 10, 9, ..., 0]
+    rev_times = [get_total_seconds_from_stesicoro(STATIONS[i], now) for i in rev_route]
+    # rev_times[0] debe ser 0 (stesicoro→stesicoro). Si no lo es, forzar:
+    rev_times[0] = 0
 
     forward_trains = []
     reverse_trains = []
 
-    # ---- Trenes FORWARD (Monte Po → Stesicoro) ----
+    # ---------- Trenes FORWARD: Monte Po → Stesicoro (🔻) ----------
     closed_mp, _, _ = is_metro_closed(now, "Montepo")
     if not closed_mp:
-        schedule_mp = get_schedule_list("Montepo", now)
-        for salida_t in schedule_mp:
-            # Momento de salida de Monte Po
-            dep_dt = datetime.combine(now.date(), salida_t)
-            dep_dt = CATANIA_TZ.localize(dep_dt)
-            elapsed = (now - dep_dt).total_seconds()  # segundos desde que salió de MP
+        total_fwd = t_fwd[N - 1]  # duración total del trayecto
+        for salida_t in get_schedule_list("Montepo", now):
+            dep_dt = CATANIA_TZ.localize(datetime.combine(now.date(), salida_t))
+            elapsed = (now - dep_dt).total_seconds()
             if elapsed < 0:
                 continue  # aún no ha salido
-            # Tiempo total del recorrido completo
-            total_trip = t_from_mp[-1]  # segundos de mp a stesicoro
-            if elapsed > total_trip + 60:
-                continue  # ya llegó a destino hace más de 1 min
-            
-            # ¿En qué segmento está?
-            # Segmento i: entre STATIONS[i] y STATIONS[i+1]
-            # El tren está en el segmento i si t_from_mp[i] <= elapsed < t_from_mp[i+1]
-            # Pero si elapsed >= t_from_mp[i+1] - 59, se considera "llegando a" STATIONS[i+1]
-            pos_type = None   # 'between' o 'arriving'
-            segment_idx = None
-            station_idx = None
-            secs_remaining = None
+            if elapsed > total_fwd + 120:
+                continue  # ya llegó hace más de 2 min
 
+            pos_type = segment_idx = station_idx = secs_remaining = None
+
+            # Buscar en qué segmento está
             for i in range(N - 1):
-                t_cur = t_from_mp[i]
-                t_nxt = t_from_mp[i + 1]
-                if elapsed >= t_cur and elapsed < t_nxt:
-                    secs_to_next = t_nxt - elapsed
+                if t_fwd[i] <= elapsed < t_fwd[i + 1]:
+                    secs_to_next = t_fwd[i + 1] - elapsed
                     if secs_to_next <= 59:
-                        # "Llegando a" la estación siguiente
-                        pos_type = 'arriving'
-                        station_idx = i + 1
-                        secs_remaining = int(secs_to_next)
+                        pos_type, station_idx, secs_remaining = 'arriving', i + 1, int(secs_to_next)
                     else:
-                        # En tránsito en el segmento
-                        pos_type = 'between'
-                        segment_idx = i
-                        secs_remaining = int(secs_to_next)
+                        pos_type, segment_idx, secs_remaining = 'between', i, int(secs_to_next)
                     break
-            
-            if pos_type is None and elapsed >= t_from_mp[-1]:
-                # Llegando o en Stesicoro
-                pos_type = 'arriving'
-                station_idx = N - 1
-                secs_remaining = max(0, int(t_from_mp[-1] - elapsed + 60))
+
+            # Ya pasó la última estación → está llegando a Stesicoro
+            if pos_type is None and elapsed >= t_fwd[N - 1]:
+                pos_type, station_idx, secs_remaining = 'arriving', N - 1, 0
 
             if pos_type:
                 forward_trains.append({
                     'pos_type': pos_type,
-                    'segment_idx': segment_idx,   # índice del ▫️ (solo si between)
-                    'station_idx': station_idx,   # índice de la ⚪️ (solo si arriving)
+                    'segment_idx': segment_idx,
+                    'station_idx': station_idx,
                     'secs_remaining': secs_remaining,
-                    'dep_dt': dep_dt,
                     'elapsed': elapsed,
+                    'dep_dt': dep_dt,
                 })
 
-    # ---- Trenes REVERSE (Stesicoro → Monte Po) ----
+    # ---------- Trenes REVERSE: Stesicoro → Monte Po (🔺) ----------
     closed_st, _, _ = is_metro_closed(now, "Stesicoro")
     if not closed_st:
-        schedule_st = get_schedule_list("Stesicoro", now)
-        # t_from_stesicoro: en reverse, estaciones van de idx 11 (stesicoro) a idx 0 (montepo)
-        # get_total_seconds_from_stesicoro(st) devuelve los segundos desde stesicoro hasta st
-        # Orden de recorrido reverse: [stesicoro=11, giovanni=10, galatea=9, ..., montepo=0]
-        REVERSE_ORDER = list(reversed(range(N)))  # [11, 10, 9, ..., 0]
-        t_rev = [get_total_seconds_from_stesicoro(STATIONS[i], now) for i in REVERSE_ORDER]
-        # t_rev[0] = tiempo desde stesicoro a stesicoro = 0
-        # t_rev[k] = tiempo desde stesicoro a STATIONS[REVERSE_ORDER[k]]
-
-        for salida_t in schedule_st:
-            dep_dt = datetime.combine(now.date(), salida_t)
-            dep_dt = CATANIA_TZ.localize(dep_dt)
+        total_rev = rev_times[N - 1]  # duración total stesicoro→montepo
+        for salida_t in get_schedule_list("Stesicoro", now):
+            dep_dt = CATANIA_TZ.localize(datetime.combine(now.date(), salida_t))
             elapsed = (now - dep_dt).total_seconds()
             if elapsed < 0:
                 continue
-            total_trip = t_rev[-1]  # tiempo total stesicoro → montepo
-            if elapsed > total_trip + 60:
+            if elapsed > total_rev + 120:
                 continue
 
-            pos_type = None
-            segment_idx = None   # en reverse, segmento i = entre REVERSE_ORDER[i] y REVERSE_ORDER[i+1]
-            station_idx = None   # índice en STATIONS[] de la estación a la que llega
-            secs_remaining = None
+            pos_type = segment_idx = station_idx = secs_remaining = None
 
-            M = len(REVERSE_ORDER)
-            for i in range(M - 1):
-                t_cur = t_rev[i]
-                t_nxt = t_rev[i + 1]
-                if elapsed >= t_cur and elapsed < t_nxt:
-                    secs_to_next = t_nxt - elapsed
+            # Buscar en qué segmento del recorrido reverse está
+            # rev_route[k] = índice en STATIONS del k-ésimo punto
+            # segmento k: entre rev_route[k] y rev_route[k+1]
+            # El segment_idx visual = min(rev_route[k], rev_route[k+1])
+            #   = min de los dos índices de estación → coincide con el ▫️ entre ellas
+            for k in range(N - 1):
+                if rev_times[k] <= elapsed < rev_times[k + 1]:
+                    secs_to_next = rev_times[k + 1] - elapsed
+                    # La "siguiente estación" en ruta reverse es rev_route[k+1]
+                    next_sta_idx = rev_route[k + 1]  # índice en STATIONS[]
                     if secs_to_next <= 59:
                         pos_type = 'arriving'
-                        station_idx = REVERSE_ORDER[i + 1]  # índice en STATIONS[]
+                        station_idx = next_sta_idx
                         secs_remaining = int(secs_to_next)
                     else:
                         pos_type = 'between'
-                        # El segmento visual en la línea está entre REVERSE_ORDER[i] y REVERSE_ORDER[i+1]
-                        # El ▫️ entre STATIONS[a] y STATIONS[b] con a<b tiene segment_idx = min(a,b)
-                        a = REVERSE_ORDER[i]
-                        b = REVERSE_ORDER[i + 1]
-                        segment_idx = min(a, b)
+                        # segmento visual: el ▫️ entre las dos estaciones adyacentes
+                        segment_idx = min(rev_route[k], rev_route[k + 1])
                         secs_remaining = int(secs_to_next)
                     break
 
-            if pos_type is None and elapsed >= t_rev[-1]:
-                pos_type = 'arriving'
-                station_idx = REVERSE_ORDER[-1]  # montepo = 0
-                secs_remaining = 0
+            if pos_type is None and elapsed >= total_rev:
+                pos_type, station_idx, secs_remaining = 'arriving', 0, 0  # montepo
 
             if pos_type:
                 reverse_trains.append({
@@ -1023,108 +991,158 @@ def _build_train_positions(now: datetime):
                     'segment_idx': segment_idx,
                     'station_idx': station_idx,
                     'secs_remaining': secs_remaining,
-                    'dep_dt': dep_dt,
                     'elapsed': elapsed,
+                    'dep_dt': dep_dt,
                 })
 
-    return forward_trains, reverse_trains, t_from_mp
+    return forward_trains, reverse_trains, t_fwd, rev_times, rev_route
 
 
-def _filter_trains_min_separation(trains, key='elapsed', min_gap_stations=6):
+def _filter_trains_min_separation(trains, min_gap_secs=720):
     """
-    Filtra trenes para garantizar separación mínima.
-    Ordena por tiempo transcurrido (más reciente primero) y elimina los que están
-    demasiado juntos. min_gap_stations se mide en número de estaciones de diferencia.
-    Nota: aquí usamos una heurística basada en tiempo (cada estación ~2 min ≈ 120s).
+    Elimina trenes demasiado juntos en la misma ruta.
+    Ordena por elapsed (menor = más reciente = más cerca del origen).
+    Mantiene el más reciente y elimina los que están a menos de min_gap_secs.
+    min_gap_secs = 6 estaciones × ~120s ≈ 720s (normal)
+                 = 3 estaciones × ~120s ≈ 360s (desde cabecera)
     """
     if not trains:
         return trains
-    # Ordenar por elapsed (más reciente = menos elapsed = más adelante en ruta... en realidad más atrás)
-    # Para la separación, ordenamos por posición en la línea
-    sorted_trains = sorted(trains, key=lambda x: x['elapsed'])
+    sorted_t = sorted(trains, key=lambda x: x['elapsed'])
     filtered = []
-    for t in sorted_trains:
-        too_close = False
-        for f in filtered:
-            gap_secs = abs(t['elapsed'] - f['elapsed'])
-            # ~120s por estación; mínimo 6 estaciones = 720s, o 3 estaciones = 360s desde cabecera
-            if gap_secs < min_gap_stations * 120:
-                too_close = True
-                break
+    for t in sorted_t:
+        too_close = any(abs(t['elapsed'] - f['elapsed']) < min_gap_secs for f in filtered)
         if not too_close:
             filtered.append(t)
     return filtered
 
 
 async def get_super_status(now: datetime) -> str:
+    """
+    Construye el mensaje del SUPERVISORE con tracking de posición de trenes.
+
+    Formato de la línea:
+      ⚪️ Monte Po  [🔺 In Binario / 🔺 00:45]
+      ▫️  [🔻 si hay tren en tránsito]
+      ⚪️ Fontana  [🔻 00:23  🔺 00:51]
+      ▫️
+      ...
+
+    Reglas:
+      - En segmento ▫️: solo la flecha (sin contador).
+      - En estación ⚪️: flecha + MM:SS restantes para la llegada.
+      - En cabecera: si faltan ≤4min → "In Binario"; si ≤59s → cronómetro MM:SS.
+    """
+    from horarios_logic import get_schedule_list, is_metro_closed, CATANIA_TZ
+
     STATIONS = ["montepo", "fontana", "nesima", "sannullo", "cibali", "milo",
                 "borgo", "giuffrida", "italia", "galatea", "giovanni", "stesicoro"]
     N = len(STATIONS)
 
-    forward_trains, reverse_trains, t_from_mp = _build_train_positions(now)
+    forward_trains, reverse_trains, t_fwd, rev_times, rev_route = _build_train_positions(now)
 
-    # Separación mínima: 6 estaciones ≈ 720s entre trenes del mismo sentido
-    forward_trains = _filter_trains_min_separation(forward_trains, min_gap_stations=6)
-    reverse_trains = _filter_trains_min_separation(reverse_trains, min_gap_stations=6)
+    # Separación mínima: 6 estaciones ≈ 720s
+    forward_trains = _filter_trains_min_separation(forward_trains, min_gap_secs=720)
+    reverse_trains = _filter_trains_min_separation(reverse_trains, min_gap_secs=720)
 
-    # Mapas de posición para lookup rápido
-    # forward: ¿qué tren (si hay) está llegando a la estación i o entre i e i+1?
-    fwd_at_station = {}   # station_idx -> secs_remaining
-    fwd_at_segment = {}   # segment_idx -> secs_remaining
+    # ---- Calcular estado de las CABECERAS para los próximos trenes ----
+    # Cabecera Monte Po (🔻): próximo tren que saldrá de aquí
+    mp_label = None
+    closed_mp, _, _ = is_metro_closed(now, "Montepo")
+    if not closed_mp:
+        for salida_t in get_schedule_list("Montepo", now):
+            dep_dt = CATANIA_TZ.localize(datetime.combine(now.date(), salida_t))
+            secs_to_dep = (dep_dt - now).total_seconds()
+            if secs_to_dep > 0:
+                if secs_to_dep <= 59:
+                    mp_label = f"🔻 {int(secs_to_dep)//60:02d}:{int(secs_to_dep)%60:02d}"
+                elif secs_to_dep <= 240:  # 4 min
+                    mp_label = "🔻 In Binario"
+                break
+
+    # Cabecera Stesicoro (🔺): próximo tren que saldrá de aquí
+    st_label = None
+    closed_st, _, _ = is_metro_closed(now, "Stesicoro")
+    if not closed_st:
+        for salida_t in get_schedule_list("Stesicoro", now):
+            dep_dt = CATANIA_TZ.localize(datetime.combine(now.date(), salida_t))
+            secs_to_dep = (dep_dt - now).total_seconds()
+            if secs_to_dep > 0:
+                if secs_to_dep <= 59:
+                    st_label = f"🔺 {int(secs_to_dep)//60:02d}:{int(secs_to_dep)%60:02d}"
+                elif secs_to_dep <= 240:
+                    st_label = "🔺 In Binario"
+                break
+
+    # ---- Indexar posiciones de trenes en tránsito ----
+    # fwd_at_station[i] = secs_remaining del tren forward llegando a STATIONS[i]
+    # fwd_at_segment[i] = True si hay tren forward en el ▫️ entre STATIONS[i] y STATIONS[i+1]
+    fwd_at_station = {}
+    fwd_at_segment = set()
     for tr in forward_trains:
         if tr['pos_type'] == 'arriving':
             idx = tr['station_idx']
             if idx not in fwd_at_station or tr['secs_remaining'] < fwd_at_station[idx]:
                 fwd_at_station[idx] = tr['secs_remaining']
         else:
-            idx = tr['segment_idx']
-            if idx not in fwd_at_segment or tr['secs_remaining'] < fwd_at_segment[idx]:
-                fwd_at_segment[idx] = tr['secs_remaining']
+            fwd_at_segment.add(tr['segment_idx'])
 
-    rev_at_station = {}   # station_idx -> secs_remaining
-    rev_at_segment = {}   # segment_idx -> secs_remaining
+    rev_at_station = {}
+    rev_at_segment = set()
     for tr in reverse_trains:
         if tr['pos_type'] == 'arriving':
             idx = tr['station_idx']
             if idx not in rev_at_station or tr['secs_remaining'] < rev_at_station[idx]:
                 rev_at_station[idx] = tr['secs_remaining']
         else:
-            idx = tr['segment_idx']
-            if idx not in rev_at_segment or tr['secs_remaining'] < rev_at_segment[idx]:
-                rev_at_segment[idx] = tr['secs_remaining']
+            rev_at_segment.add(tr['segment_idx'])
 
-    # Construir la línea visual
-    # Estructura: ⚪️ STATION [🔻/🔺 MM:SS]  ▫️ [🔻 MM:SS / 🔺 MM:SS]  ⚪️ STATION ...
+    # ---- Construir la línea visual ----
     lines = []
 
     for i, estacion in enumerate(STATIONS):
         nombre = NOMBRE_MOSTRAR.get(estacion, estacion.capitalize())
-
-        # --- Estación ---
         tags = []
-        # Tren forward llegando a esta estación
-        if i in fwd_at_station:
-            s = fwd_at_station[i]
-            tags.append(f"🔻 {s//60:02d}:{s%60:02d}")
-        # Tren reverse llegando a esta estación
-        if i in rev_at_station:
-            s = rev_at_station[i]
-            tags.append(f"🔺 {s//60:02d}:{s%60:02d}")
+
+        if estacion == "montepo":
+            # Tren reverse (🔺) llegando a montepo desde la línea
+            if i in rev_at_station:
+                s = rev_at_station[i]
+                tags.append(f"🔺 {s//60:02d}:{s%60:02d}")
+            # Próximo tren que parte de montepo (🔻)
+            if mp_label:
+                tags.append(mp_label)
+
+        elif estacion == "stesicoro":
+            # Tren forward (🔻) llegando a stesicoro desde la línea
+            if i in fwd_at_station:
+                s = fwd_at_station[i]
+                tags.append(f"🔻 {s//60:02d}:{s%60:02d}")
+            # Próximo tren que parte de stesicoro (🔺)
+            if st_label:
+                tags.append(st_label)
+
+        else:
+            # Estación intermedia
+            if i in fwd_at_station:
+                s = fwd_at_station[i]
+                tags.append(f"🔻 {s//60:02d}:{s%60:02d}")
+            if i in rev_at_station:
+                s = rev_at_station[i]
+                tags.append(f"🔺 {s//60:02d}:{s%60:02d}")
 
         if tags:
             lines.append(f"⚪️ {nombre}  {'  '.join(tags)}")
         else:
             lines.append(f"⚪️ {nombre}")
 
-        # --- Segmento (▫️) entre estación i y i+1 ---
+        # ---- Segmento ▫️ entre esta estación y la siguiente ----
         if i < N - 1:
             seg_tags = []
             if i in fwd_at_segment:
-                s = fwd_at_segment[i]
-                seg_tags.append(f"🔻 {s//60:02d}:{s%60:02d}")
+                seg_tags.append("🔻")
             if i in rev_at_segment:
-                s = rev_at_segment[i]
-                seg_tags.append(f"🔺 {s//60:02d}:{s%60:02d}")
+                seg_tags.append("🔺")
             if seg_tags:
                 lines.append(f"▫️  {'  '.join(seg_tags)}")
             else:
