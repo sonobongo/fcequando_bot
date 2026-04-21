@@ -73,6 +73,8 @@ def main():
         await dev_handlers.test_command_wrapper(update, context)
     async def testfin_command_wrapper(update, context):
         await dev_handlers.testfin_command_wrapper(update, context)
+    async def testlive_command_wrapper(update, context):
+        await dev_handlers.testlive_command_wrapper(update, context)
 
     # Callbacks
     async def aggiornare_callback_wrapper(update, context):
@@ -104,7 +106,7 @@ def main():
         except Exception:
             await update.message.reply_text(CREDITI_MSG, parse_mode='Markdown')
 
-    # Nuovo comando /demo
+    # Comando /demo (sin indicador de test)
     async def demo_command(update: Update, context):
         args = context.args
         if not args:
@@ -136,6 +138,10 @@ def main():
                 await update.message.reply_text(f"Data non valida: {e}")
                 return
             simulated = CATANIA_TZ.localize(simulated)
+            # Limpiar modos test anteriores
+            context.chat_data.pop('test_time', None)
+            context.chat_data.pop('test_live_base', None)
+            context.chat_data.pop('test_live_real', None)
             context.chat_data['test_time'] = simulated
             context.chat_data['demo_mode'] = True
             await update.message.reply_text(
@@ -155,8 +161,8 @@ def main():
         ("borgo", cmd_borgo_wrapper), ("giuffrida", cmd_giuffrida_wrapper),
         ("italia", cmd_italia_wrapper), ("galatea", cmd_galatea_wrapper),
         ("giovanni", cmd_giovanni_wrapper), ("test", test_command_wrapper),
-        ("testfin", testfin_command_wrapper), ("testgif", cmd_testgif_wrapper),
-        ("about", about_cmd), ("grazie", grazie_cmd),
+        ("testfin", testfin_command_wrapper), ("testlive", testlive_command_wrapper),
+        ("testgif", cmd_testgif_wrapper), ("about", about_cmd), ("grazie", grazie_cmd),
         ("demo", demo_command)
     ]
     for cmd, handler in commands:
@@ -187,7 +193,7 @@ def main():
     app.add_handler(CallbackQueryHandler(aggiornare_cabecera_callback_wrapper, pattern="^agg_cabecera_"))
 
     # ========================================================================
-    # MANEJADOR DE TEXTO PRINCIPALE (con excepción para "← Menu")
+    # MANEJADOR DE TEXTO PRINCIPAL (con excepción para "← Menu")
     # ========================================================================
     async def text_handler(update: Update, context):
         text = update.message.text.strip()
