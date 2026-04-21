@@ -99,7 +99,7 @@ EXTRA_TRAMOS_REVERSE = [
 ]
 
 # ============================================================================
-# DETECCIÓN DE HORA PUNTA (7-9 y 13-14, lunes a viernes, sept-jun)
+# DETECCIÓN DE HORA PUNTA (7-9, 13-14, 18-19:30, lunes a viernes, sept-jun)
 # ============================================================================
 def is_peak_hour(now: datetime) -> bool:
     if now.weekday() >= 5:
@@ -110,7 +110,12 @@ def is_peak_hour(now: datetime) -> bool:
     if not (month >= 9 or month <= 6):
         return False
     hour = now.hour
+    minute = now.minute
+    # Franjas existentes
     if (7 <= hour <= 9) or (13 <= hour <= 14):
+        return True
+    # Nueva franja: 18:00 a 19:30 (inclusive)
+    if (hour == 18) or (hour == 19 and minute <= 30):
         return True
     return False
 
@@ -135,7 +140,7 @@ def should_add_giovanni_extra(now: datetime) -> bool:
     return False
 
 # ============================================================================
-# TIEMPOS DE VIAJE (con extra de Giovanni)
+# TIEMPOS DE VIAJE (con extra de Giovanni y extra de cabecera en punta)
 # ============================================================================
 def get_travel_time_from_montepo(station: str, now: datetime) -> int:
     total_seconds = 0
@@ -164,6 +169,9 @@ def get_travel_time_from_montepo(station: str, now: datetime) -> int:
         idx_giovanni = stations_order.index("giovanni")
         if idx_station >= idx_giovanni:
             total_seconds += 5
+    # Extra de cabecera en hora punta (solo si la estación no es la propia cabecera)
+    if peak and station != "montepo":
+        total_seconds += 5
     minutes = (total_seconds + 59) // 60
     return minutes
 
@@ -194,6 +202,9 @@ def get_travel_time_from_stesicoro(station: str, now: datetime) -> int:
         idx_giovanni = stations_order_rev.index("giovanni")
         if idx_station >= idx_giovanni:
             total_seconds += 5
+    # Extra de cabecera en hora punta (solo si la estación no es la propia cabecera)
+    if peak and station != "stesicoro":
+        total_seconds += 5
     minutes = (total_seconds + 59) // 60
     return max(0, minutes)
 
@@ -759,6 +770,9 @@ def get_total_seconds_from_montepo(station: str, now: datetime) -> int:
         idx_giovanni = stations_order.index("giovanni")
         if idx_station >= idx_giovanni:
             total += 5
+    # Extra de cabecera en hora punta (solo si la estación no es la propia cabecera)
+    if peak and station != "montepo":
+        total += 5
     return max(0, int(total))
 
 def get_total_seconds_from_stesicoro(station: str, now: datetime) -> int:
@@ -787,6 +801,9 @@ def get_total_seconds_from_stesicoro(station: str, now: datetime) -> int:
         idx_giovanni = stations_order_rev.index("giovanni")
         if idx_station >= idx_giovanni:
             total += 5
+    # Extra de cabecera en hora punta (solo si la estación no es la propia cabecera)
+    if peak and station != "stesicoro":
+        total += 5
     return max(0, int(total))
 
 def get_next_train_at_station(now: datetime, estacion_key: str) -> Tuple[Optional[Tuple], Optional[Tuple]]:
@@ -892,6 +909,7 @@ def get_current_station_from_stesicoro(now: datetime, seconds_passed: int) -> st
     if seconds_passed == 0:
         return "non ancora partito da Stesicoro"
     return NOMBRE_MOSTRAR["stesicoro"]
+
 def format_time_precise(minutes: int, seconds: int) -> str:
     total_seconds = minutes * 60 + seconds
     if total_seconds > 90:
