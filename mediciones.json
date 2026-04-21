@@ -199,6 +199,27 @@
         { "origen": "Cibali", "destino": "San Nullo", "tiempo_seg": 108 },
         { "origen": "San Nullo", "destino": "Nesima", "tiempo_seg": 136 }
       ]
+    },
+    {
+      "id": "20260413_lunes_1240_75pct",
+      "fecha": "2026-04-13",
+      "dia_semana": "lunes",
+      "hora": "12:40",
+      "ocupacion": 0.75,
+      "observacion": "aforo 75%, hora punta",
+      "trayectos_ida": [
+        { "origen": "Monte Po", "destino": "Fontana", "tiempo_seg": 108.000 },
+        { "origen": "Fontana", "destino": "Nesima", "tiempo_seg": 111.235 },
+        { "origen": "Nesima", "destino": "San Nullo", "tiempo_seg": 145.867 },
+        { "origen": "San Nullo", "destino": "Cibali", "tiempo_seg": 114.896 },
+        { "origen": "Cibali", "destino": "Milo", "tiempo_seg": 116.120 },
+        { "origen": "Milo", "destino": "Borgo", "tiempo_seg": 117.207 },
+        { "origen": "Borgo", "destino": "Italia", "tiempo_seg": 182.174, "observacion": "sin parada en Giuffrida (si hubiera +40s)" },
+        { "origen": "Italia", "destino": "Galatea", "tiempo_seg": 101.726 },
+        { "origen": "Galatea", "destino": "Giovanni XXIII", "tiempo_seg": 184.671 },
+        { "origen": "Giovanni XXIII", "destino": "Stesicoro", "tiempo_seg": 127.292 }
+      ],
+      "trayectos_vuelta": []
     }
   ]
 }
