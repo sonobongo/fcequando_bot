@@ -168,6 +168,37 @@
         { "origen": "Galatea", "destino": "Giovanni XXIII", "tiempo_seg": 158.649 },
         { "origen": "Giovanni XXIII", "destino": "Stesicoro", "tiempo_seg": 140.626 }
       ]
+    },
+    {
+      "id": "20260421_martes_1305_50pct",
+      "fecha": "2026-04-21",
+      "dia_semana": "martes",
+      "hora": "13:05",
+      "ocupacion": 0.5,
+      "observacion": "hora punta, ocupación 50%",
+      "trayectos_ida": [
+        { "origen": "Monte Po", "destino": "Fontana", "tiempo_seg": 97 },
+        { "origen": "Fontana", "destino": "Nesima", "tiempo_seg": 93 },
+        { "origen": "Nesima", "destino": "San Nullo", "tiempo_seg": 127 },
+        { "origen": "San Nullo", "destino": "Cibali", "tiempo_seg": 111 }
+      ],
+      "trayectos_vuelta": []
+    },
+    {
+      "id": "20260421_martes_1305_75pct",
+      "fecha": "2026-04-21",
+      "dia_semana": "martes",
+      "hora": "13:05",
+      "ocupacion": 0.75,
+      "observacion": "hora punta, ocupación 75%",
+      "trayectos_ida": [
+        { "origen": "Nesima", "destino": "San Nullo", "tiempo_seg": 133 },
+        { "origen": "San Nullo", "destino": "Cibali", "tiempo_seg": 101 }
+      ],
+      "trayectos_vuelta": [
+        { "origen": "Cibali", "destino": "San Nullo", "tiempo_seg": 108 },
+        { "origen": "San Nullo", "destino": "Nesima", "tiempo_seg": 136 }
+      ]
     }
   ]
 }
