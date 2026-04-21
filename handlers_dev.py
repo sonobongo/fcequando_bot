@@ -864,12 +864,13 @@ async def get_super_status(now: datetime) -> str:
     lines = []
     LIMITE = 150  # segundos para mostrar flecha en separador (entre 61 y LIMITE)
     
+    # Guarda el índice de la última estación DESTINO donde se mostró una flecha de cada dirección
     ultima_flecha = {"🔻": -10, "🔺": -10}
     
     for idx, estacion in enumerate(estaciones_orden):
         nombre = NOMBRE_MOSTRAR.get(estacion, estacion.capitalize())
         
-        # ---- Línea de la estación (solo si hay tren con ≤59 segundos, o "In binario" si aplica) ----
+        # ---- Línea de la estación ----
         if estacion == "montepo":
             next_dep, mins, secs, has = get_next_departure("Montepo", now)
             if has:
@@ -877,7 +878,7 @@ async def get_super_status(now: datetime) -> str:
                 if total <= 59:
                     lines.append(f"⚪️ {nombre} 🔻 Stesicoro: {total//60:02d}:{total%60:02d}")
                 elif total <= 240:
-                    lines.append(f"⚪️ {nombre} 🔻 In binario")  # <-- AÑADIDO
+                    lines.append(f"⚪️ {nombre} 🔻 In binario")
                 else:
                     lines.append(f"⚪️ {nombre}")
             else:
@@ -889,13 +890,12 @@ async def get_super_status(now: datetime) -> str:
                 if total <= 59:
                     lines.append(f"⚪️ {nombre} 🔺 Monte Po: {total//60:02d}:{total%60:02d}")
                 elif total <= 240:
-                    lines.append(f"⚪️ {nombre} 🔺 In binario")  # <-- AÑADIDO
+                    lines.append(f"⚪️ {nombre} 🔺 In binario")
                 else:
                     lines.append(f"⚪️ {nombre}")
             else:
                 lines.append(f"⚪️ {nombre}")
         else:
-            # Estaciones intermedias: mostrar tiempo si ≤59 segundos
             info_mp, info_st = get_next_train_at_station(now, estacion)
             mejor_tiempo = None
             mejor_texto = None
@@ -917,25 +917,26 @@ async def get_super_status(now: datetime) -> str:
             else:
                 lines.append(f"⚪️ {nombre}")
         
-        # ---- Separador (flechas entre estaciones) con distancia mínima de 6 ----
+        # ---- Separador: flechas hacia la siguiente estación ----
         if estacion != "stesicoro":
             siguiente = estaciones_orden[idx+1]
             info_mp_next, info_st_next = get_next_train_at_station(now, siguiente)
-            flechas = []
+            flechas = []  # (flecha, tiempo, idx_destino)
             if info_mp_next:
                 total = info_mp_next[1]*60 + info_mp_next[2]
                 if 60 < total <= LIMITE:
-                    flechas.append(("🔻", total))
+                    flechas.append(("🔻", total, idx+1))  # destino es siguiente estación
             if info_st_next:
                 total = info_st_next[1]*60 + info_st_next[2]
                 if 60 < total <= LIMITE:
-                    flechas.append(("🔺", total))
+                    flechas.append(("🔺", total, idx+1))
             
+            # Filtrar por distancia mínima de 6 estaciones entre destinos
             flechas_filtradas = []
-            for flecha, total in flechas:
-                if idx - ultima_flecha.get(flecha, -10) >= 6:
+            for flecha, total, dest_idx in flechas:
+                if dest_idx - ultima_flecha.get(flecha, -10) >= 6:
                     flechas_filtradas.append((flecha, total))
-                    ultima_flecha[flecha] = idx
+                    ultima_flecha[flecha] = dest_idx
             
             if flechas_filtradas:
                 flechas_filtradas.sort(key=lambda x: x[1])
