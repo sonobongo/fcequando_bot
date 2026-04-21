@@ -799,105 +799,49 @@ async def handle_button(update, context):
 # ============================================================================
 # MODO TEST (con avance/retroceso en segundos y minutos)
 # ============================================================================async def get_super_status(now: datetime) -> str:
+async def get_super_status(now: datetime) -> str:
+    # Hora de salida fija a las 12:00:00 del día actual
+    salida = datetime(now.year, now.month, now.day, 12, 0, 0)
+    salida = CATANIA_TZ.localize(salida)
+    elapsed = (now - salida).total_seconds()
+    if elapsed < 0:
+        elapsed = 0
+    
+    # Tiempos acumulados de llegada a cada estación (segundos desde salida)
+    # Basados en FORWARD_PEAK (Monte Po -> Stesicoro)
+    tiempos_llegada = {
+        "montepo": 0,
+        "fontana": 109,
+        "nesima": 220,
+        "sannullo": 363,
+        "cibali": 478,
+        "milo": 596,
+        "borgo": 716,
+        "giuffrida": 828,
+        "italia": 913,
+        "galatea": 1004,
+        "giovanni": 1161,
+        "stesicoro": 1300
+    }
+    
     estaciones_orden = ["montepo", "fontana", "nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "giovanni", "stesicoro"]
     lines = []
     
-    # Tiempos fijos (solo para decidir qué flecha poner, sin mostrar números)
-    tiempos_bajada = {
-        ("montepo", "fontana"): 41,
-        ("fontana", "nesima"): 72,
-        ("nesima", "sannullo"): 53,
-        ("sannullo", "cibali"): 58,
-        ("cibali", "milo"): 58,
-        ("milo", "borgo"): 38,
-        ("borgo", "giuffrida"): 38,
-        ("giuffrida", "italia"): 41,
-        ("italia", "galatea"): 116,
-        ("galatea", "giovanni"): 74,
-        ("giovanni", "stesicoro"): 0
-    }
-    tiempos_subida = {
-        ("stesicoro", "giovanni"): 96,
-        ("giovanni", "galatea"): 93,
-        ("galatea", "italia"): 44,
-        ("italia", "giuffrida"): 46,
-        ("giuffrida", "borgo"): 60,
-        ("borgo", "milo"): 68,
-        ("milo", "cibali"): 68,
-        ("cibali", "sannullo"): 47,
-        ("sannullo", "nesima"): 87,
-        ("nesima", "fontana"): 38,
-        ("fontana", "montepo"): 39
-    }
+    # Determinar índice del separador donde debe ir la flecha
+    flecha_idx = -1
+    for i, est in enumerate(estaciones_orden):
+        if elapsed < tiempos_llegada[est]:
+            flecha_idx = i - 1
+            break
+    else:
+        flecha_idx = len(estaciones_orden) - 2  # si ya pasó Stesicoro, mostrar en el último? mejor no mostrar
     
     for idx, estacion in enumerate(estaciones_orden):
         nombre = NOMBRE_MOSTRAR.get(estacion, estacion.capitalize())
-        info_mp = None
-        info_st = None
-        if estacion not in ["montepo", "stesicoro"]:
-            info_mp, info_st = get_next_train_at_station(now, estacion)
-        
-        # ---- Línea de la estación (tiempos reales ≤59 segundos) ----
-        if estacion == "montepo":
-            next_dep, mins, secs, has = get_next_departure("Montepo", now)
-            if has:
-                total = mins*60 + secs
-                if total <= 59:
-                    lines.append(f"⚪️ {nombre} 🔻 Stesicoro: {total//60:02d}:{total%60:02d}")
-                elif total <= 240:
-                    lines.append(f"⚪️ {nombre} 🔻 In binario")
-                else:
-                    lines.append(f"⚪️ {nombre}")
-            else:
-                lines.append(f"⚪️ {nombre}")
-        elif estacion == "stesicoro":
-            next_dep, mins, secs, has = get_next_departure("Stesicoro", now)
-            if has:
-                total = mins*60 + secs
-                if total <= 59:
-                    lines.append(f"⚪️ {nombre} 🔺 Monte Po: {total//60:02d}:{total%60:02d}")
-                elif total <= 240:
-                    lines.append(f"⚪️ {nombre} 🔺 In binario")
-                else:
-                    lines.append(f"⚪️ {nombre}")
-            else:
-                lines.append(f"⚪️ {nombre}")
-        else:
-            mejor_tiempo = None
-            mejor_texto = None
-            if info_mp:
-                total = info_mp[1]*60 + info_mp[2]
-                if total <= 59:
-                    mejor_tiempo = total
-                    mejor_texto = f"{nombre} 🔻 Stesicoro: {total//60:02d}:{total%60:02d}"
-            if info_st:
-                total = info_st[1]*60 + info_st[2]
-                if total <= 59:
-                    if mejor_tiempo is None or total < mejor_tiempo:
-                        mejor_tiempo = total
-                        mejor_texto = f"{nombre} 🔺 Monte Po: {total//60:02d}:{total%60:02d}"
-            if mejor_texto:
-                lines.append(f"⚪️ {mejor_texto}")
-            else:
-                lines.append(f"⚪️ {nombre}")
-        
-        # ---- Separador: mostrar flecha según tiempos fijos (solo si no hay tren mostrado en la estación actual) ----
-        if estacion != "stesicoro":
-            siguiente = estaciones_orden[idx+1]
-            # Verificar si la estación actual ya tiene un tren mostrado en esa dirección
-            tiene_tren_mp = info_mp and (info_mp[1]*60 + info_mp[2] <= 59) if info_mp else False
-            tiene_tren_st = info_st and (info_st[1]*60 + info_st[2] <= 59) if info_st else False
-            
-            flecha = None
-            clave_bajada = (estacion, siguiente)
-            clave_subida = (siguiente, estacion)
-            if not tiene_tren_mp and not tiene_tren_st:
-                if clave_bajada in tiempos_bajada and tiempos_bajada[clave_bajada] > 0:
-                    flecha = "🔻"
-                elif clave_subida in tiempos_subida and tiempos_subida[clave_subida] > 0:
-                    flecha = "🔺"
-            if flecha:
-                lines.append(f"▫️{flecha}")
+        lines.append(f"⚪️ {nombre}")
+        if idx < len(estaciones_orden) - 1:
+            if idx == flecha_idx and flecha_idx >= 0:
+                lines.append("▫️🔻")
             else:
                 lines.append("▫️")
     
