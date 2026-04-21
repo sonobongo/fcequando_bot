@@ -99,7 +99,8 @@ def stop_super_update(context):
 # ============================================================================
 async def update_countdown(context, chat_id, message_id, initial_remaining, station, dest, next_dep, dev_mode):
     """
-    Actualiza el caption del mensaje cada 10 segundos hasta que falten <= 10 segundos.
+    Actualiza el caption cada 10 segundos hasta que falten <= 10 segundos.
+    Al terminar, muestra la información actual del próximo tren y añade el botón.
     """
     remaining = initial_remaining
     while remaining > 10:
@@ -110,8 +111,12 @@ async def update_countdown(context, chat_id, message_id, initial_remaining, stat
             now = get_simulated_now(context)
             remaining_calc = (next_dep - now).total_seconds()
             if remaining_calc <= 0:
+                # El tren ya partió: mostrar mensaje y botón
                 new_msg = f"🚇 Il treno per {dest} è partito."
-                await context.bot.edit_message_caption(chat_id=chat_id, message_id=message_id, caption=new_msg, parse_mode='Markdown')
+                keyboard_inline = InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🔄 Aggiornare", callback_data=f"agg_cabecera_{station.lower()}")]
+                ])
+                await context.bot.edit_message_caption(chat_id=chat_id, message_id=message_id, caption=new_msg, parse_mode='Markdown', reply_markup=keyboard_inline)
                 context.chat_data['countdown_active'] = False
                 return
             mins_rest = int(remaining_calc // 60)
@@ -126,18 +131,45 @@ async def update_countdown(context, chat_id, message_id, initial_remaining, stat
         except Exception as e:
             logger.error(f"Error en countdown: {e}")
             break
+
+    # Al salir del bucle (porque remaining <= 10 o porque se acabó el tiempo)
     if context.chat_data.get('countdown_active', False):
         try:
             now = get_simulated_now(context)
-            remaining_final = (next_dep - now).total_seconds()
-            if remaining_final <= 0:
-                new_msg = f"🚇 Il treno per {dest} è partito."
+            # Obtener el estado actual del próximo tren (puede ser el mismo u otro)
+            station_key = "montepo" if station == "Montepo" else "stesicoro"
+            next_dep_new, minutes, seconds, has_trains = get_next_departure(station, now)
+            if not has_trains:
+                close_h, close_m = get_closing_time(now, station)
+                new_msg = f"🚇 Non ci sono più treni oggi. Il servizio termina alle {close_h:02d}:{close_m:02d}."
             else:
-                new_msg = f"🚇 Il treno per {dest} è in ritardo? Controlla con Aggiornare."
-            await context.bot.edit_message_caption(chat_id=chat_id, message_id=message_id, caption=new_msg, parse_mode='Markdown')
-        except Exception:
-            pass
-        context.chat_data['countdown_active'] = False
+                dest = "Stesicoro" if station == "Montepo" else "Monte Po"
+                remaining_new = (next_dep_new - now).total_seconds()
+                mins_rest = int(remaining_new // 60)
+                secs_rest = int(remaining_new % 60)
+                if dev_mode:
+                    time_str = format_time_precise(mins_rest, secs_rest)
+                else:
+                    time_str = format_time(mins_rest, secs_rest)
+                if remaining_new <= 60:
+                    new_msg = f"Il treno è in binario. Partirà tra **{time_str}**."
+                else:
+                    if mins_rest <= 4:
+                        new_msg = f"Il treno è in binario. Partirà tra **{time_str}**."
+                    else:
+                        if minutes < SHORT_TIME_THRESHOLD:
+                            new_msg = f"🚇 Prossimo treno per {dest} parte tra **{time_str}**."
+                        else:
+                            new_msg = f"🚇 Prossimo treno per {dest} parte tra **{time_str}**, alle {next_dep_new.strftime('%H:%M')}."
+            # Añadir botón
+            keyboard_inline = InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔄 Aggiornare", callback_data=f"agg_cabecera_{station.lower()}")]
+            ])
+            await context.bot.edit_message_caption(chat_id=chat_id, message_id=message_id, caption=new_msg, parse_mode='Markdown', reply_markup=keyboard_inline)
+        except Exception as e:
+            logger.error(f"Error al finalizar countdown: {e}")
+        finally:
+            context.chat_data['countdown_active'] = False
 
 # ============================================================================
 # BUS NESIMA → HUMANITAS
