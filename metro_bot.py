@@ -3,7 +3,7 @@ import logging
 import threading
 import unicodedata
 from flask import Flask
-from telegram import Update, ReplyKeyboardRemove
+from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, Defaults, CallbackQueryHandler
 from horarios_logic import *
 import handlers_dev as dev_handlers
@@ -36,53 +36,30 @@ def main():
     defaults = Defaults(disable_notification=True)
     app = Application.builder().token(TOKEN).defaults(defaults).build()
 
-    # Wrappers per comandi (delegano a dev_handlers)
-    async def start_wrapper(update, context):
-        await dev_handlers.start_wrapper(update, context)
-    async def help_command_wrapper(update, context):
-        await dev_handlers.help_command_wrapper(update, context)
-    async def cmd_montepo_wrapper(update, context):
-        await dev_handlers.cmd_montepo_wrapper(update, context)
-    async def cmd_stesicoro_wrapper(update, context):
-        await dev_handlers.cmd_stesicoro_wrapper(update, context)
-    async def cmd_milo_wrapper(update, context):
-        await dev_handlers.cmd_milo_wrapper(update, context)
-    async def cmd_fontana_wrapper(update, context):
-        await dev_handlers.cmd_fontana_wrapper(update, context)
-    async def cmd_nesima_wrapper(update, context):
-        await dev_handlers.cmd_nesima_wrapper(update, context)
-    async def cmd_sannullo_wrapper(update, context):
-        await dev_handlers.cmd_sannullo_wrapper(update, context)
-    async def cmd_cibali_wrapper(update, context):
-        await dev_handlers.cmd_cibali_wrapper(update, context)
-    async def cmd_borgo_wrapper(update, context):
-        await dev_handlers.cmd_borgo_wrapper(update, context)
-    async def cmd_giuffrida_wrapper(update, context):
-        await dev_handlers.cmd_giuffrida_wrapper(update, context)
-    async def cmd_italia_wrapper(update, context):
-        await dev_handlers.cmd_italia_wrapper(update, context)
-    async def cmd_galatea_wrapper(update, context):
-        await dev_handlers.cmd_galatea_wrapper(update, context)
-    async def cmd_giovanni_wrapper(update, context):
-        await dev_handlers.cmd_giovanni_wrapper(update, context)
-    async def cmd_altri_wrapper(update, context):
-        await dev_handlers.cmd_altri_wrapper(update, context)
-    async def cmd_testgif_wrapper(update, context):
-        await dev_handlers.cmd_testgif_wrapper(update, context)
-    async def test_command_wrapper(update, context):
-        await dev_handlers.test_command_wrapper(update, context)
-    async def testfin_command_wrapper(update, context):
-        await dev_handlers.testfin_command_wrapper(update, context)
-    async def testlive_command_wrapper(update, context):
-        await dev_handlers.testlive_command_wrapper(update, context)
+    # Wrappers per comandi
+    async def start_wrapper(update, context): await dev_handlers.start_wrapper(update, context)
+    async def help_command_wrapper(update, context): await dev_handlers.help_command_wrapper(update, context)
+    async def cmd_montepo_wrapper(update, context): await dev_handlers.cmd_montepo_wrapper(update, context)
+    async def cmd_stesicoro_wrapper(update, context): await dev_handlers.cmd_stesicoro_wrapper(update, context)
+    async def cmd_milo_wrapper(update, context): await dev_handlers.cmd_milo_wrapper(update, context)
+    async def cmd_fontana_wrapper(update, context): await dev_handlers.cmd_fontana_wrapper(update, context)
+    async def cmd_nesima_wrapper(update, context): await dev_handlers.cmd_nesima_wrapper(update, context)
+    async def cmd_sannullo_wrapper(update, context): await dev_handlers.cmd_sannullo_wrapper(update, context)
+    async def cmd_cibali_wrapper(update, context): await dev_handlers.cmd_cibali_wrapper(update, context)
+    async def cmd_borgo_wrapper(update, context): await dev_handlers.cmd_borgo_wrapper(update, context)
+    async def cmd_giuffrida_wrapper(update, context): await dev_handlers.cmd_giuffrida_wrapper(update, context)
+    async def cmd_italia_wrapper(update, context): await dev_handlers.cmd_italia_wrapper(update, context)
+    async def cmd_galatea_wrapper(update, context): await dev_handlers.cmd_galatea_wrapper(update, context)
+    async def cmd_giovanni_wrapper(update, context): await dev_handlers.cmd_giovanni_wrapper(update, context)
+    async def cmd_altri_wrapper(update, context): await dev_handlers.cmd_altri_wrapper(update, context)
+    async def cmd_testgif_wrapper(update, context): await dev_handlers.cmd_testgif_wrapper(update, context)
+    async def test_command_wrapper(update, context): await dev_handlers.test_command_wrapper(update, context)
+    async def testfin_command_wrapper(update, context): await dev_handlers.testfin_command_wrapper(update, context)
+    async def testlive_command_wrapper(update, context): await dev_handlers.testlive_command_wrapper(update, context)
 
-    # Callbacks
-    async def aggiornare_callback_wrapper(update, context):
-        await dev_handlers.aggiornare_callback(update, context)
-    async def aggiornare_cabecera_callback_wrapper(update, context):
-        await dev_handlers.aggiornare_cabecera_callback(update, context)
+    async def aggiornare_callback_wrapper(update, context): await dev_handlers.aggiornare_callback(update, context)
+    async def aggiornare_cabecera_callback_wrapper(update, context): await dev_handlers.aggiornare_cabecera_callback(update, context)
 
-    # Comandi sviluppo
     async def dev_mode_wrapper(update, context):
         context.chat_data['dev_mode'] = True
         await update.message.reply_text("Modalità sviluppatore attivata. Usa /devfin per disattivare.")
@@ -90,23 +67,19 @@ def main():
         context.chat_data['dev_mode'] = False
         await update.message.reply_text("Modalità sviluppatore disattivata. Tornato alla versione stabile.")
 
-    # Comandi about/grazie
     FOTO_CREDITI_URL = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/FOTOMASTER.jpg"
     CREDITI_MSG = "Chatbot sviluppato con grande impegno da Àlex Naranjo. Se ti piace, condividilo con i tuoi amici e familiari. https://t.me/FCEQuando_bot"
-
     async def about_cmd(update, context):
         try:
             await update.message.reply_photo(photo=FOTO_CREDITI_URL, caption=CREDITI_MSG, parse_mode='Markdown')
         except Exception:
             await update.message.reply_text(CREDITI_MSG, parse_mode='Markdown')
-
     async def grazie_cmd(update, context):
         try:
             await update.message.reply_photo(photo=FOTO_CREDITI_URL, caption=CREDITI_MSG, parse_mode='Markdown')
         except Exception:
             await update.message.reply_text(CREDITI_MSG, parse_mode='Markdown')
 
-    # Comando /demo (sin indicador de test)
     async def demo_command(update: Update, context):
         args = context.args
         if not args:
@@ -138,7 +111,6 @@ def main():
                 await update.message.reply_text(f"Data non valida: {e}")
                 return
             simulated = CATANIA_TZ.localize(simulated)
-            # Limpiar modos test anteriores
             context.chat_data.pop('test_time', None)
             context.chat_data.pop('test_live_base', None)
             context.chat_data.pop('test_live_real', None)
@@ -151,7 +123,6 @@ def main():
             return
         await update.message.reply_text("Comando non riconosciuto. Usa /demo DDMMYYYY HHMM")
 
-    # Registro comandi
     commands = [
         ("start", start_wrapper), ("help", help_command_wrapper),
         ("montepo", cmd_montepo_wrapper), ("stesicoro", cmd_stesicoro_wrapper),
@@ -171,33 +142,21 @@ def main():
     app.add_handler(CommandHandler("dev", dev_mode_wrapper))
     app.add_handler(CommandHandler("devfin", dev_fin_wrapper))
 
-    # ========================================================================
-    # MANEJADOR DE BOTONES (ReplyKeyboardMarkup) - incluye "← Menu"
-    # ========================================================================
     button_texts = ["Monte Po", "Stesicoro", "Altri", "Menu", "← Menu", "Fontana", "Nesima", "San Nullo",
                     "Cibali", "Milo", "Borgo", "Giuffrida", "Italia", "Galatea", "Giovanni XXIII"]
-    
     async def handle_button_wrapper(update, context):
         if context.chat_data.get('acces_mode', False):
             await acc_handlers.normal_handle_text(update, context)
         else:
             await dev_handlers.handle_button_wrapper(update, context)
-    
     app.add_handler(MessageHandler(filters.Text(button_texts), handle_button_wrapper))
 
-    # ========================================================================
-    # CALLBACKS (orden importante: super primero)
-    # ========================================================================
     app.add_handler(CallbackQueryHandler(dev_handlers.aggiornare_super_callback, pattern="^aggiornare_super$"))
     app.add_handler(CallbackQueryHandler(aggiornare_callback_wrapper, pattern="^aggiornare_"))
     app.add_handler(CallbackQueryHandler(aggiornare_cabecera_callback_wrapper, pattern="^agg_cabecera_"))
 
-    # ========================================================================
-    # MANEJADOR DE TEXTO PRINCIPAL (con excepción para "← Menu")
-    # ========================================================================
     async def text_handler(update: Update, context):
         text = update.message.text.strip()
-        # Manejo especial para volver al menú
         if text == "← Menu":
             class FakeUpdate:
                 def __init__(self, msg):
@@ -206,7 +165,6 @@ def main():
             fake_update = FakeUpdate(fake_msg)
             await dev_handlers.handle_button(fake_update, context)
             return
-        
         if context.chat_data.get('acces_mode', False):
             await acc_handlers.normal_handle_text(update, context)
         else:
@@ -215,7 +173,6 @@ def main():
                 await acc_handlers.activate_acces_mode(update, context)
             else:
                 await dev_handlers.normal_handle_text(update, context)
-
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
 
     logger.info("Bot avviato.")
