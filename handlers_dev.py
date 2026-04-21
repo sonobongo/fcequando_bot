@@ -1212,11 +1212,14 @@ async def aggiornare_super_callback(update: Update, context: ContextTypes.DEFAUL
     context.chat_data['super_task'] = task
 
 # ============================================================================
-# MODO NONNA: DETECCIÓN DE ESTACIONES CON ERRORES
+# MODO NONNA: DETECCIÓN DE NOMBRE DE ESTACIÓN CON ERRORES TIPOGRÁFICOS Y ALIAS
 # ============================================================================
 async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     stop_super_update(context)
+    
     texto = update.message.text.strip()
+    
+    # ========== RESPUESTA A PALABRAS CLAVE (about, grazie) ==========
     texto_lower = texto.lower()
     texto_normalized = re.sub(r'^/', '', texto_lower)
     texto_normalized = re.sub(r'\.$', '', texto_normalized)
@@ -1229,38 +1232,240 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
             result = await update.message.reply_text(caption, parse_mode='Markdown')
         await store_id(context, result)
         return
+    
+    # ========== RESPUESTA A "super" ==========
     if re.match(r'^(/?)super[.!?]*$', texto_normalized):
         await send_super_response(update, context)
         return
     
-    # Avance manual en modo test
+    # ========== AVANCE/RETROCESO DE TIEMPO EN MODO TEST ==========
     if 'test_time' in context.chat_data or 'test_live_base' in context.chat_data:
         match = re.match(r'^([+-])(\d+)([sm]?)$', texto_normalized)
         if match:
             signo = match.group(1)
             cantidad = int(match.group(2))
             unidad = match.group(3) if match.group(3) else 'm'
-            delta = timedelta(seconds=cantidad) if unidad == 's' else timedelta(minutes=cantidad)
+            if unidad == 's':
+                delta = timedelta(seconds=cantidad)
+            else:
+                delta = timedelta(minutes=cantidad)
             if signo == '-':
                 delta = -delta
+            
             now_sim = get_simulated_now(context)
             nueva_base = now_sim + delta
+            
             if 'test_time' in context.chat_data:
                 context.chat_data['test_time'] = nueva_base
             else:
                 context.chat_data['test_live_base'] = nueva_base
                 context.chat_data['test_live_real'] = datetime.now(CATANIA_TZ)
+            
             await update.message.reply_text(f"⏩ {cantidad}{unidad}. Nuovo orario simulato: {nueva_base.strftime('%d/%m/%Y %H:%M:%S')}")
             last_station = context.chat_data.get('last_station')
             if last_station:
                 await send_station_response(update, context, last_station, return_to_main=False)
             return
+    
+    # ========== DETECCIÓN DE PALABRAS CLAVE (calles cercanas) ==========
+    import unicodedata
+    texto_norm = unicodedata.normalize('NFKD', texto.lower()).encode('ASCII', 'ignore').decode('ASCII')
+    texto_limpio = ' '.join(texto_norm.split())
+    palabras = texto_limpio.split()
 
-    # Detección de estación por nombre (código existente, lo omito por brevedad pero debe estar completo)
-    # Aquí deberías poner todo el bloque de detección con KEYWORDS, ALIASES, levenshtein, etc.
-    # Como es muy largo, te lo he incluido en el archivo original; si lo necesitas, pídemelo.
-    # Por ahora pongo un placeholder, pero tú debes conservar el que ya tenías.
-    # Para que no falte, incluyo una versión simplificada que al menos responde.
+    KEYWORDS = {
+        "corso sicilia": "stesicoro",
+        "repubblica": "stesicoro",
+        "archimede": "giovanni",
+        "liberta": "giovanni",
+        "centrale": "giovanni",
+        "jonio": "galatea",
+        "pasubio": "galatea",
+        "palmanova": "galatea",
+        "messina": "galatea",
+        "firenze": "italia",
+        "ramondetta": "italia",
+        "scammacca": "italia",
+        "veneto": "italia",
+        "carvana": "giuffrida",
+        "abraham": "giuffrida",
+        "lincoln": "giuffrida",
+        "empedocle": "borgo",
+        "signorelli": "borgo",
+        "bronte": "milo",
+        "fleming": "milo",
+        "bergamo": "cibali",
+        "galermo": "cibali",
+        "massimino": "cibali",
+        "stadio": "cibali",
+        "usodimare": "sannullo",
+        "uso di mare": "sannullo",
+        "sebastiano": "sannullo",
+        "lorenzo": "nesima",
+        "bolano": "nesima",
+        "filippo": "nesima",
+        "eredia": "nesima",
+        "garibaldi": "fontana",
+        "carlo": "montepo",
+        "marx": "montepo",
+    }
+    KEYWORDS_NORM = {}
+    for kw, station in KEYWORDS.items():
+        kw_norm = unicodedata.normalize('NFKD', kw.lower()).encode('ASCII', 'ignore').decode('ASCII')
+        KEYWORDS_NORM[kw_norm] = station
+
+    def levenshtein_distance(a: str, b: str) -> int:
+        if len(a) < len(b):
+            return levenshtein_distance(b, a)
+        if len(b) == 0:
+            return len(a)
+        previous_row = list(range(len(b) + 1))
+        for i, ca in enumerate(a):
+            current_row = [i + 1]
+            for j, cb in enumerate(b):
+                insertions = previous_row[j + 1] + 1
+                deletions = current_row[j] + 1
+                substitutions = previous_row[j] + (ca != cb)
+                current_row.append(min(insertions, deletions, substitutions))
+            previous_row = current_row
+        return previous_row[-1]
+
+    mejor_clave_kw = None
+    for kw_norm, station in KEYWORDS_NORM.items():
+        if kw_norm in texto_limpio:
+            mejor_clave_kw = station
+            break
+    if not mejor_clave_kw:
+        palabras_limpio = texto_limpio.split()
+        for kw_norm, station in KEYWORDS_NORM.items():
+            kw_palabras = kw_norm.split()
+            if len(kw_palabras) > 1:
+                continue
+            kw_len = len(kw_norm)
+            for palabra in palabras_limpio:
+                if len(palabra) <= 2:
+                    continue
+                dist = levenshtein_distance(palabra, kw_norm)
+                if kw_len <= 4:
+                    if dist == 0:
+                        mejor_clave_kw = station
+                        break
+                else:
+                    if dist <= 1:
+                        mejor_clave_kw = station
+                        break
+            if mejor_clave_kw:
+                break
+    if mejor_clave_kw:
+        await send_station_response(update, context, mejor_clave_kw, return_to_main=True)
+        return
+
+    # ========== REGLA ESPECIAL: palabras que empiezan por ESTE/STE o terminan en CORO/COLO/COMO ==========
+    for palabra in palabras:
+        palabra_lower = palabra.lower()
+        if (palabra_lower.startswith('este') or palabra_lower.startswith('ste')) or \
+           (palabra_lower.endswith('coro') or palabra_lower.endswith('colo') or palabra_lower.endswith('como')):
+            await send_station_response(update, context, "stesicoro", return_to_main=True)
+            return
+
+    # ========== ALIAS (sinónimos de estaciones) ==========
+    ALIASES = {
+        "misterbianco": "montepo",
+        "humanitas": "nesima",
+        "centro sicilia": "nesima",
+        "centrosicilia": "nesima",
+        "mister bianco": "montepo",
+        "mr bianco": "montepo",
+        "mr. bianco": "montepo",
+        "giovanni": "giovanni",
+        "giovanni xxiii": "giovanni",
+        "stesicoro": "stesicoro",
+        "monte po": "montepo",
+        "san nullo": "sannullo",
+        "nullo": "sannullo",
+    }
+    alias_norm = {}
+    for alias, clave in ALIASES.items():
+        alias_clean = unicodedata.normalize('NFKD', alias.lower()).encode('ASCII', 'ignore').decode('ASCII')
+        alias_norm[alias_clean] = clave
+
+    matches = []
+    for alias, clave in alias_norm.items():
+        if alias in texto_limpio:
+            matches.append((texto_limpio.find(alias), clave))
+    if not matches:
+        giovanni_x_prefix = "giovanni x"
+        if texto_limpio.startswith(giovanni_x_prefix):
+            matches.append((0, "giovanni"))
+    if not matches:
+        palabras = texto_limpio.split()
+        for alias, clave in alias_norm.items():
+            max_dist = 1 if clave == "borgo" else 2
+            for i, palabra in enumerate(palabras):
+                if len(palabra) <= 3:
+                    continue
+                dist = levenshtein_distance(palabra, alias)
+                if dist <= max_dist:
+                    pos = sum(len(p) + 1 for p in palabras[:i])
+                    matches.append((pos, clave))
+                    break
+            if matches:
+                break
+
+    estaciones = list(NOMBRE_MOSTRAR.items())
+    estaciones.sort(key=lambda x: len(x[1]), reverse=True)
+    for clave, nombre in estaciones:
+        nombre_norm = unicodedata.normalize('NFKD', nombre.lower()).encode('ASCII', 'ignore').decode('ASCII')
+        start = 0
+        while True:
+            pos = texto_limpio.find(nombre_norm, start)
+            if pos == -1:
+                break
+            matches.append((pos, clave))
+            start = pos + 1
+
+    if not matches:
+        palabras = texto_limpio.split()
+        for clave, nombre in estaciones:
+            nombre_norm = unicodedata.normalize('NFKD', nombre.lower()).encode('ASCII', 'ignore').decode('ASCII')
+            max_dist = 1 if clave == "borgo" else 2
+            for i, palabra in enumerate(palabras):
+                if len(palabra) <= 3:
+                    continue
+                dist = levenshtein_distance(palabra, nombre_norm)
+                if dist <= max_dist:
+                    pos = sum(len(p) + 1 for p in palabras[:i])
+                    matches.append((pos, clave))
+                    break
+            if matches:
+                break
+
+    if not matches:
+        for clave, nombre in estaciones:
+            nombre_norm = unicodedata.normalize('NFKD', nombre.lower()).encode('ASCII', 'ignore').decode('ASCII')
+            if nombre_norm.startswith(texto_limpio) and len(texto_limpio) >= 3:
+                matches.append((0, clave))
+                break
+            if texto_limpio.startswith(nombre_norm) and len(nombre_norm) >= 3:
+                matches.append((0, clave))
+                break
+
+    if not matches:
+        if texto_limpio.startswith("gal"):
+            matches.append((0, "galatea"))
+        elif "galaxia" in texto_limpio:
+            matches.append((0, "galatea"))
+
+    if not matches and texto_limpio == "monte":
+        matches.append((0, "montepo"))
+
+    if matches:
+        matches.sort(key=lambda x: x[0])
+        mejor_clave = matches[0][1]
+        await send_station_response(update, context, mejor_clave, return_to_main=True)
+        return
+
+    # No reconocido
     await update.message.reply_text(
         "Stazione non riconosciuta. Le stazioni disponibili sono: " +
         ", ".join(NOMBRE_MOSTRAR.values()) + ".\nPuoi anche usare alias come 'Misterbianco' (Monte Po) o 'Humanitas' (Nesima).",
