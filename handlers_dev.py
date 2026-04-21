@@ -774,7 +774,7 @@ async def help_command(update, context):
         "/testfin - Disattiva modalità test\n"
         "/about - Info sul bot\n"
         "/grazie - Info sul bot\n"
-        "super - Mostra treni in arrivo o in partenza (≤59 secondi)\n"
+        "super - Mostra treni in arrivo in ≤59 secondi\n"
         "Oppure premi i pulsanti.",
         reply_markup=keyboard_main
     )
@@ -797,53 +797,121 @@ async def handle_button(update, context):
         await update.message.reply_text("Scelta non valida. Usa i pulsanti.", reply_markup=keyboard_main)
 
 # ============================================================================
-# MODO TEST (con avance/retroceso en segundos y minutos)
-# ============================================================================async def get_super_status(now: datetime) -> str:
+# MODO TEST
+# ============================================================================
+async def test_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Detener actualización automática de super
+    stop_super_update(context)
+    
+    args = context.args
+    if not args:
+        msg = await update.message.reply_text(
+            "🧪 **Modalità test**\n\n"
+            "Per fissare una data/ora simulata:\n"
+            "`/test DDMMYYYY HHMM`\n"
+            "Esempio: `/test 11022026 1102`\n\n"
+            "Per tornare alla realtà: `/testfin`\n\n"
+            "In modalità test, puoi avanzare/retrocedere di secondi (es. +10s, -30s) o minuti (es. +5m, -2m).",
+            parse_mode='Markdown'
+        )
+        await store_id(context, msg)
+        return
+    if len(args) == 2:
+        date_str, time_str = args[0], args[1]
+        if len(date_str) != 8 or not date_str.isdigit():
+            await update.message.reply_text("Formato data non valido. Usa DDMMYYYY.")
+            return
+        if len(time_str) != 4 or not time_str.isdigit():
+            await update.message.reply_text("Formato ora non valido. Usa HHMM.")
+            return
+        day, month, year = int(date_str[0:2]), int(date_str[2:4]), int(date_str[4:8])
+        hour, minute = int(time_str[0:2]), int(time_str[2:4])
+        if hour > 23 or minute > 59:
+            await update.message.reply_text("Ora non valida.")
+            return
+        try:
+            simulated = datetime(year, month, day, hour, minute)
+        except Exception as e:
+            await update.message.reply_text(f"Data non valida: {e}")
+            return
+        simulated = CATANIA_TZ.localize(simulated)
+        context.chat_data['test_time'] = simulated
+        context.chat_data.pop('demo_mode', None)
+        msg = await update.message.reply_text(
+            f"🧪 **Modalità test attivata**\nOra simulata: {simulated.strftime('%d/%m/%Y %H:%M')}\nUsa i bottoni. Per uscire: `/testfin`\nPer avanzare/retrocedere scrivi +10s, -30s, +5m, -2m, ecc.",
+            parse_mode='Markdown'
+        )
+        await store_id(context, msg)
+        return
+    await update.message.reply_text("Comando non riconosciuto. Usa /test DDMMYYYY HHMM")
+
+async def testfin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Detener actualización automática de super
+    stop_super_update(context)
+    
+    if context.chat_data and 'test_time' in context.chat_data:
+        del context.chat_data['test_time']
+        context.chat_data.pop('demo_mode', None)
+        await update.message.reply_text("✅ Modalità test/demo disattivata. Ora reale ripristinata.")
+    else:
+        await update.message.reply_text("⚠️ Nessuna modalità test/demo attiva.")
+
+# ============================================================================
+# FUNCIONES PARA "SUPER" (versión simplificada: tiempos en estaciones, separadores vacíos)
+# ============================================================================
 async def get_super_status(now: datetime) -> str:
-    # Hora de salida fija a las 12:00:00 del día actual
-    salida = datetime(now.year, now.month, now.day, 12, 0, 0)
-    salida = CATANIA_TZ.localize(salida)
-    elapsed = (now - salida).total_seconds()
-    if elapsed < 0:
-        elapsed = 0
-    
-    # Tiempos acumulados de llegada a cada estación (segundos desde salida)
-    # Basados en FORWARD_PEAK (Monte Po -> Stesicoro)
-    tiempos_llegada = {
-        "montepo": 0,
-        "fontana": 109,
-        "nesima": 220,
-        "sannullo": 363,
-        "cibali": 478,
-        "milo": 596,
-        "borgo": 716,
-        "giuffrida": 828,
-        "italia": 913,
-        "galatea": 1004,
-        "giovanni": 1161,
-        "stesicoro": 1300
-    }
-    
     estaciones_orden = ["montepo", "fontana", "nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "giovanni", "stesicoro"]
     lines = []
     
-    # Determinar índice del separador donde debe ir la flecha
-    flecha_idx = -1
-    for i, est in enumerate(estaciones_orden):
-        if elapsed < tiempos_llegada[est]:
-            flecha_idx = i - 1
-            break
-    else:
-        flecha_idx = len(estaciones_orden) - 2  # si ya pasó Stesicoro, mostrar en el último? mejor no mostrar
-    
     for idx, estacion in enumerate(estaciones_orden):
         nombre = NOMBRE_MOSTRAR.get(estacion, estacion.capitalize())
-        lines.append(f"⚪️ {nombre}")
-        if idx < len(estaciones_orden) - 1:
-            if idx == flecha_idx and flecha_idx >= 0:
-                lines.append("▫️🔻")
+        
+        # ---- Línea de la estación (solo si hay tren con ≤59 segundos) ----
+        if estacion == "montepo":
+            next_dep, mins, secs, has = get_next_departure("Montepo", now)
+            if has:
+                total = mins*60 + secs
+                if total <= 59:
+                    lines.append(f"⚪️ {nombre} 🔻 Stesicoro: {total//60:02d}:{total%60:02d}")
+                else:
+                    lines.append(f"⚪️ {nombre}")
             else:
-                lines.append("▫️")
+                lines.append(f"⚪️ {nombre}")
+        elif estacion == "stesicoro":
+            next_dep, mins, secs, has = get_next_departure("Stesicoro", now)
+            if has:
+                total = mins*60 + secs
+                if total <= 59:
+                    lines.append(f"⚪️ {nombre} 🔺 Monte Po: {total//60:02d}:{total%60:02d}")
+                else:
+                    lines.append(f"⚪️ {nombre}")
+            else:
+                lines.append(f"⚪️ {nombre}")
+        else:
+            info_mp, info_st = get_next_train_at_station(now, estacion)
+            mejor_tiempo = None
+            mejor_texto = None
+            if info_mp:
+                paso, mins, secs, _ = info_mp
+                total = mins*60 + secs
+                if total <= 59:
+                    mejor_tiempo = total
+                    mejor_texto = f"{nombre} 🔻 Stesicoro: {total//60:02d}:{total%60:02d}"
+            if info_st:
+                paso, mins, secs, _ = info_st
+                total = mins*60 + secs
+                if total <= 59:
+                    if mejor_tiempo is None or total < mejor_tiempo:
+                        mejor_tiempo = total
+                        mejor_texto = f"{nombre} 🔺 Monte Po: {total//60:02d}:{total%60:02d}"
+            if mejor_texto:
+                lines.append(f"⚪️ {mejor_texto}")
+            else:
+                lines.append(f"⚪️ {nombre}")
+        
+        # ---- Separador: siempre vacío (sin flechas ni números) ----
+        if estacion != "stesicoro":
+            lines.append("▫️")
     
     return "🛂 **SUPERVISORE: Monitoraggio degli arrivi dei treni**\n\n" + "\n".join(lines)
 
@@ -967,8 +1035,7 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await store_id(context, result)
         return
     
-    # ========== RESPUESTA A "super" ==========
-        # Acepta "super", "/super", "super.", "super!" pero no frases con espacios
+    # ========== RESPUESTA A "super" (solo palabra exacta) ==========
     if re.match(r'^(/?)super[.!?]*$', texto_normalized):
         await send_super_response(update, context)
         return
