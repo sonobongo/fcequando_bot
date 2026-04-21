@@ -798,73 +798,11 @@ async def handle_button(update, context):
 
 # ============================================================================
 # MODO TEST (con avance/retroceso en segundos y minutos)
-# ============================================================================
-async def test_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Detener actualización automática de super
-    stop_super_update(context)
-    
-    args = context.args
-    if not args:
-        msg = await update.message.reply_text(
-            "🧪 **Modalità test**\n\n"
-            "Per fissare una data/ora simulata:\n"
-            "`/test DDMMYYYY HHMM`\n"
-            "Esempio: `/test 11022026 1102`\n\n"
-            "Per tornare alla realtà: `/testfin`\n\n"
-            "In modalità test, puoi avanzare/retrocedere di secondi (es. +10s, -30s) o minuti (es. +5m, -2m).",
-            parse_mode='Markdown'
-        )
-        await store_id(context, msg)
-        return
-    if len(args) == 2:
-        date_str, time_str = args[0], args[1]
-        if len(date_str) != 8 or not date_str.isdigit():
-            await update.message.reply_text("Formato data non valido. Usa DDMMYYYY.")
-            return
-        if len(time_str) != 4 or not time_str.isdigit():
-            await update.message.reply_text("Formato ora non valido. Usa HHMM.")
-            return
-        day, month, year = int(date_str[0:2]), int(date_str[2:4]), int(date_str[4:8])
-        hour, minute = int(time_str[0:2]), int(time_str[2:4])
-        if hour > 23 or minute > 59:
-            await update.message.reply_text("Ora non valida.")
-            return
-        try:
-            simulated = datetime(year, month, day, hour, minute)
-        except Exception as e:
-            await update.message.reply_text(f"Data non valida: {e}")
-            return
-        simulated = CATANIA_TZ.localize(simulated)
-        context.chat_data['test_time'] = simulated
-        context.chat_data.pop('demo_mode', None)
-        msg = await update.message.reply_text(
-            f"🧪 **Modalità test attivata**\nOra simulata: {simulated.strftime('%d/%m/%Y %H:%M')}\nUsa i bottoni. Per uscire: `/testfin`\nPer avanzare/retrocedere scrivi +10s, -30s, +5m, -2m, ecc.",
-            parse_mode='Markdown'
-        )
-        await store_id(context, msg)
-        return
-    await update.message.reply_text("Comando non riconosciuto. Usa /test DDMMYYYY HHMM")
-
-async def testfin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Detener actualización automática de super
-    stop_super_update(context)
-    
-    if context.chat_data and 'test_time' in context.chat_data:
-        del context.chat_data['test_time']
-        context.chat_data.pop('demo_mode', None)
-        await update.message.reply_text("✅ Modalità test/demo disattivata. Ora reale ripristinata.")
-    else:
-        await update.message.reply_text("⚠️ Nessuna modalità test/demo attiva.")
-
-# ============================================================================
-# FUNCIONES PARA "SUPER" (actualización automática cada 3s, 40 ciclos, luego botón)
-# ============================================================================
-async def get_super_status(now: datetime) -> str:
+# ============================================================================async def get_super_status(now: datetime) -> str:
     estaciones_orden = ["montepo", "fontana", "nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "giovanni", "stesicoro"]
     lines = []
     
-    # Tiempos fijos para los separadores (segundos)
-    # Dirección Monte Po → Stesicoro (bajada)
+    # Tiempos fijos (solo para decidir qué flecha poner, sin mostrar números)
     tiempos_bajada = {
         ("montepo", "fontana"): 41,
         ("fontana", "nesima"): 72,
@@ -876,9 +814,8 @@ async def get_super_status(now: datetime) -> str:
         ("giuffrida", "italia"): 41,
         ("italia", "galatea"): 116,
         ("galatea", "giovanni"): 74,
-        ("giovanni", "stesicoro"): 0  # último, no se muestra realmente
+        ("giovanni", "stesicoro"): 0
     }
-    # Dirección Stesicoro → Monte Po (subida)
     tiempos_subida = {
         ("stesicoro", "giovanni"): 96,
         ("giovanni", "galatea"): 93,
@@ -895,6 +832,10 @@ async def get_super_status(now: datetime) -> str:
     
     for idx, estacion in enumerate(estaciones_orden):
         nombre = NOMBRE_MOSTRAR.get(estacion, estacion.capitalize())
+        info_mp = None
+        info_st = None
+        if estacion not in ["montepo", "stesicoro"]:
+            info_mp, info_st = get_next_train_at_station(now, estacion)
         
         # ---- Línea de la estación (tiempos reales ≤59 segundos) ----
         if estacion == "montepo":
@@ -922,8 +863,6 @@ async def get_super_status(now: datetime) -> str:
             else:
                 lines.append(f"⚪️ {nombre}")
         else:
-            # Estaciones intermedias: mostrar tiempo real si ≤59 segundos
-            info_mp, info_st = get_next_train_at_station(now, estacion)
             mejor_tiempo = None
             mejor_texto = None
             if info_mp:
@@ -942,43 +881,25 @@ async def get_super_status(now: datetime) -> str:
             else:
                 lines.append(f"⚪️ {nombre}")
         
-        # ---- Separador: mostrar tiempo fijo según la dirección del tren más próximo ----
+        # ---- Separador: mostrar flecha según tiempos fijos (solo si no hay tren mostrado en la estación actual) ----
         if estacion != "stesicoro":
             siguiente = estaciones_orden[idx+1]
-            # Determinar qué tren es más relevante: el que tenga menor tiempo real (si existe)
-            info_mp_next, info_st_next = get_next_train_at_station(now, siguiente)
-            tiempo_real = None
-            direccion_real = None
-            if info_mp_next:
-                total = info_mp_next[1]*60 + info_mp_next[2]
-                if total <= 150:  # solo consideramos tiempos razonables
-                    tiempo_real = total
-                    direccion_real = "bajada"
-            if info_st_next:
-                total = info_st_next[1]*60 + info_st_next[2]
-                if total <= 150:
-                    if tiempo_real is None or total < tiempo_real:
-                        tiempo_real = total
-                        direccion_real = "subida"
+            # Verificar si la estación actual ya tiene un tren mostrado en esa dirección
+            tiene_tren_mp = info_mp and (info_mp[1]*60 + info_mp[2] <= 59) if info_mp else False
+            tiene_tren_st = info_st and (info_st[1]*60 + info_st[2] <= 59) if info_st else False
             
-            # Si hay un tiempo real válido y es menor que el fijo, lo mostramos; si no, mostramos el fijo
-            if tiempo_real is not None:
-                segundos = tiempo_real
-                # No añadimos flecha, solo el número (o podríamos poner el símbolo según dirección)
-                lines.append(f"▫️ {segundos}s")
+            flecha = None
+            clave_bajada = (estacion, siguiente)
+            clave_subida = (siguiente, estacion)
+            if not tiene_tren_mp and not tiene_tren_st:
+                if clave_bajada in tiempos_bajada and tiempos_bajada[clave_bajada] > 0:
+                    flecha = "🔻"
+                elif clave_subida in tiempos_subida and tiempos_subida[clave_subida] > 0:
+                    flecha = "🔺"
+            if flecha:
+                lines.append(f"▫️{flecha}")
             else:
-                # Usar tiempos fijos según la dirección que tenga más sentido (podríamos basarnos en la hora o en el tren real más próximo)
-                # Por simplicidad, usamos los tiempos de bajada si no hay tren real
-                clave = (estacion, siguiente)
-                if clave in tiempos_bajada:
-                    segundos = tiempos_bajada[clave]
-                    lines.append(f"▫️ {segundos}s")
-                elif (siguiente, estacion) in tiempos_subida:
-                    # Para la dirección inversa (subida), la clave está al revés
-                    segundos = tiempos_subida[(siguiente, estacion)]
-                    lines.append(f"▫️ {segundos}s")
-                else:
-                    lines.append("▫️")
+                lines.append("▫️")
     
     return "🛂 **SUPERVISORE: Monitoraggio degli arrivi dei treni**\n\n" + "\n".join(lines)
 
