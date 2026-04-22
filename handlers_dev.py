@@ -1130,7 +1130,7 @@ async def get_super_status(now: datetime) -> str:
             # Tren reverse (🔺) llegando a montepo desde la línea
             if i in rev_at_station:
                 s = rev_at_station[i]
-                tags.append(f"🔺 {s//60:02d}:{s%60:02d}")
+                tags.append("🔺 In Binario" if s == 0 else f"🔺 {s//60:02d}:{s%60:02d}")
             # Próximo tren que parte de montepo (🔻)
             if mp_label:
                 tags.append(mp_label)
@@ -1139,7 +1139,7 @@ async def get_super_status(now: datetime) -> str:
             # Tren forward (🔻) llegando a stesicoro desde la línea
             if i in fwd_at_station:
                 s = fwd_at_station[i]
-                tags.append(f"🔻 {s//60:02d}:{s%60:02d}")
+                tags.append("🔻 In Binario" if s == 0 else f"🔻 {s//60:02d}:{s%60:02d}")
             # Próximo tren que parte de stesicoro (🔺)
             if st_label:
                 tags.append(st_label)
