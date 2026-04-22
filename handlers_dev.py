@@ -83,11 +83,11 @@ async def store_id(context, message):
             context.chat_data['all_msg_ids'].append(message.message_id)
 
 # ============================================================================
-# LIMPIEZA AUTOMÁTICA DE MENSAJES DESPUÉS DE 20 SEGUNDOS
+# LIMPIEZA AUTOMÁTICA DE MENSAJES DESPUÉS DE 2 MINUTOS (120 SEGUNDOS)
 # ============================================================================
 async def auto_cleanup(context, chat_id, main_msg_id, refresh_ids, countdown_msg_id=None):
-    """Espera 20 segundos y borra los mensajes indicados."""
-    await asyncio.sleep(20)
+    """Espera 120 segundos y borra los mensajes indicados."""
+    await asyncio.sleep(120)
     if main_msg_id:
         try:
             await context.bot.delete_message(chat_id=chat_id, message_id=main_msg_id)
@@ -105,7 +105,7 @@ async def auto_cleanup(context, chat_id, main_msg_id, refresh_ids, countdown_msg
             pass
 
 def schedule_cleanup(context, chat_id, main_msg_id, refresh_ids, countdown_msg_id=None):
-    """Cancela la tarea anterior y programa una nueva limpieza después de 20s."""
+    """Cancela la tarea anterior y programa una nueva limpieza después de 120s."""
     if 'cleanup_task' in context.chat_data:
         try:
             context.chat_data['cleanup_task'].cancel()
@@ -637,6 +637,8 @@ async def send_header_response(chat_id, context, estacion_key, is_update=False):
                 msg1 = await context.bot.send_message(chat_id=chat_id, text=caption_station, parse_mode='Markdown')
             context.chat_data['main_msg_id'] = msg1.message_id
             await store_id(context, msg1)
+            # Programar limpieza automática para el mensaje de cabecera (foto)
+            schedule_cleanup(context, chat_id, msg1.message_id, [])
         
         # Fechas especiales
         if (now.month == 12 and now.day == 31 and now.hour >= 12) or (now.month == 1 and now.day == 1 and now.hour < 3):
@@ -711,6 +713,8 @@ async def send_header_response(chat_id, context, estacion_key, is_update=False):
             msg2 = await context.bot.send_photo(chat_id=chat_id, photo=img_url, caption=msg, parse_mode='Markdown')
             await store_id(context, msg2)
             context.chat_data['countdown_msg_id'] = msg2.message_id
+            # Programar limpieza para el mensaje de countdown también (2 minutos)
+            schedule_cleanup(context, chat_id, None, [], msg2.message_id)
             if 'countdown_task' in context.chat_data:
                 try:
                     context.chat_data['countdown_task'].cancel()
@@ -719,7 +723,6 @@ async def send_header_response(chat_id, context, estacion_key, is_update=False):
             context.chat_data['countdown_active'] = True
             task = asyncio.create_task(update_countdown(context, chat_id, msg2.message_id, total_seconds_rest, station, dest, next_dep, dev_mode))
             context.chat_data['countdown_task'] = task
-            # No programamos limpieza automática para el countdown porque se actualiza y queremos que dure hasta que termine
             return
         
         # Mensaje normal (cuando faltan más de 60 segundos)
@@ -782,8 +785,7 @@ async def send_header_response(chat_id, context, estacion_key, is_update=False):
             msg2 = await context.bot.send_message(chat_id=chat_id, text=msg, parse_mode='Markdown', reply_markup=keyboard_inline)
         await store_id(context, msg2)
         context.chat_data['main_msg_id'] = msg2.message_id
-        
-        # Programar limpieza automática después de 20 segundos (solo para mensajes normales, no countdown)
+        # Programar limpieza automática después de 2 minutos
         schedule_cleanup(context, chat_id, msg2.message_id, [])
     
     except Exception as e:
@@ -841,7 +843,6 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
             msg1 = await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
         context.chat_data['main_msg_id'] = msg1.message_id
         await store_id(context, msg1)
-        # Programar limpieza automática después de 20 segundos
         schedule_cleanup(context, update.effective_chat.id, msg1.message_id, [])
         return
 
@@ -880,7 +881,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
     if ids:
         context.chat_data['refresh_msg_ids'] = list(ids)
     
-    # Programar limpieza automática después de 20 segundos
+    # Programar limpieza automática después de 2 minutos
     schedule_cleanup(context, update.effective_chat.id, msg1.message_id, ids)
 
 # ============================================================================
