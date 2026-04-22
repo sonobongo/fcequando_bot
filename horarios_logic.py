@@ -111,11 +111,14 @@ def is_peak_hour(now: datetime) -> bool:
         return False
     hour = now.hour
     minute = now.minute
-    # Franjas existentes
-    if (7 <= hour <= 9) or (13 <= hour <= 14):
+    # Franja mañana: 7:00 a 9:00
+    if 7 <= hour <= 9:
         return True
-    # Nueva franja: 18:00 a 19:30 (inclusive)
-    if (hour == 18) or (hour == 19 and minute <= 30):
+    # Franja mediodía: 13:00 a 14:00
+    if 13 <= hour <= 14:
+        return True
+    # Franja tarde: 17:15 a 19:45
+    if (hour == 17 and minute >= 15) or (hour == 18) or (hour == 19 and minute <= 45):
         return True
     return False
 
