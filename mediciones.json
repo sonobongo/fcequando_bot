@@ -220,6 +220,82 @@
         { "origen": "Giovanni XXIII", "destino": "Stesicoro", "tiempo_seg": 127.292 }
       ],
       "trayectos_vuelta": []
+    },
+    {
+      "id": "20260422_miercoles_1733_30pct",
+      "fecha": "2026-04-22",
+      "dia_semana": "miercoles",
+      "hora": "17:33",
+      "ocupacion": 0.3,
+      "trayectos_vuelta": [
+        { "origen": "Stesicoro", "destino": "Giovanni XXIII", "tiempo_seg": 157.230 },
+        { "origen": "Giovanni XXIII", "destino": "Galatea", "tiempo_seg": 130.810 },
+        { "origen": "Galatea", "destino": "Italia", "tiempo_seg": 89.650 },
+        { "origen": "Italia", "destino": "Borgo", "tiempo_seg": 153.250, "observacion": "sin parada en Giuffrida (si hubiera +40s)" },
+        { "origen": "Borgo", "destino": "Milo", "tiempo_seg": 101.050 },
+        { "origen": "Milo", "destino": "Cibali", "tiempo_seg": 105.450 },
+        { "origen": "Cibali", "destino": "San Nullo", "tiempo_seg": 96.600 }
+      ]
+    },
+    {
+      "id": "20260422_miercoles_1752_50pct",
+      "fecha": "2026-04-22",
+      "dia_semana": "miercoles",
+      "hora": "17:52",
+      "ocupacion": 0.5,
+      "trayectos_ida": [
+        { "origen": "San Nullo", "destino": "Cibali", "tiempo_seg": 95.140 },
+        { "origen": "Cibali", "destino": "Milo", "tiempo_seg": 106.033 }
+      ]
+    },
+    {
+      "id": "20260422_miercoles_1808_50pct",
+      "fecha": "2026-04-22",
+      "dia_semana": "miercoles",
+      "hora": "18:08",
+      "ocupacion": 0.5,
+      "trayectos_vuelta": [
+        { "origen": "Milo", "destino": "Cibali", "tiempo_seg": 95.582 },
+        { "origen": "Cibali", "destino": "San Nullo", "tiempo_seg": 94.505 }
+      ]
+    },
+    {
+      "id": "20260422_miercoles_1820_60pct",
+      "fecha": "2026-04-22",
+      "dia_semana": "miercoles",
+      "hora": "18:20",
+      "ocupacion": 0.6,
+      "trayectos_ida": [
+        { "origen": "San Nullo", "destino": "Cibali", "tiempo_seg": 90.441 },
+        { "origen": "Cibali", "destino": "Milo", "tiempo_seg": 95.750 },
+        { "origen": "Milo", "destino": "Borgo", "tiempo_seg": 159.975 },
+        { "origen": "Borgo", "destino": "Italia", "tiempo_seg": 163.911, "observacion": "sin parada en Giuffrida (si hubiera +40s)" }
+      ]
+    },
+    {
+      "id": "20260422_miercoles_1833_75pct",
+      "fecha": "2026-04-22",
+      "dia_semana": "miercoles",
+      "hora": "18:33",
+      "ocupacion": 0.75,
+      "trayectos_vuelta": [
+        { "origen": "Italia", "destino": "Borgo", "tiempo_seg": 176.806, "observacion": "sin parada en Giuffrida (si hubiera +40s)" },
+        { "origen": "Borgo", "destino": "Milo", "tiempo_seg": 113.988 },
+        { "origen": "Milo", "destino": "Cibali", "tiempo_seg": 106.500 }
+      ]
+    },
+    {
+      "id": "20260422_miercoles_1844_80pct",
+      "fecha": "2026-04-22",
+      "dia_semana": "miercoles",
+      "hora": "18:44",
+      "ocupacion": 0.8,
+      "trayectos_ida": [
+        { "origen": "San Nullo", "destino": "Cibali", "tiempo_seg": 99.510 },
+        { "origen": "Cibali", "destino": "Milo", "tiempo_seg": 116.700 },
+        { "origen": "Milo", "destino": "Borgo", "tiempo_seg": 104.030 },
+        { "origen": "Borgo", "destino": "Italia", "tiempo_seg": 169.300, "observacion": "sin parada en Giuffrida (si hubiera +40s)" }
+      ]
     }
   ]
 }
