@@ -24,17 +24,6 @@ keyboard_altri = ReplyKeyboardMarkup(
         ["Fontana", "Nesima", "San Nullo"],
         ["Cibali", "Milo", "Borgo"],
         ["Giuffrida", "Italia", "Galatea"],
-        ["Giovanni XXIII", "Home", "← Menu"]
-    ],
-    resize_keyboard=True, one_time_keyboard=False
-)
-
-# Teclado sin el botón Home (una vez pulsado)
-keyboard_altri_no_home = ReplyKeyboardMarkup(
-    [
-        ["Fontana", "Nesima", "San Nullo"],
-        ["Cibali", "Milo", "Borgo"],
-        ["Giuffrida", "Italia", "Galatea"],
         ["Giovanni XXIII", "← Menu"]
     ],
     resize_keyboard=True, one_time_keyboard=False
@@ -865,15 +854,7 @@ async def cmd_giovanni(update, context):
     context.chat_data['last_station'] = "giovanni"
     await send_station_response(update, context, "giovanni", return_to_main=False)
 async def cmd_altri(update, context):
-    # Mostrar teclado con Home si no se ha usado aún
-    if context.chat_data.get('home_used', False):
-        markup = keyboard_altri_no_home
-        text_msg = "⬇️ Altre stazioni:"
-    else:
-        markup = keyboard_altri
-        text_msg = "⬇️ Altre stazioni (premi Home per aggiungere ai preferiti):"
-    msg = await update.message.reply_text(text_msg, reply_markup=markup)
-    context.chat_data['altri_msg_id'] = msg.message_id
+    await update.message.reply_text("⬇️ Altre stazioni:", reply_markup=keyboard_altri)
 
 async def start(update, context):
     user = update.effective_user
@@ -916,24 +897,6 @@ async def handle_button(update, context):
         await cmd_altri(update, context)
     elif text == "← Menu":
         await update.message.reply_text("🔙 Ritorno al menu principale.", reply_markup=keyboard_main)
-    elif text == "Home":
-        # Función "Aggiungi alla home"
-        await update.message.reply_text("🏠 **Stazione aggiunta alla home!** (funzione in sviluppo)\nPresto potrai vedere le tue stazioni preferite nel menu principale.", parse_mode='Markdown')
-        # Eliminar el botón Home del teclado actual (si existe el mensaje guardado)
-        altri_msg_id = context.chat_data.get('altri_msg_id')
-        if altri_msg_id:
-            try:
-                await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=altri_msg_id)
-            except Exception:
-                pass
-            # Enviar un nuevo mensaje con el teclado sin "Home"
-            new_msg = await update.message.reply_text("⬇️ Altre stazioni (senza Home):", reply_markup=keyboard_altri_no_home)
-            context.chat_data['altri_msg_id'] = new_msg.message_id
-        else:
-            # Si no tenemos el ID, enviamos el nuevo teclado directamente
-            await update.message.reply_text("⬇️ Altre stazioni:", reply_markup=keyboard_altri_no_home)
-        # Marcar que ya se ha usado para no volver a mostrar "Home" en futuros "Altri"
-        context.chat_data['home_used'] = True
     elif text in BOTON_TO_KEY:
         est_key = BOTON_TO_KEY[text]
         context.chat_data['last_station'] = est_key
