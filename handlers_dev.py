@@ -24,6 +24,17 @@ keyboard_altri = ReplyKeyboardMarkup(
         ["Fontana", "Nesima", "San Nullo"],
         ["Cibali", "Milo", "Borgo"],
         ["Giuffrida", "Italia", "Galatea"],
+        ["Giovanni XXIII", "Home", "← Menu"]
+    ],
+    resize_keyboard=True, one_time_keyboard=False
+)
+
+# Teclado sin el botón Home (una vez pulsado)
+keyboard_altri_no_home = ReplyKeyboardMarkup(
+    [
+        ["Fontana", "Nesima", "San Nullo"],
+        ["Cibali", "Milo", "Borgo"],
+        ["Giuffrida", "Italia", "Galatea"],
         ["Giovanni XXIII", "← Menu"]
     ],
     resize_keyboard=True, one_time_keyboard=False
@@ -81,83 +92,6 @@ async def store_id(context, message):
             context.chat_data['all_msg_ids'] = []
         if message.message_id not in context.chat_data['all_msg_ids']:
             context.chat_data['all_msg_ids'].append(message.message_id)
-
-# ============================================================================
-# LIMPIEZA AUTOMÁTICA DE MENSAJES DESPUÉS DE 2 MINUTOS (120 SEGUNDOS)
-# ============================================================================
-async def auto_cleanup(context, chat_id, main_msg_id, refresh_ids, countdown_msg_id=None):
-    """Espera 120 segundos y borra los mensajes indicados."""
-    await asyncio.sleep(120)
-    if main_msg_id:
-        try:
-            await context.bot.delete_message(chat_id=chat_id, message_id=main_msg_id)
-        except Exception:
-            pass
-    for mid in refresh_ids:
-        try:
-            await context.bot.delete_message(chat_id=chat_id, message_id=mid)
-        except Exception:
-            pass
-    if countdown_msg_id:
-        try:
-            await context.bot.delete_message(chat_id=chat_id, message_id=countdown_msg_id)
-        except Exception:
-            pass
-
-def schedule_cleanup(context, chat_id, main_msg_id, refresh_ids, countdown_msg_id=None):
-    """Cancela la tarea anterior y programa una nueva limpieza después de 120s."""
-    if 'cleanup_task' in context.chat_data:
-        try:
-            context.chat_data['cleanup_task'].cancel()
-        except Exception:
-            pass
-    task = asyncio.create_task(auto_cleanup(context, chat_id, main_msg_id, refresh_ids, countdown_msg_id))
-    context.chat_data['cleanup_task'] = task
-
-# ============================================================================
-# LIMPIAR MENSAJES ANTIGUOS DE UNA ESTACIÓN ANTERIOR (cambio manual)
-# ============================================================================
-async def cleanup_old_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Borra mensajes anteriores y cancela limpieza programada."""
-    # Cancelar tarea de limpieza automática pendiente
-    if 'cleanup_task' in context.chat_data:
-        try:
-            context.chat_data['cleanup_task'].cancel()
-        except Exception:
-            pass
-        context.chat_data.pop('cleanup_task', None)
-    
-    chat_id = update.effective_chat.id
-    main_msg_id = context.chat_data.get('main_msg_id')
-    if main_msg_id:
-        try:
-            await context.bot.delete_message(chat_id=chat_id, message_id=main_msg_id)
-        except Exception:
-            pass
-        context.chat_data.pop('main_msg_id', None)
-    
-    refresh_ids = context.chat_data.get('refresh_msg_ids', [])
-    for mid in refresh_ids:
-        try:
-            await context.bot.delete_message(chat_id=chat_id, message_id=mid)
-        except Exception:
-            pass
-    context.chat_data.pop('refresh_msg_ids', None)
-    
-    if 'countdown_task' in context.chat_data:
-        try:
-            context.chat_data['countdown_task'].cancel()
-        except:
-            pass
-        context.chat_data.pop('countdown_task', None)
-        context.chat_data['countdown_active'] = False
-        countdown_msg_id = context.chat_data.get('countdown_msg_id')
-        if countdown_msg_id:
-            try:
-                await context.bot.delete_message(chat_id=chat_id, message_id=countdown_msg_id)
-            except Exception:
-                pass
-            context.chat_data.pop('countdown_msg_id', None)
 
 # ============================================================================
 # DETENER ACTUALIZACIÓN AUTOMÁTICA DE SUPER
@@ -637,8 +571,6 @@ async def send_header_response(chat_id, context, estacion_key, is_update=False):
                 msg1 = await context.bot.send_message(chat_id=chat_id, text=caption_station, parse_mode='Markdown')
             context.chat_data['main_msg_id'] = msg1.message_id
             await store_id(context, msg1)
-            # Programar limpieza automática para el mensaje de cabecera (foto)
-            schedule_cleanup(context, chat_id, msg1.message_id, [])
         
         # Fechas especiales
         if (now.month == 12 and now.day == 31 and now.hour >= 12) or (now.month == 1 and now.day == 1 and now.hour < 3):
@@ -648,7 +580,6 @@ async def send_header_response(chat_id, context, estacion_key, is_update=False):
             img_url = f"{img_url}?v={cache_buster}"
             msg2 = await context.bot.send_photo(chat_id=chat_id, photo=img_url, caption=msg, parse_mode='Markdown', reply_markup=keyboard_inline)
             await store_id(context, msg2)
-            schedule_cleanup(context, chat_id, None, [], msg2.message_id)
             return
         
         if (now.month == 1 and now.day == 1 and 1 <= now.hour < 3) or (now.month == 2 and now.day in [4,5,6] and 1 <= now.hour < 2):
@@ -658,7 +589,6 @@ async def send_header_response(chat_id, context, estacion_key, is_update=False):
             img_url = f"{img_url}?v={cache_buster}"
             msg2 = await context.bot.send_photo(chat_id=chat_id, photo=img_url, caption=msg, parse_mode='Markdown', reply_markup=keyboard_inline)
             await store_id(context, msg2)
-            schedule_cleanup(context, chat_id, None, [], msg2.message_id)
             return
         
         if closed:
@@ -679,7 +609,6 @@ async def send_header_response(chat_id, context, estacion_key, is_update=False):
             img_url = f"{img_url}?v={cache_buster}"
             msg2 = await context.bot.send_photo(chat_id=chat_id, photo=img_url, caption=msg, parse_mode='Markdown', reply_markup=keyboard_inline)
             await store_id(context, msg2)
-            schedule_cleanup(context, chat_id, None, [], msg2.message_id)
             return
         
         next_dep, minutes, seconds, has_trains = get_next_departure(station, now)
@@ -691,7 +620,6 @@ async def send_header_response(chat_id, context, estacion_key, is_update=False):
             img_url = f"{img_url}?v={cache_buster}"
             msg2 = await context.bot.send_photo(chat_id=chat_id, photo=img_url, caption=msg, parse_mode='Markdown', reply_markup=keyboard_inline)
             await store_id(context, msg2)
-            schedule_cleanup(context, chat_id, None, [], msg2.message_id)
             return
         
         dest = "Stesicoro" if station == "Montepo" else "Monte Po"
@@ -713,8 +641,6 @@ async def send_header_response(chat_id, context, estacion_key, is_update=False):
             msg2 = await context.bot.send_photo(chat_id=chat_id, photo=img_url, caption=msg, parse_mode='Markdown')
             await store_id(context, msg2)
             context.chat_data['countdown_msg_id'] = msg2.message_id
-            # Programar limpieza para el mensaje de countdown también (2 minutos)
-            schedule_cleanup(context, chat_id, None, [], msg2.message_id)
             if 'countdown_task' in context.chat_data:
                 try:
                     context.chat_data['countdown_task'].cancel()
@@ -785,8 +711,6 @@ async def send_header_response(chat_id, context, estacion_key, is_update=False):
             msg2 = await context.bot.send_message(chat_id=chat_id, text=msg, parse_mode='Markdown', reply_markup=keyboard_inline)
         await store_id(context, msg2)
         context.chat_data['main_msg_id'] = msg2.message_id
-        # Programar limpieza automática después de 2 minutos
-        schedule_cleanup(context, chat_id, msg2.message_id, [])
     
     except Exception as e:
         logger.error(f"Error en send_header_response: {e}")
@@ -799,9 +723,6 @@ async def send_header_response(chat_id, context, estacion_key, is_update=False):
 # RESPUESTA PRINCIPAL (foto + msg2/msg3)
 # ============================================================================
 async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str, return_to_main: bool = True):
-    # Limpiar mensajes anteriores y cancelar limpieza programada
-    await cleanup_old_messages(update, context)
-    
     if 'countdown_task' in context.chat_data:
         try:
             context.chat_data['countdown_task'].cancel()
@@ -843,7 +764,6 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
             msg1 = await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
         context.chat_data['main_msg_id'] = msg1.message_id
         await store_id(context, msg1)
-        schedule_cleanup(context, update.effective_chat.id, msg1.message_id, [])
         return
 
     nombre = NOMBRE_MOSTRAR.get(estacion_key, estacion_key.capitalize())
@@ -880,9 +800,6 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
     ids = await send_messages_2_and_3(update, context, estacion_key, now, simulated=(context.chat_data.get('test_time') is not None or context.chat_data.get('test_live_base') is not None), show_button=True)
     if ids:
         context.chat_data['refresh_msg_ids'] = list(ids)
-    
-    # Programar limpieza automática después de 2 minutos
-    schedule_cleanup(context, update.effective_chat.id, msg1.message_id, ids)
 
 # ============================================================================
 # COMANDOS Y WRAPPERS
@@ -948,7 +865,15 @@ async def cmd_giovanni(update, context):
     context.chat_data['last_station'] = "giovanni"
     await send_station_response(update, context, "giovanni", return_to_main=False)
 async def cmd_altri(update, context):
-    await update.message.reply_text("⬇️ Altre stazioni:", reply_markup=keyboard_altri)
+    # Mostrar teclado con Home si no se ha usado aún
+    if context.chat_data.get('home_used', False):
+        markup = keyboard_altri_no_home
+        text_msg = "⬇️ Altre stazioni:"
+    else:
+        markup = keyboard_altri
+        text_msg = "⬇️ Altre stazioni (premi Home per aggiungere ai preferiti):"
+    msg = await update.message.reply_text(text_msg, reply_markup=markup)
+    context.chat_data['altri_msg_id'] = msg.message_id
 
 async def start(update, context):
     user = update.effective_user
@@ -991,6 +916,24 @@ async def handle_button(update, context):
         await cmd_altri(update, context)
     elif text == "← Menu":
         await update.message.reply_text("🔙 Ritorno al menu principale.", reply_markup=keyboard_main)
+    elif text == "Home":
+        # Función "Aggiungi alla home"
+        await update.message.reply_text("🏠 **Stazione aggiunta alla home!** (funzione in sviluppo)\nPresto potrai vedere le tue stazioni preferite nel menu principale.", parse_mode='Markdown')
+        # Eliminar el botón Home del teclado actual (si existe el mensaje guardado)
+        altri_msg_id = context.chat_data.get('altri_msg_id')
+        if altri_msg_id:
+            try:
+                await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=altri_msg_id)
+            except Exception:
+                pass
+            # Enviar un nuevo mensaje con el teclado sin "Home"
+            new_msg = await update.message.reply_text("⬇️ Altre stazioni (senza Home):", reply_markup=keyboard_altri_no_home)
+            context.chat_data['altri_msg_id'] = new_msg.message_id
+        else:
+            # Si no tenemos el ID, enviamos el nuevo teclado directamente
+            await update.message.reply_text("⬇️ Altre stazioni:", reply_markup=keyboard_altri_no_home)
+        # Marcar que ya se ha usado para no volver a mostrar "Home" en futuros "Altri"
+        context.chat_data['home_used'] = True
     elif text in BOTON_TO_KEY:
         est_key = BOTON_TO_KEY[text]
         context.chat_data['last_station'] = est_key
