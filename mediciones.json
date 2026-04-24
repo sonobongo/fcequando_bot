@@ -295,7 +295,10 @@
         { "origen": "Cibali", "destino": "Milo", "tiempo_seg": 116.700 },
         { "origen": "Milo", "destino": "Borgo", "tiempo_seg": 104.030 },
         { "origen": "Borgo", "destino": "Italia", "tiempo_seg": 169.300, "observacion": "sin parada en Giuffrida (si hubiera +40s)" }
-            {
+      ],
+      "trayectos_vuelta": []
+    },
+    {
       "id": "20260423_jueves_1914_40pct",
       "fecha": "2026-04-23",
       "dia_semana": "jueves",
