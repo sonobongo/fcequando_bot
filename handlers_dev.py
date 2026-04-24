@@ -95,6 +95,23 @@ def stop_super_update(context):
         context.chat_data.pop('super_task', None)
 
 # ============================================================================
+# CONSEJO TRAS 20 CONSULTAS DE ESTACIONES (SOLO UNA VEZ)
+# ============================================================================
+async def maybe_send_home_tip(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Incrementa el contador de consultas de estaciones y envía un consejo la primera vez que llega a 20."""
+    count = context.chat_data.get('consulta_count', 0)
+    count += 1
+    context.chat_data['consulta_count'] = count
+
+    if count == 20:
+        tip_msg = (
+            "ℹ️ **Consigli:**\n"
+            "Puoi creare un accesso diretto da FCE Quando, nel tuo schermo principale.\n"
+            "Apri il profilo del bot ➜ tre puntini ➜ 'Aggiungi alla Home'."
+        )
+        await update.message.reply_text(tip_msg, parse_mode='Markdown')
+
+# ============================================================================
 # COUNTDOWN PARA CABECERAS (actualiza hasta <=10 segundos)
 # ============================================================================
 async def update_countdown(context, chat_id, message_id, initial_remaining, station, dest, next_dep, dev_mode):
@@ -731,6 +748,8 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
 
     if estacion_key in ["montepo", "stesicoro"]:
         await send_header_response(update.message.chat_id, context, estacion_key, is_update=False)
+        # También contamos la consulta de cabecera como consulta de estación
+        await maybe_send_home_tip(update, context)
         return
 
     closed, next_open, special_closing_msg = is_metro_closed(now, "Montepo")
@@ -753,6 +772,8 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
             msg1 = await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
         context.chat_data['main_msg_id'] = msg1.message_id
         await store_id(context, msg1)
+        # Contar también cuando la estación está cerrada porque el usuario la consultó
+        await maybe_send_home_tip(update, context)
         return
 
     nombre = NOMBRE_MOSTRAR.get(estacion_key, estacion_key.capitalize())
@@ -789,6 +810,9 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
     ids = await send_messages_2_and_3(update, context, estacion_key, now, simulated=(context.chat_data.get('test_time') is not None or context.chat_data.get('test_live_base') is not None), show_button=True)
     if ids:
         context.chat_data['refresh_msg_ids'] = list(ids)
+    
+    # Incrementar contador y enviar consejo si es la primera vez que llega a 20
+    await maybe_send_home_tip(update, context)
 
 # ============================================================================
 # COMANDOS Y WRAPPERS
