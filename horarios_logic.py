@@ -99,7 +99,7 @@ EXTRA_TRAMOS_REVERSE = [
 ]
 
 # ============================================================================
-# DETECCIÓN DE HORA PUNTA (7-9, 13-14, 18-19:30, lunes a viernes, sept-jun)
+# DETECCIÓN DE HORA PUNTA (7-9, 13-14, 17:15-19:45, lunes a viernes, sept-jun)
 # ============================================================================
 def is_peak_hour(now: datetime) -> bool:
     if now.weekday() >= 5:
@@ -126,17 +126,13 @@ def is_peak_hour(now: datetime) -> bool:
 # EXTRA DE 5 SEGUNDOS PARA GIOVANNI XXIII (13:00-18:00, laborables, sept-jun)
 # ============================================================================
 def should_add_giovanni_extra(now: datetime) -> bool:
-    # Condición original: laborables (lunes a viernes) no festivos, de 13 a 18, sept-jun
     if now.weekday() < 5 and not is_festivo_nazionale(now):
         month = now.month
         if (month >= 9 or month <= 6) and 13 <= now.hour < 18:
             return True
-    
-    # Nueva condición: domingos de 18 a 21, sept-jun, y el lunes siguiente es laborable
-    if now.weekday() == 6:  # domingo
+    if now.weekday() == 6:
         month = now.month
         if (month >= 9 or month <= 6) and 18 <= now.hour < 21:
-            # Comprobar si el lunes siguiente es laborable (no festivo)
             tomorrow = now + timedelta(days=1)
             if not is_festivo_nazionale(tomorrow) and tomorrow.weekday() < 5:
                 return True
@@ -172,7 +168,6 @@ def get_travel_time_from_montepo(station: str, now: datetime) -> int:
         idx_giovanni = stations_order.index("giovanni")
         if idx_station >= idx_giovanni:
             total_seconds += 5
-    # Extra de cabecera en hora punta (solo si la estación no es la propia cabecera)
     if peak and station != "montepo":
         total_seconds += 5
     minutes = (total_seconds + 59) // 60
@@ -205,7 +200,6 @@ def get_travel_time_from_stesicoro(station: str, now: datetime) -> int:
         idx_giovanni = stations_order_rev.index("giovanni")
         if idx_station >= idx_giovanni:
             total_seconds += 5
-    # Extra de cabecera en hora punta (solo si la estación no es la propia cabecera)
     if peak and station != "stesicoro":
         total_seconds += 5
     minutes = (total_seconds + 59) // 60
@@ -505,7 +499,7 @@ def is_festivo_nazionale(now: datetime) -> bool:
 # ============================================================================
 def get_opening_time(now: datetime, station: str = None) -> Tuple[int, int]:
     if is_new_years_eve(now):
-        return (12, 0)   # Nochevieja: apertura a las 12:00
+        return (12, 0)
     if is_sant_agata(now):
         first = get_first_train_sant_agata(station if station else "Montepo")
         return (first.hour, first.minute)
@@ -533,21 +527,19 @@ def get_closing_time(now: datetime, station: str) -> Tuple[int, int]:
 # FECHAS ESPECIALES (sobrescribir día de la semana)
 # ============================================================================
 def get_override_weekday(now: datetime) -> Optional[int]:
-    """Devuelve el día de la semana (0=lunes, 6=domingo) que debe usarse para horarios,
-       o None si no hay override."""
     month, day = now.month, now.day
     if month == 12 and day == 31:
-        return 4   # viernes
+        return 4
     if month == 1 and day == 1:
-        return 6   # domingo
+        return 6
     if month == 2 and day in [3, 4, 5]:
-        return 4   # viernes
+        return 4
     if month == 2 and day == 6:
         actual_weekday = now.weekday()
         if actual_weekday == 6:
-            return 6   # domingo
+            return 6
         else:
-            return 5   # sábado
+            return 5
     return None
 
 def get_schedule_list(station: str, now: datetime) -> List[time]:
@@ -603,7 +595,6 @@ def get_schedule_list(station: str, now: datetime) -> List[time]:
     return schedule_list
 
 def get_next_departure(station: str, now: datetime) -> Tuple[Optional[datetime], int, int, bool]:
-    # Si la hora está entre 01:00 y 06:00 (excepto rangos especiales), no hay trenes
     if 1 <= now.hour < 6:
         if (now.month == 1 and now.day == 1 and 1 <= now.hour < 3) or \
            (now.month == 2 and now.day in [4,5,6] and 1 <= now.hour < 2):
@@ -669,7 +660,6 @@ def format_time(minutes: int, seconds: int) -> str:
             return f"{minutes} minuti e 30 secondi"
 
 def get_last_train_message(now: datetime) -> str:
-    # Aviso especial de Nochevieja: desde el 31/12 a las 12:00 hasta el 01/01 a las 03:00
     if (now.month == 12 and now.day == 31 and now.hour >= 12) or (now.month == 1 and now.day == 1 and now.hour < 3):
         return "🎉 Oggi orario speciale: ultimo treno alle 03:00. Buon anno! 🎉"
     
@@ -710,7 +700,6 @@ def is_metro_closed(now: datetime, station: str) -> Tuple[bool, Optional[datetim
             special_msg = "🚇 Non ci sono informazioni disponibili. Ricorda che oggi l'ultima metropolitana è partita alle 03:00."
             return (True, next_open, special_msg)
     
-    # Cierre forzado de 01:00 a 06:00 (todos los días)
     if 1 <= now.hour < 6:
         open_h, open_m = get_opening_time(now, station)
         next_open = datetime.combine(now.date(), time(open_h, open_m))
@@ -773,7 +762,6 @@ def get_total_seconds_from_montepo(station: str, now: datetime) -> int:
         idx_giovanni = stations_order.index("giovanni")
         if idx_station >= idx_giovanni:
             total += 5
-    # Extra de cabecera en hora punta (solo si la estación no es la propia cabecera)
     if peak and station != "montepo":
         total += 5
     return max(0, int(total))
@@ -804,7 +792,6 @@ def get_total_seconds_from_stesicoro(station: str, now: datetime) -> int:
         idx_giovanni = stations_order_rev.index("giovanni")
         if idx_station >= idx_giovanni:
             total += 5
-    # Extra de cabecera en hora punta (solo si la estación no es la propia cabecera)
     if peak and station != "stesicoro":
         total += 5
     return max(0, int(total))
