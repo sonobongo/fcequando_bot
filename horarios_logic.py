@@ -514,6 +514,17 @@ def get_closing_time(now: datetime, station: str) -> Tuple[int, int]:
     if is_sant_agata(now):
         last = get_last_train_sant_agata(station)
         return (last.hour, last.minute)
+
+    # --- NUEVA LÓGICA PARA VÍSPERA DE FESTIVO ---
+    # Si hoy es festivo y aún es de madrugada (hora < 6:00)
+    if is_festivo_nazionale(now) and now.hour < 6:
+        # Calcula la fecha de ayer (el día anterior)
+        yesterday = now - timedelta(days=1)
+        # Llama a get_closing_time para el día anterior
+        return get_closing_time(yesterday, station)
+    # -------------------------------------------
+
+    # Si NO es festivo (o no estamos en la madrugada del festivo)
     if is_festivo_nazionale(now) or now.weekday() == 6:
         return (22, 30)
     else:
