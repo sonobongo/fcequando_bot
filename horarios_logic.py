@@ -1,280 +1,935 @@
-import asyncio
-import time as time_module
-import unicodedata
-import logging
-import re
-from datetime import datetime, timedelta
-from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ContextTypes
-from horarios_logic import *
-from horarios_logic import CATANIA_TZ
+import os
+import json
+import time as timer
+from datetime import datetime, time, timedelta, date
+from typing import Tuple, Optional, List, Dict, Any
+import pytz
+from collections import defaultdict
+from statistics import mean
 
-logger = logging.getLogger(__name__)
+CATANIA_TZ = pytz.timezone('Europe/Rome')
 
 # ============================================================================
-# TECLADOS
+# CARGAR CONFIGURACIÓN
 # ============================================================================
-keyboard_main = ReplyKeyboardMarkup(
-    [[KeyboardButton("Monte Po"), KeyboardButton("Altri"), KeyboardButton("Stesicoro")]],
-    resize_keyboard=True, one_time_keyboard=False
-)
+def load_config() -> Dict[str, Any]:
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    json_path = os.path.join(script_dir, 'horarios.json')
+    if not os.path.exists(json_path):
+        raise FileNotFoundError(f"No se encontró {json_path}")
+    with open(json_path, 'r', encoding='utf-8') as f:
+        return json.load(f)
 
-keyboard_altri = ReplyKeyboardMarkup(
-    [
-        ["Fontana", "Nesima", "San Nullo"],
-        ["Cibali", "Milo", "Borgo"],
-        ["Giuffrida", "Italia", "Galatea"],
-        ["Giovanni XXIII", "← Menu"]
-    ],
-    resize_keyboard=True, one_time_keyboard=False
-)
+CONFIG = load_config()
+SCHEDULE_DATA = CONFIG["schedule"]
+SANT_AGATA = CONFIG["sant_agata"]
+CLOSED_ALL_DAY = CONFIG["closed_all_day"]
+LAST_TRAIN_START_HOUR = CONFIG["last_train_message_start_hour"]
+WARNING_HOUR = CONFIG["closing_warning_hour"]
+SHORT_TIME_THRESHOLD = CONFIG["short_time_threshold"]
+NEXT_TRAIN_THRESHOLD = CONFIG["next_train_threshold"]
 
-BOTON_TO_KEY = {
-    "Monte Po": "montepo", "Stesicoro": "stesicoro", "Fontana": "fontana",
-    "Nesima": "nesima", "San Nullo": "sannullo", "Cibali": "cibali",
-    "Milo": "milo", "Borgo": "borgo", "Giuffrida": "giuffrida",
-    "Italia": "italia", "Galatea": "galatea", "Giovanni XXIII": "giovanni"
+# ============================================================================
+# CARGAR MEDICIONES REALES (mediciones.json)
+# ============================================================================
+MEDICIONES_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'mediciones.json')
+mediciones_por_tramo = defaultdict(list)
+
+def cargar_mediciones():
+    if not os.path.exists(MEDICIONES_FILE):
+        return
+    with open(MEDICIONES_FILE, 'r', encoding='utf-8') as f:
+        data = json.load(f)
+        for medicion in data.get('mediciones', []):
+            dia = medicion.get('dia_semana', '').lower()
+            hora_str = medicion.get('hora', '12:00')
+            hora_redondeada = int(hora_str.split(':')[0])
+            for t in medicion.get('trayectos_ida', []):
+                origen = t['origen'].lower()
+                destino = t['destino'].lower()
+                key = (origen, destino, 'ida', dia, hora_redondeada)
+                mediciones_por_tramo[key].append(t['tiempo_seg'])
+            for t in medicion.get('trayectos_vuelta', []):
+                origen = t['origen'].lower()
+                destino = t['destino'].lower()
+                key = (origen, destino, 'vuelta', dia, hora_redondeada)
+                mediciones_por_tramo[key].append(t['tiempo_seg'])
+
+cargar_mediciones()
+
+def get_measured_travel_time(origen: str, destino: str, direccion: str, now: datetime) -> Optional[float]:
+    weekdays_it = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo']
+    dia_actual = weekdays_it[now.weekday()].lower()
+    hora_actual = now.hour
+    tiempos = []
+    for (o, d, dir_m, dia, hora), valores in mediciones_por_tramo.items():
+        if o == origen.lower() and d == destino.lower() and dir_m == direccion and dia == dia_actual:
+            if abs(hora - hora_actual) <= 1:
+                tiempos.extend(valores)
+    if tiempos:
+        return mean(tiempos)
+    return None
+
+# ============================================================================
+# TIEMPOS BASE ENTRE ESTACIONES (en segundos)
+# ============================================================================
+FORWARD_PEAK = [
+    ("montepo", "fontana", 109), ("fontana", "nesima", 111), ("nesima", "sannullo", 143),
+    ("sannullo", "cibali", 115), ("cibali", "milo", 118), ("milo", "borgo", 120),
+    ("borgo", "giuffrida", 112), ("giuffrida", "italia", 85), ("italia", "galatea", 91),
+    ("galatea", "giovanni", 157), ("giovanni", "stesicoro", 139)
+]
+
+REVERSE_PEAK = [
+    ("stesicoro", "giovanni", 136), ("giovanni", "galatea", 161), ("galatea", "italia", 112),
+    ("italia", "giuffrida", 106), ("giuffrida", "borgo", 119), ("borgo", "milo", 116),
+    ("milo", "cibali", 123), ("cibali", "sannullo", 104), ("sannullo", "nesima", 140),
+    ("nesima", "fontana", 100), ("fontana", "montepo", 99)
+]
+
+EXTRA_TRAMOS_FORWARD = [
+    ("milo","borgo"), ("borgo","giuffrida"), ("giuffrida","italia"),
+    ("italia","galatea"), ("galatea","giovanni")
+]
+
+EXTRA_TRAMOS_REVERSE = [
+    ("giovanni", "galatea"), ("galatea", "italia"), ("italia", "giuffrida"),
+    ("giuffrida", "borgo"), ("borgo", "milo"), ("milo", "cibali"),
+    ("cibali", "sannullo"), ("sannullo", "nesima"), ("nesima", "fontana")
+]
+
+# ============================================================================
+# DETECCIÓN DE HORA PUNTA (7-9, 13-14, 18-19:30, lunes a viernes, sept-jun)
+# ============================================================================
+def is_peak_hour(now: datetime) -> bool:
+    if now.weekday() >= 5:
+        return False
+    if is_festivo_nazionale(now):
+        return False
+    month = now.month
+    if not (month >= 9 or month <= 6):
+        return False
+    hour = now.hour
+    minute = now.minute
+    # Franja mañana: 7:00 a 9:00
+    if 7 <= hour <= 9:
+        return True
+    # Franja mediodía: 13:00 a 14:00
+    if 13 <= hour <= 14:
+        return True
+    # Franja tarde: 17:15 a 19:45
+    if (hour == 17 and minute >= 15) or (hour == 18) or (hour == 19 and minute <= 45):
+        return True
+    return False
+
+# ============================================================================
+# EXTRA DE 5 SEGUNDOS PARA GIOVANNI XXIII (13:00-18:00, laborables, sept-jun)
+# ============================================================================
+def should_add_giovanni_extra(now: datetime) -> bool:
+    # Condición original: laborables (lunes a viernes) no festivos, de 13 a 18, sept-jun
+    if now.weekday() < 5 and not is_festivo_nazionale(now):
+        month = now.month
+        if (month >= 9 or month <= 6) and 13 <= now.hour < 18:
+            return True
+    
+    # Nueva condición: domingos de 18 a 21, sept-jun, y el lunes siguiente es laborable
+    if now.weekday() == 6:  # domingo
+        month = now.month
+        if (month >= 9 or month <= 6) and 18 <= now.hour < 21:
+            # Comprobar si el lunes siguiente es laborable (no festivo)
+            tomorrow = now + timedelta(days=1)
+            if not is_festivo_nazionale(tomorrow) and tomorrow.weekday() < 5:
+                return True
+    return False
+
+# ============================================================================
+# TIEMPOS DE VIAJE (con extra de Giovanni y extra de cabecera en punta)
+# ============================================================================
+def get_travel_time_from_montepo(station: str, now: datetime) -> int:
+    total_seconds = 0
+    peak = is_peak_hour(now)
+    for (start, end, base_sec) in FORWARD_PEAK:
+        measured = get_measured_travel_time(start, end, 'ida', now)
+        if measured is not None:
+            sec = measured
+        else:
+            sec = base_sec
+            if not peak and (start, end) in EXTRA_TRAMOS_FORWARD:
+                sec -= 10
+        total_seconds += sec
+        if end == station:
+            break
+    stations_order = ["montepo", "fontana", "nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "giovanni", "stesicoro"]
+    for closed in CLOSED_STATIONS:
+        if closed["station"] == station:
+            continue
+        if closed["station"] in stations_order and station in stations_order:
+            if stations_order.index(closed["station"]) < stations_order.index(station):
+                if is_station_closed(closed["station"], now):
+                    total_seconds -= closed["reduction_seconds"]
+    if should_add_giovanni_extra(now):
+        idx_station = stations_order.index(station) if station in stations_order else -1
+        idx_giovanni = stations_order.index("giovanni")
+        if idx_station >= idx_giovanni:
+            total_seconds += 5
+    # Extra de cabecera en hora punta (solo si la estación no es la propia cabecera)
+    if peak and station != "montepo":
+        total_seconds += 5
+    minutes = (total_seconds + 59) // 60
+    return minutes
+
+def get_travel_time_from_stesicoro(station: str, now: datetime) -> int:
+    total_seconds = 0
+    peak = is_peak_hour(now)
+    for (start, end, base_sec) in REVERSE_PEAK:
+        measured = get_measured_travel_time(start, end, 'vuelta', now)
+        if measured is not None:
+            sec = measured
+        else:
+            sec = base_sec
+            if not peak and (start, end) in EXTRA_TRAMOS_REVERSE:
+                sec -= 10
+        total_seconds += sec
+        if end == station:
+            break
+    stations_order_rev = ["stesicoro", "giovanni", "galatea", "italia", "giuffrida", "borgo", "milo", "cibali", "sannullo", "nesima", "fontana", "montepo"]
+    for closed in CLOSED_STATIONS:
+        if closed["station"] == station:
+            continue
+        if closed["station"] in stations_order_rev and station in stations_order_rev:
+            if stations_order_rev.index(closed["station"]) < stations_order_rev.index(station):
+                if is_station_closed(closed["station"], now):
+                    total_seconds -= closed["reduction_seconds"]
+    if should_add_giovanni_extra(now):
+        idx_station = stations_order_rev.index(station) if station in stations_order_rev else -1
+        idx_giovanni = stations_order_rev.index("giovanni")
+        if idx_station >= idx_giovanni:
+            total_seconds += 5
+    # Extra de cabecera en hora punta (solo si la estación no es la propia cabecera)
+    if peak and station != "stesicoro":
+        total_seconds += 5
+    minutes = (total_seconds + 59) // 60
+    return max(0, minutes)
+
+# ============================================================================
+# CIERRE TEMPORAL DE ESTACIONES (Giuffrida)
+# ============================================================================
+CLOSED_STATIONS = [
+    {
+        "station": "giuffrida",
+        "start": date(2026, 1, 1),
+        "end": date(2026, 4, 26),
+        "reduction_seconds": 40
+    }
+]
+
+def is_station_closed(station: str, now: datetime) -> bool:
+    for closed in CLOSED_STATIONS:
+        if closed["station"] == station:
+            if closed["start"] <= now.date() <= closed["end"]:
+                return True
+    return False
+
+def get_closing_message(station: str, now: datetime) -> str:
+    if is_station_closed(station, now):
+        for closed in CLOSED_STATIONS:
+            if closed["station"] == station:
+                end_date = closed["end"].strftime('%d/%m/%Y')
+                return f"⚠️ La stazione {NOMBRE_MOSTRAR.get(station, station).capitalize()} è chiusa per lavori fino al {end_date}. I treni non fermano.\n"
+    return ""
+
+def build_tiempos_estacion(now: datetime) -> Dict[str, Tuple[int, int]]:
+    result = {}
+    stations_order = ["montepo", "fontana", "nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "giovanni", "stesicoro"]
+    for station in stations_order:
+        t_mp = get_travel_time_from_montepo(station, now)
+        t_st = get_travel_time_from_stesicoro(station, now)
+        result[station] = (t_mp, t_st)
+    return result
+
+NOMBRE_MOSTRAR = {
+    "montepo": "Monte Po",
+    "fontana": "Fontana",
+    "nesima": "Nesima",
+    "sannullo": "San Nullo",
+    "cibali": "Cibali",
+    "milo": "Milo",
+    "borgo": "Borgo",
+    "giuffrida": "Giuffrida",
+    "italia": "Italia",
+    "galatea": "Galatea",
+    "giovanni": "Giovanni XXIII",
+    "stesicoro": "Stesicoro"
 }
 
 # ============================================================================
-# FUNCIÓN PARA OBTENER LA HORA SIMULADA (test estático o live)
+# IMÁGENES
 # ============================================================================
-def get_simulated_now(context: ContextTypes.DEFAULT_TYPE) -> datetime:
-    if 'test_time' in context.chat_data:
-        sim = context.chat_data['test_time']
-        if sim.tzinfo is None:
-            sim = CATANIA_TZ.localize(sim)
-        return sim
-    if 'test_live_base' in context.chat_data:
-        base = context.chat_data['test_live_base']
-        base_real = context.chat_data.get('test_live_real')
-        if base_real is None:
-            base_real = datetime.now(CATANIA_TZ)
-            context.chat_data['test_live_real'] = base_real
-        if base.tzinfo is None:
-            base = CATANIA_TZ.localize(base)
-        delta = datetime.now(CATANIA_TZ) - base_real
-        return base + delta
-    return datetime.now(CATANIA_TZ)
+STATION_IMAGE = {
+    "montepo": "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/st_montepo.jpg",
+    "fontana": "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/st_fontana.jpg",
+    "nesima": "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/st_nesima.jpg",
+    "sannullo": "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/st_sannullo.jpg",
+    "cibali": "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/st_cibali.jpg",
+    "milo": "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/st_milo.jpg",
+    "borgo": "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/st_borgo.jpg",
+    "giuffrida": "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/st_giuffrida.jpg",
+    "italia": "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/st_italia.jpg",
+    "galatea": "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/st_galatea.jpg",
+    "giovanni": "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/st_giovanni.jpg",
+    "stesicoro": "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/st_stesicoro.jpg",
+}
 
-# ============================================================================
-# LIMPIAR TEXTO
-# ============================================================================
-def clean_text_for_display(text: str) -> str:
-    if not text:
+def get_station_image(estacion_key: str, now: datetime) -> str:
+    base_url = STATION_IMAGE.get(estacion_key)
+    if not base_url:
         return None
-    text = text.replace("[]", "").replace("[ ]", "")
-    text = ' '.join(text.split())
-    if not text or text == "":
-        return None
-    return text
+    cache_buster = int(timer.time())
+    return f"{base_url}?v={cache_buster}"
+
+def str_to_time(t_str: str) -> time:
+    h, m = map(int, t_str.split(':'))
+    return time(h, m)
+
+def convert_schedule(sched_dict: Dict[str, List[str]]) -> Dict[str, Dict[str, List[time]]]:
+    result = {}
+    for station, days in sched_dict.items():
+        result[station] = {}
+        for day, str_list in days.items():
+            result[station][day] = [str_to_time(t) for t in str_list]
+    return result
+
+SCHEDULES = convert_schedule(SCHEDULE_DATA)
 
 # ============================================================================
-# ALMACENAR IDS
+# FUNCIONES PARA SANT'AGATA
 # ============================================================================
-async def store_id(context, message):
-    if message and hasattr(message, 'message_id'):
-        if 'all_msg_ids' not in context.chat_data:
-            context.chat_data['all_msg_ids'] = []
-        if message.message_id not in context.chat_data['all_msg_ids']:
-            context.chat_data['all_msg_ids'].append(message.message_id)
+def is_sant_agata(now: datetime) -> bool:
+    return (now.month == SANT_AGATA["month"] and 
+            now.day in SANT_AGATA["days"] and 
+            SANT_AGATA["active"])
 
-# ============================================================================
-# DETENER SUPER
-# ============================================================================
-def stop_super_update(context):
-    if 'super_task' in context.chat_data:
-        context.chat_data['super_active'] = False
-        try:
-            context.chat_data['super_task'].cancel()
-        except Exception:
-            pass
-        context.chat_data.pop('super_task', None)
+def get_first_train_sant_agata(station: str) -> time:
+    return str_to_time(SANT_AGATA["special_hours"][station]["first"])
 
-# ============================================================================
-# COUNTDOWN PARA CABECERAS
-# ============================================================================
-async def update_countdown(context, chat_id, message_id, initial_remaining, station, dest, next_dep, dev_mode):
-    remaining = initial_remaining
-    while remaining > 10:
-        await asyncio.sleep(10)
-        if not context.chat_data.get('countdown_active', False):
-            return
-        try:
-            now = get_simulated_now(context)
-            remaining_calc = (next_dep - now).total_seconds()
-            if remaining_calc <= 0:
-                new_msg = f"🚇 Il treno per {dest} è partito."
-                keyboard_inline = InlineKeyboardMarkup([
-                    [InlineKeyboardButton("🔄 Aggiornare", callback_data=f"agg_cabecera_{station.lower()}")]
-                ])
-                await context.bot.edit_message_caption(chat_id=chat_id, message_id=message_id, caption=new_msg, parse_mode='Markdown', reply_markup=keyboard_inline)
-                context.chat_data['countdown_active'] = False
-                return
-            mins_rest = int(remaining_calc // 60)
-            secs_rest = int(remaining_calc % 60)
-            if dev_mode:
-                time_str = format_time_precise(mins_rest, secs_rest)
-            else:
-                time_str = format_time(mins_rest, secs_rest)
-            new_msg = f"Il treno è in binario. Partirà tra **{time_str}**."
-            await context.bot.edit_message_caption(chat_id=chat_id, message_id=message_id, caption=new_msg, parse_mode='Markdown')
-            remaining = remaining_calc
-        except Exception as e:
-            logger.error(f"Error en countdown: {e}")
-            break
-    if context.chat_data.get('countdown_active', False):
-        try:
-            now = get_simulated_now(context)
-            station_key = "montepo" if station == "Montepo" else "stesicoro"
-            next_dep_new, minutes, seconds, has_trains = get_next_departure(station, now)
-            if not has_trains:
-                close_h, close_m = get_closing_time(now, station)
-                new_msg = f"🚇 Non ci sono più treni oggi. Il servizio termina alle {close_h:02d}:{close_m:02d}."
-            else:
-                dest = "Stesicoro" if station == "Montepo" else "Monte Po"
-                remaining_new = (next_dep_new - now).total_seconds()
-                mins_rest = int(remaining_new // 60)
-                secs_rest = int(remaining_new % 60)
-                if dev_mode:
-                    time_str = format_time_precise(mins_rest, secs_rest)
-                else:
-                    time_str = format_time(mins_rest, secs_rest)
-                if remaining_new <= 60:
-                    new_msg = f"Il treno è in binario. Partirà tra **{time_str}**."
-                else:
-                    if mins_rest <= 4:
-                        new_msg = f"Il treno è in binario. Partirà tra **{time_str}**."
-                    else:
-                        if minutes < SHORT_TIME_THRESHOLD:
-                            new_msg = f"🚇 Prossimo treno per {dest} parte tra **{time_str}**."
-                        else:
-                            new_msg = f"🚇 Prossimo treno per {dest} parte tra **{time_str}**, alle {next_dep_new.strftime('%H:%M')}."
-            keyboard_inline = InlineKeyboardMarkup([
-                [InlineKeyboardButton("🔄 Aggiornare", callback_data=f"agg_cabecera_{station.lower()}")]
-            ])
-            await context.bot.edit_message_caption(chat_id=chat_id, message_id=message_id, caption=new_msg, parse_mode='Markdown', reply_markup=keyboard_inline)
-        except Exception as e:
-            logger.error(f"Error al finalizar countdown: {e}")
-        finally:
-            context.chat_data['countdown_active'] = False
+def get_last_train_sant_agata(station: str) -> time:
+    return str_to_time(SANT_AGATA["special_hours"][station]["last"])
 
-# ============================================================================
-# BUSES
-# ============================================================================
-def get_bus_message_nesima(now: datetime) -> str:
-    if now.weekday() == 6 or is_festivo_nazionale(now):
-        return ""
-    horarios = [("7:30", 7*60+30), ("8:30", 8*60+30), ("9:30", 9*60+30), ("10:30", 10*60+30),
-                ("11:30", 11*60+30), ("12:30", 12*60+30), ("13:30", 13*60+30), ("14:30", 14*60+30),
-                ("15:30", 15*60+30), ("16:30", 16*60+30), ("17:30", 17*60+30), ("18:30", 18*60+30),
-                ("19:30", 19*60+30)]
-    ahora_min = now.hour * 60 + now.minute
-    for hora_str, hora_min in horarios:
-        if hora_min > ahora_min and (hora_min - ahora_min) <= 30:
-            return f"🚌 Prossimo autobus per Humanitas alle {hora_str}"
-    return ""
-
-def get_bus_message_montepo_advanced(now: datetime) -> str:
-    if now.weekday() >= 5 or is_festivo_nazionale(now):
-        return ""
-    ahora_min = now.hour * 60 + now.minute
-    manana = [("7:00", 7*60), ("7:15", 7*60+15), ("7:30", 7*60+30), ("7:45", 7*60+45),
-              ("8:00", 8*60), ("8:15", 8*60+15), ("8:30", 8*60+30)]
-    tarde = [("13:00", 13*60), ("13:15", 13*60+15), ("13:30", 13*60+30), ("13:45", 13*60+45),
-             ("14:00", 14*60), ("14:15", 14*60+15), ("14:30", 14*60+30)]
-    for hora_str, hora_min in manana + tarde:
-        if hora_min > ahora_min and (hora_min - ahora_min) <= 15:
-            return f"🚌 **Autobus gratuito per Misterbianco** alle {hora_str}"
-    return ""
-
-# ============================================================================
-# CONSTRUCCIÓN DE MENSAJES DE TRENES (msg2 y msg3)
-# ============================================================================
-def build_temporary_messages(now: datetime, estacion_key: str, dev_mode: bool = False):
-    info_mp, info_st = get_next_train_at_station(now, estacion_key)
-    closing_msg = get_closing_message(estacion_key, now)
-
-    msg2 = ""
-    current_station_key_mp = None
-    tiempo_restante_mp = None
-    mins_mp = 0
-    if closing_msg:
-        msg2 += f"{closing_msg}\n"
-    if info_st:
-        paso_st, mins, secs, next_info = info_st
-        mins_mp = mins
-        if dev_mode:
-            time_str = format_time_precise(mins, secs)
-        else:
-            time_str = format_time(mins, secs)
-        tiempo_restante_mp = mins*60 + secs
-        if mins == 0 and secs < 30:
-            line = f"🔺 **Per Monte Po**: treno in arrivo.\n"
-        else:
-            if mins > SHORT_TIME_THRESHOLD:
-                line = f"🔺 **Per Monte Po**: Passa tra **{time_str}**, alle {paso_st.strftime('%H:%M')}.\n"
-            else:
-                line = f"🔺 **Per Monte Po**: Passa tra **{time_str}**.\n"
-        # ... (código de localización, igual que antes, omito por brevedad pero está en tu archivo original)
-        msg2 += line
-        if mins <= 1 and next_info:
-            paso2, mins2, secs2 = next_info
-            # ...
+def get_next_departure_sant_agata(station: str, now: datetime) -> Tuple[Optional[datetime], int, int, bool]:
+    current_time = now.time()
+    first = get_first_train_sant_agata(station)
+    last = get_last_train_sant_agata(station)
+    first_min = first.hour * 60 + first.minute
+    last_min = last.hour * 60 + last.minute
+    if last_min < first_min:
+        last_min += 24 * 60
+    current_min = current_time.hour * 60 + current_time.minute
+    
+    if current_min < first_min:
+        next_dt = datetime.combine(now.date(), first)
+        next_dt = CATANIA_TZ.localize(next_dt)
+        sec = int((next_dt - now).total_seconds())
+        return (next_dt, sec // 60, sec % 60, True)
+    if current_min >= last_min:
+        tomorrow = now.date() + timedelta(days=1)
+        next_dt = datetime.combine(tomorrow, first)
+        next_dt = CATANIA_TZ.localize(next_dt)
+        sec = int((next_dt - now).total_seconds())
+        return (next_dt, sec // 60, sec % 60, True)
+    
+    if current_min < 15 * 60:
+        minutes_since_first = max(0, current_min - first_min)
+        intervals = (minutes_since_first + 9) // 10
+        next_min = first_min + intervals * 10
+        if next_min > 15 * 60:
+            minutes_from_15 = max(0, current_min - 15 * 60)
+            intervals13 = (minutes_from_15 + 12) // 13
+            next_min = 15 * 60 + intervals13 * 13
     else:
-        msg2 += f"🔺 **Per Monte Po**: nessun treno in arrivo al momento.\n"
-
-    # similar para msg3...
-    # Por simplicidad, mantén tu implementación original de build_temporary_messages
-    # Aquí solo pongo un esqueleto, pero debes usar la versión completa que ya tienes.
-    # ...
-
-    return msg2, msg3, current_station_key_mp, tiempo_restante_mp, current_station_key_st, tiempo_restante_st, mins_mp, mins_st
-
-# ============================================================================
-# FUNCIONES DE ENVÍO (send_message_2, send_message_3, send_messages_2_and_3, etc.)
-# ============================================================================
-# ... (código completo que ya tienes, no lo reescribo para no duplicar)
-# Asegúrate de incluir todas las funciones que ya funcionaban.
-
-# ============================================================================
-# ENVÍO DE RESPUESTA DE CABECERA
-# ============================================================================
-async def send_header_response(chat_id, context, estacion_key, is_update=False):
-    # ... (tu código existente)
-    pass
+        minutes_from_15 = max(0, current_min - 15 * 60)
+        intervals13 = (minutes_from_15 + 12) // 13
+        next_min = 15 * 60 + intervals13 * 13
+    
+    if next_min > last_min:
+        tomorrow = now.date() + timedelta(days=1)
+        next_dt = datetime.combine(tomorrow, first)
+        next_dt = CATANIA_TZ.localize(next_dt)
+        sec = int((next_dt - now).total_seconds())
+        return (next_dt, sec // 60, sec % 60, True)
+    
+    next_hour = next_min // 60
+    next_minute = next_min % 60
+    next_dt = datetime.combine(now.date(), time(next_hour, next_minute))
+    next_dt = CATANIA_TZ.localize(next_dt)
+    sec = int((next_dt - now).total_seconds())
+    return (next_dt, sec // 60, sec % 60, True)
 
 # ============================================================================
-# RESPUESTA PRINCIPAL PARA ESTACIONES
+# DÍAS FESTIVOS NACIONALES Y NOCHEVIEJA
 # ============================================================================
-async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str, return_to_main: bool = True):
-    if 'countdown_task' in context.chat_data:
-        try:
-            context.chat_data['countdown_task'].cancel()
-        except:
+FESTIVI_NAZIONALI = [
+    (1, 1), (1, 6), (4, 25), (5, 1), (6, 2), (8, 15), (11, 1), (12, 8), (12, 26)
+]
+
+def is_new_years_eve(now: datetime) -> bool:
+    if now.month == 12 and now.day == 31:
+        return True
+    if now.month == 1 and now.day == 1 and now.hour < 3:
+        return True
+    return False
+
+def get_next_departure_new_years_eve(station: str, now: datetime) -> Tuple[Optional[datetime], int, int, bool]:
+    current_time = now.time()
+    if station == "Montepo":
+        first = time(6, 0)
+        last = time(3, 0)
+    else:
+        first = time(6, 25)
+        last = time(3, 0)
+    first_min = first.hour * 60 + first.minute
+    last_min_next_day = last.hour * 60 + last.minute + 24 * 60
+    current_min = current_time.hour * 60 + current_time.minute
+    
+    all_departures = []
+    t = first_min
+    while t < 15 * 60:
+        all_departures.append(t)
+        t += 10
+    t = 15 * 60
+    while t < 24 * 60:
+        all_departures.append(t)
+        t += 13
+    t = 24 * 60
+    while t < last_min_next_day:
+        all_departures.append(t)
+        t += 13
+    
+    next_min = None
+    for dep in all_departures:
+        if dep > current_min:
+            next_min = dep
+            break
+    
+    if next_min is None:
+        return (None, 0, 0, False)
+    
+    if next_min >= 24 * 60:
+        next_date = now.date() + timedelta(days=1)
+        next_min_actual = next_min - 24 * 60
+    else:
+        next_date = now.date()
+        next_min_actual = next_min
+    next_hour = next_min_actual // 60
+    next_minute = next_min_actual % 60
+    next_dt = datetime.combine(next_date, time(next_hour, next_minute))
+    next_dt = CATANIA_TZ.localize(next_dt)
+    sec = int((next_dt - now).total_seconds())
+    return (next_dt, sec // 60, sec % 60, True)
+
+# ============================================================================
+# CIERRES TOTALES (NAVIDAD, PASCUA)
+# ============================================================================
+def is_christmas(now: datetime) -> bool:
+    return (now.month == CLOSED_ALL_DAY["christmas"]["month"] and 
+            now.day == CLOSED_ALL_DAY["christmas"]["day"] and
+            CLOSED_ALL_DAY["christmas"]["active"])
+
+def is_easter_sunday(now: datetime) -> bool:
+    if not CLOSED_ALL_DAY["easter_sunday"]["active"]:
+        return False
+    year = now.year
+    if year < CLOSED_ALL_DAY["easter_sunday"]["start_year"]:
+        return False
+    a = year % 19
+    b = year // 100
+    c = year % 100
+    d = b // 4
+    e = b % 4
+    f = (b + 8) // 25
+    g = (b - f + 1) // 3
+    h = (19 * a + b - d - g + 15) % 30
+    i = c // 4
+    k = c % 4
+    l = (32 + 2 * e + 2 * i - h - k) % 7
+    m = (a + 11 * h + 22 * l) // 451
+    month = (h + l - 7 * m + 114) // 31
+    day = ((h + l - 7 * m + 114) % 31) + 1
+    easter = date(year, month, day)
+    return now.date() == easter and now.weekday() == 6
+
+def is_easter_monday(now: datetime) -> bool:
+    year = now.year
+    a = year % 19
+    b = year // 100
+    c = year % 100
+    d = b // 4
+    e = b % 4
+    f = (b + 8) // 25
+    g = (b - f + 1) // 3
+    h = (19 * a + b - d - g + 15) % 30
+    i = c // 4
+    k = c % 4
+    l = (32 + 2 * e + 2 * i - h - k) % 7
+    m = (a + 11 * h + 22 * l) // 451
+    month = (h + l - 7 * m + 114) // 31
+    day = ((h + l - 7 * m + 114) % 31) + 1
+    easter_sunday = date(year, month, day)
+    easter_monday = easter_sunday + timedelta(days=1)
+    return now.date() == easter_monday
+
+def is_closed_all_day(now: datetime) -> bool:
+    return is_christmas(now) or is_easter_sunday(now)
+
+def get_closing_warning(now: datetime) -> str:
+    tomorrow = now + timedelta(days=1)
+    if is_closed_all_day(tomorrow):
+        if now.hour >= WARNING_HOUR:
+            if is_christmas(tomorrow):
+                fest_name = "Natale (25 dicembre)"
+            else:
+                fest_name = CLOSED_ALL_DAY["easter_sunday"].get("message", "Pasqua")
+            return f"⚠️ Attenzione: domani, {fest_name}, la metropolitana sarà CHIUSA tutto il giorno. ⚠️"
+    return ""
+
+def is_festivo_nazionale(now: datetime) -> bool:
+    if is_christmas(now) or is_new_years_eve(now) or is_sant_agata(now):
+        return False
+    if is_easter_sunday(now):
+        return False
+    if is_easter_monday(now):
+        return True
+    return (now.month, now.day) in FESTIVI_NAZIONALI
+
+# ============================================================================
+# FUNCIONES DE HORARIOS (comunes)
+# ============================================================================
+def get_opening_time(now: datetime, station: str = None) -> Tuple[int, int]:
+    if is_new_years_eve(now):
+        return (12, 0)   # Nochevieja: apertura a las 12:00
+    if is_sant_agata(now):
+        first = get_first_train_sant_agata(station if station else "Montepo")
+        return (first.hour, first.minute)
+    if is_festivo_nazionale(now) or now.weekday() == 6:
+        return (7, 0)
+    else:
+        return (6, 0)
+
+def get_closing_time(now: datetime, station: str) -> Tuple[int, int]:
+    if is_new_years_eve(now):
+        return (3, 0)
+    if is_sant_agata(now):
+        last = get_last_train_sant_agata(station)
+        return (last.hour, last.minute)
+    if is_festivo_nazionale(now) or now.weekday() == 6:
+        return (22, 30)
+    else:
+        weekday = now.weekday()
+        if weekday in [4, 5]:
+            return (1, 0)
+        else:
+            return (22, 30)
+
+# ============================================================================
+# FECHAS ESPECIALES (sobrescribir día de la semana)
+# ============================================================================
+def get_override_weekday(now: datetime) -> Optional[int]:
+    """Devuelve el día de la semana (0=lunes, 6=domingo) que debe usarse para horarios,
+       o None si no hay override."""
+    month, day = now.month, now.day
+    if month == 12 and day == 31:
+        return 4   # viernes
+    if month == 1 and day == 1:
+        return 6   # domingo
+    if month == 2 and day in [3, 4, 5]:
+        return 4   # viernes
+    if month == 2 and day == 6:
+        actual_weekday = now.weekday()
+        if actual_weekday == 6:
+            return 6   # domingo
+        else:
+            return 5   # sábado
+    return None
+
+def get_schedule_list(station: str, now: datetime) -> List[time]:
+    override = get_override_weekday(now)
+    if override is not None:
+        if override == 4:
+            schedule_list = SCHEDULES[station]["friday"]
+        elif override == 5:
+            schedule_list = SCHEDULES[station]["saturday"]
+        elif override == 6:
+            schedule_list = SCHEDULES[station]["sunday"]
+        else:
+            schedule_list = SCHEDULES[station]["weekday"]
+    else:
+        if is_festivo_nazionale(now):
+            schedule_list = SCHEDULES[station]["sunday"]
+        else:
+            weekday_num = now.weekday()
+            if weekday_num == 4:
+                schedule_list = SCHEDULES[station]["friday"]
+            elif weekday_num == 5:
+                schedule_list = SCHEDULES[station]["saturday"]
+            elif weekday_num == 6:
+                schedule_list = SCHEDULES[station]["sunday"]
+            else:
+                schedule_list = SCHEDULES[station]["weekday"]
+    current_time = now.time()
+    first_train = schedule_list[0] if schedule_list else None
+    if first_train and current_time < first_train:
+        yesterday = now - timedelta(days=1)
+        y_override = get_override_weekday(yesterday)
+        if y_override is not None:
+            if y_override == 4:
+                yesterday_list = SCHEDULES[station]["friday"]
+            elif y_override == 5:
+                yesterday_list = SCHEDULES[station]["saturday"]
+            elif y_override == 6:
+                yesterday_list = SCHEDULES[station]["sunday"]
+            else:
+                yesterday_list = SCHEDULES[station]["weekday"]
+        else:
+            y_weekday = yesterday.weekday()
+            if y_weekday == 4:
+                yesterday_list = SCHEDULES[station]["friday"]
+            elif y_weekday == 5:
+                yesterday_list = SCHEDULES[station]["saturday"]
+            elif y_weekday == 6:
+                yesterday_list = SCHEDULES[station]["sunday"]
+            else:
+                yesterday_list = SCHEDULES[station]["weekday"]
+        if any(t.hour < 6 for t in yesterday_list):
+            return yesterday_list
+    return schedule_list
+
+def get_next_departure(station: str, now: datetime) -> Tuple[Optional[datetime], int, int, bool]:
+    # Si la hora está entre 01:00 y 06:00 (excepto rangos especiales), no hay trenes
+    if 1 <= now.hour < 6:
+        if (now.month == 1 and now.day == 1 and 1 <= now.hour < 3) or \
+           (now.month == 2 and now.day in [4,5,6] and 1 <= now.hour < 2):
             pass
-        context.chat_data.pop('countdown_task', None)
-        context.chat_data['countdown_active'] = False
+        else:
+            return (None, 0, 0, False)
+    
+    if is_new_years_eve(now):
+        return get_next_departure_new_years_eve(station, now)
+    if is_sant_agata(now):
+        return get_next_departure_sant_agata(station, now)
+    current_time = now.time()
+    schedule_list = get_schedule_list(station, now)
+    for dep_time in schedule_list:
+        if dep_time > current_time:
+            next_dt = datetime.combine(now.date(), dep_time)
+            next_dt = CATANIA_TZ.localize(next_dt)
+            delta = int((next_dt - now).total_seconds())
+            return (next_dt, delta // 60, delta % 60, True)
+    return (None, 0, 0, False)
 
-    stop_super_update(context)
-    context.chat_data['last_return_to_main'] = return_to_main
-    now = get_simulated_now(context)
-    demo_mode = context.chat_data.get('demo_mode', False)
+def get_next_departure_after(station: str, now: datetime, after_time: time) -> Tuple[Optional[datetime], int, int, bool]:
+    if 1 <= now.hour < 6:
+        if (now.month == 1 and now.day == 1 and 1 <= now.hour < 3) or \
+           (now.month == 2 and now.day in [4,5,6] and 1 <= now.hour < 2):
+            pass
+        else:
+            return (None, 0, 0, False)
+    if is_sant_agata(now):
+        fake_now = datetime.combine(now.date(), after_time) + timedelta(minutes=1)
+        fake_now = CATANIA_TZ.localize(fake_now)
+        return get_next_departure(station, fake_now)
+    if is_new_years_eve(now):
+        fake_now = datetime.combine(now.date(), after_time) + timedelta(minutes=1)
+        fake_now = CATANIA_TZ.localize(fake_now)
+        return get_next_departure(station, fake_now)
+    schedule_list = get_schedule_list(station, now)
+    for dep_time in schedule_list:
+        if dep_time > after_time:
+            next_dt = datetime.combine(now.date(), dep_time)
+            next_dt = CATANIA_TZ.localize(next_dt)
+            delta = int((next_dt - now).total_seconds())
+            return (next_dt, delta // 60, delta % 60, True)
+    return (None, 0, 0, False)
 
-    test_indicator = ""
-    if (context.chat_data.get('test_time') is not None or context.chat_data.get('test_live_base') is not None) and not demo_mode:
-        test_indicator = "🧪 [TEST MODE] "
+def format_time(minutes: int, seconds: int) -> str:
+    if minutes >= SHORT_TIME_THRESHOLD:
+        return f"{minutes} minuti"
+    if minutes == 0:
+        if seconds == 0:
+            return "subito"
+        else:
+            return "30 secondi"
+    elif minutes == 1:
+        if seconds < 30:
+            return "1 minuto"
+        else:
+            return "1 minuto e 30 secondi"
+    else:
+        if seconds < 30:
+            return f"{minutes} minuti"
+        else:
+            return f"{minutes} minuti e 30 secondi"
 
-    if estacion_key in ["montepo", "stesicoro"]:
-        await send_header_response(update.message.chat_id, context, estacion_key, is_update=False)
-        await maybe_send_home_tip(update, context)
-        return
-
-    # ... resto de la lógica para estaciones intermedias
-    # Al final, llama a maybe_send_home_tip
-    await maybe_send_home_tip(update, context)
+def get_last_train_message(now: datetime) -> str:
+    # Aviso especial de Nochevieja: desde el 31/12 a las 12:00 hasta el 01/01 a las 03:00
+    if (now.month == 12 and now.day == 31 and now.hour >= 12) or (now.month == 1 and now.day == 1 and now.hour < 3):
+        return "🎉 Oggi orario speciale: ultimo treno alle 03:00. Buon anno! 🎉"
+    
+    if now.hour < 20 or (now.hour == 20 and now.minute < 30):
+        return ""
+    if is_sant_agata(now) or is_closed_all_day(now):
+        return ""
+    weekday = now.weekday()
+    if weekday in [0, 1, 2, 3]:
+        close_time = "22:30"
+    elif weekday in [4, 5]:
+        close_time = "01:00"
+    else:
+        close_time = "22:30"
+    return f"📌 Oggi la metro chiude alle {close_time}."
 
 # ============================================================================
-# COMANDOS Y WRAPPERS (start, help, test, testlive, testfin, etc.)
+# FUNCIÓN PRINCIPAL IS_METRO_CLOSED
 # ============================================================================
-# ... (todo el código de comandos que ya tienes, incluyendo test_command, testlive_command)
+def is_metro_closed(now: datetime, station: str) -> Tuple[bool, Optional[datetime], str]:
+    if now.tzinfo is None:
+        now = CATANIA_TZ.localize(now)
+    
+    if is_closed_all_day(now):
+        tomorrow = now + timedelta(days=1)
+        open_h, open_m = get_opening_time(tomorrow, station)
+        next_open = datetime.combine(tomorrow.date(), time(open_h, open_m))
+        next_open = CATANIA_TZ.localize(next_open)
+        return (True, next_open, "")
+    
+    if is_new_years_eve(now):
+        if now.hour >= 23 or now.hour < 3:
+            open_h, open_m = get_opening_time(now, station)
+            next_open = datetime.combine(now.date(), time(open_h, open_m))
+            if next_open <= now:
+                next_open = datetime.combine(now.date() + timedelta(days=1), time(open_h, open_m))
+            next_open = CATANIA_TZ.localize(next_open)
+            special_msg = "🚇 Non ci sono informazioni disponibili. Ricorda che oggi l'ultima metropolitana è partita alle 03:00."
+            return (True, next_open, special_msg)
+    
+    # Cierre forzado de 01:00 a 06:00 (todos los días)
+    if 1 <= now.hour < 6:
+        open_h, open_m = get_opening_time(now, station)
+        next_open = datetime.combine(now.date(), time(open_h, open_m))
+        if next_open <= now:
+            next_open = datetime.combine(now.date() + timedelta(days=1), time(open_h, open_m))
+        next_open = CATANIA_TZ.localize(next_open)
+        return (True, next_open, "🚇 La metropolitana è chiusa in questo momento.")
+    
+    current_time = now.time()
+    open_h, open_m = get_opening_time(now, station)
+    close_h, close_m = get_closing_time(now, station)
+    opening_time = time(open_h, open_m)
+    closing_time = time(close_h, close_m)
+    
+    if close_h < open_h or (close_h == open_h and close_m < open_m):
+        if current_time >= opening_time or current_time < closing_time:
+            return (False, None, "")
+        else:
+            next_open = datetime.combine(now.date(), opening_time)
+            if next_open <= now:
+                next_open = datetime.combine(now.date() + timedelta(days=1), opening_time)
+            next_open = CATANIA_TZ.localize(next_open)
+            return (True, next_open, "")
+    else:
+        if current_time >= closing_time or current_time < opening_time:
+            if current_time < opening_time:
+                next_open = datetime.combine(now.date(), opening_time)
+            else:
+                next_open = datetime.combine(now.date() + timedelta(days=1), opening_time)
+            next_open = CATANIA_TZ.localize(next_open)
+            return (True, next_open, "")
+        return (False, None, "")
+
+# ============================================================================
+# FUNCIONES PARA ESTACIONES INTERMEDIAS (usando segundos exactos)
+# ============================================================================
+def get_total_seconds_from_montepo(station: str, now: datetime) -> int:
+    if now.tzinfo is None:
+        now = CATANIA_TZ.localize(now)
+    total = 0
+    peak = is_peak_hour(now)
+    for (start, end, base_sec) in FORWARD_PEAK:
+        measured = get_measured_travel_time(start, end, 'ida', now)
+        if measured is not None:
+            sec = measured
+        else:
+            sec = base_sec
+            if not peak and (start, end) in EXTRA_TRAMOS_FORWARD:
+                sec -= 10
+        total += sec
+        if end == station:
+            break
+    stations_order = ["montepo", "fontana", "nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "giovanni", "stesicoro"]
+    for closed in CLOSED_STATIONS:
+        if is_station_closed(closed["station"], now):
+            if stations_order.index(closed["station"]) < stations_order.index(station):
+                total -= closed["reduction_seconds"]
+    if should_add_giovanni_extra(now):
+        idx_station = stations_order.index(station) if station in stations_order else -1
+        idx_giovanni = stations_order.index("giovanni")
+        if idx_station >= idx_giovanni:
+            total += 5
+    # Extra de cabecera en hora punta (solo si la estación no es la propia cabecera)
+    if peak and station != "montepo":
+        total += 5
+    return max(0, int(total))
+
+def get_total_seconds_from_stesicoro(station: str, now: datetime) -> int:
+    if now.tzinfo is None:
+        now = CATANIA_TZ.localize(now)
+    total = 0
+    peak = is_peak_hour(now)
+    for (start, end, base_sec) in REVERSE_PEAK:
+        measured = get_measured_travel_time(start, end, 'vuelta', now)
+        if measured is not None:
+            sec = measured
+        else:
+            sec = base_sec
+            if not peak and (start, end) in EXTRA_TRAMOS_REVERSE:
+                sec -= 10
+        total += sec
+        if end == station:
+            break
+    stations_order_rev = ["stesicoro", "giovanni", "galatea", "italia", "giuffrida", "borgo", "milo", "cibali", "sannullo", "nesima", "fontana", "montepo"]
+    for closed in CLOSED_STATIONS:
+        if is_station_closed(closed["station"], now):
+            if stations_order_rev.index(closed["station"]) < stations_order_rev.index(station):
+                total -= closed["reduction_seconds"]
+    if should_add_giovanni_extra(now):
+        idx_station = stations_order_rev.index(station) if station in stations_order_rev else -1
+        idx_giovanni = stations_order_rev.index("giovanni")
+        if idx_station >= idx_giovanni:
+            total += 5
+    # Extra de cabecera en hora punta (solo si la estación no es la propia cabecera)
+    if peak and station != "stesicoro":
+        total += 5
+    return max(0, int(total))
+
+def get_next_train_at_station(now: datetime, estacion_key: str) -> Tuple[Optional[Tuple], Optional[Tuple]]:
+    if now.tzinfo is None:
+        now = CATANIA_TZ.localize(now)
+    tiempos_seg = {}
+    stations = ["montepo", "fontana", "nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "giovanni", "stesicoro"]
+    for st in stations:
+        tiempos_seg[st] = (get_total_seconds_from_montepo(st, now), get_total_seconds_from_stesicoro(st, now))
+    if estacion_key not in tiempos_seg:
+        return (None, None)
+    seg_mp, seg_st = tiempos_seg[estacion_key]
+
+    info_mp = None
+    closed_mp, _, _ = is_metro_closed(now, "Montepo")
+    if not closed_mp:
+        schedule_list = get_schedule_list("Montepo", now)
+        pasos = []
+        for salida in schedule_list:
+            paso_dt = datetime.combine(now.date(), salida) + timedelta(seconds=seg_mp)
+            paso_dt = CATANIA_TZ.localize(paso_dt)
+            pasos.append(paso_dt)
+        next_paso = None
+        next_idx = -1
+        for i, p in enumerate(pasos):
+            if p > now:
+                next_paso = p
+                next_idx = i
+                break
+        if next_paso:
+            delta = next_paso - now
+            mins_rest = int(delta.total_seconds() // 60)
+            secs_rest = int(delta.total_seconds() % 60)
+            next_info = None
+            if next_idx + 1 < len(pasos):
+                p2 = pasos[next_idx+1]
+                delta2 = p2 - now
+                mins2 = int(delta2.total_seconds() // 60)
+                secs2 = int(delta2.total_seconds() % 60)
+                next_info = (p2, mins2, secs2)
+            info_mp = (next_paso, mins_rest, secs_rest, next_info)
+
+    info_st = None
+    closed_st, _, _ = is_metro_closed(now, "Stesicoro")
+    if not closed_st:
+        schedule_list = get_schedule_list("Stesicoro", now)
+        pasos = []
+        for salida in schedule_list:
+            paso_dt = datetime.combine(now.date(), salida) + timedelta(seconds=seg_st)
+            paso_dt = CATANIA_TZ.localize(paso_dt)
+            pasos.append(paso_dt)
+        next_paso = None
+        next_idx = -1
+        for i, p in enumerate(pasos):
+            if p > now:
+                next_paso = p
+                next_idx = i
+                break
+        if next_paso:
+            delta = next_paso - now
+            mins_rest = int(delta.total_seconds() // 60)
+            secs_rest = int(delta.total_seconds() % 60)
+            next_info = None
+            if next_idx + 1 < len(pasos):
+                p2 = pasos[next_idx+1]
+                delta2 = p2 - now
+                mins2 = int(delta2.total_seconds() // 60)
+                secs2 = int(delta2.total_seconds() % 60)
+                next_info = (p2, mins2, secs2)
+            info_st = (next_paso, mins_rest, secs_rest, next_info)
+
+    return (info_mp, info_st)
+
+# ============================================================================
+# FUNCIONES DE LOCALIZACIÓN
+# ============================================================================
+def get_current_station_from_montepo(now: datetime, seconds_passed: int) -> str:
+    stations = ["montepo", "fontana", "nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "giovanni", "stesicoro"]
+    tiempos = {st: get_total_seconds_from_montepo(st, now) for st in stations}
+    if 0 < seconds_passed < 30:
+        return "Il treno è appena partito da Monte Po"
+    for i in range(len(stations)-1):
+        cur, nxt = stations[i], stations[i+1]
+        if seconds_passed >= tiempos[cur] - 1 and seconds_passed < tiempos[nxt]:
+            return NOMBRE_MOSTRAR[cur]
+    if seconds_passed >= tiempos["stesicoro"] - 1:
+        return NOMBRE_MOSTRAR["stesicoro"]
+    if seconds_passed == 0:
+        return "non ancora partito da Monte Po"
+    return NOMBRE_MOSTRAR["montepo"]
+
+def get_current_station_from_stesicoro(now: datetime, seconds_passed: int) -> str:
+    stations = ["stesicoro", "giovanni", "galatea", "italia", "giuffrida", "borgo", "milo", "cibali", "sannullo", "nesima", "fontana", "montepo"]
+    tiempos = {st: get_total_seconds_from_stesicoro(st, now) for st in stations}
+    if 0 < seconds_passed < 30:
+        return "Il treno è appena partito da Stesicoro"
+    for i in range(len(stations)-1):
+        cur, nxt = stations[i], stations[i+1]
+        if seconds_passed >= tiempos[cur] - 1 and seconds_passed < tiempos[nxt]:
+            return NOMBRE_MOSTRAR[cur]
+    if seconds_passed >= tiempos["montepo"] - 1:
+        return NOMBRE_MOSTRAR["montepo"]
+    if seconds_passed == 0:
+        return "non ancora partito da Stesicoro"
+    return NOMBRE_MOSTRAR["stesicoro"]
+
+def format_time_precise(minutes: int, seconds: int) -> str:
+    total_seconds = minutes * 60 + seconds
+    if total_seconds > 90:
+        return format_time(minutes, seconds)
+    rounded_seconds = (seconds // 10) * 10
+    if minutes == 0:
+        if rounded_seconds == 0:
+            return "subito"
+        else:
+            return f"{rounded_seconds} secondi"
+    elif minutes == 1:
+        if rounded_seconds == 0:
+            return "1 minuto"
+        else:
+            return f"1 minuto e {rounded_seconds} secondi"
+    else:
+        if rounded_seconds == 0:
+            return f"{minutes} minuti"
+        else:
+            return f"{minutes} minuti e {rounded_seconds} secondi"
