@@ -503,10 +503,11 @@ def get_opening_time(now: datetime, station: str = None) -> Tuple[int, int]:
     if is_sant_agata(now):
         first = get_first_train_sant_agata(station if station else "Montepo")
         return (first.hour, first.minute)
-    if is_festivo_nazionale(now) or now.weekday() == 6:
+    # Todos los festivos abren a las 7:00
+    if is_festivo_nazionale(now):
         return (7, 0)
-    else:
-        return (6, 0)
+    # Días laborables normales
+    return (6, 0)
 
 def get_closing_time(now: datetime, station: str) -> Tuple[int, int]:
     if is_new_years_eve(now):
@@ -515,21 +516,21 @@ def get_closing_time(now: datetime, station: str) -> Tuple[int, int]:
         last = get_last_train_sant_agata(station)
         return (last.hour, last.minute)
 
-    # --- NUEVA LÓGICA PARA VÍSPERA DE FESTIVO ---
-    # Si hoy es festivo y aún es de madrugada (hora < 6:00)
+    # ----- EXCEPCIÓN: madrugada de un día festivo (00:00 - 05:59) -----
+    # En este tramo se aplica el horario de cierre del día anterior.
     if is_festivo_nazionale(now) and now.hour < 6:
-        # Calcula la fecha de ayer (el día anterior)
         yesterday = now - timedelta(days=1)
-        # Llama a get_closing_time para el día anterior
         return get_closing_time(yesterday, station)
-    # -------------------------------------------
 
-    # Si NO es festivo (o no estamos en la madrugada del festivo)
-    if is_festivo_nazionale(now) or now.weekday() == 6:
-        return (22, 30)
+    if is_festivo_nazionale(now):
+        # Los festivos que caen en viernes, sábado o domingo tienen cierre a la 1:00
+        if now.weekday() in (4, 5, 6):
+            return (1, 0)
+        else:
+            return (22, 30)
     else:
         weekday = now.weekday()
-        if weekday in [4, 5]:
+        if weekday in (4, 5):
             return (1, 0)
         else:
             return (22, 30)
@@ -606,7 +607,9 @@ def get_schedule_list(station: str, now: datetime) -> List[time]:
     return schedule_list
 
 def get_next_departure(station: str, now: datetime) -> Tuple[Optional[datetime], int, int, bool]:
+    # Bloque de cierre nocturno entre 1:00 y 6:00 (excepto noches especiales)
     if 1 <= now.hour < 6:
+        # Excepciones: madrugada del 1 de enero o días de Sant'Agata
         if (now.month == 1 and now.day == 1 and 1 <= now.hour < 3) or \
            (now.month == 2 and now.day in [4,5,6] and 1 <= now.hour < 2):
             pass
@@ -671,6 +674,7 @@ def format_time(minutes: int, seconds: int) -> str:
             return f"{minutes} minuti e 30 secondi"
 
 def get_last_train_message(now: datetime) -> str:
+    # Nochevieja y madrugada de Año Nuevo
     if (now.month == 12 and now.day == 31 and now.hour >= 12) or (now.month == 1 and now.day == 1 and now.hour < 3):
         return "🎉 Oggi orario speciale: ultimo treno alle 03:00. Buon anno! 🎉"
     
@@ -678,14 +682,10 @@ def get_last_train_message(now: datetime) -> str:
         return ""
     if is_sant_agata(now) or is_closed_all_day(now):
         return ""
-    weekday = now.weekday()
-    if weekday in [0, 1, 2, 3]:
-        close_time = "22:30"
-    elif weekday in [4, 5]:
-        close_time = "01:00"
-    else:
-        close_time = "22:30"
-    return f"📌 Oggi la metro chiude alle {close_time}."
+    # Si es festivo y cae en fin de semana, el mensaje aún puede mostrar la 1:00
+    # (el mensaje general se basará en get_closing_time)
+    close_h, close_m = get_closing_time(now, "Montepo")  # cualquier estación sirve
+    return f"📌 Oggi la metro chiude alle {close_h:02d}:{close_m:02d}."
 
 # ============================================================================
 # FUNCIÓN PRINCIPAL IS_METRO_CLOSED
