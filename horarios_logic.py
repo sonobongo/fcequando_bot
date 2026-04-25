@@ -71,9 +71,13 @@ def get_measured_travel_time(origen: str, destino: str, direccion: str, now: dat
     return None
 
 # ============================================================================
-# AJUSTE DE DÍA OPERATIVO (empieza a las 05:00, termina a las 01:30 del día siguiente)
+# AJUSTE DE DÍA OPERATIVO (empieza a las 05:00)
 # ============================================================================
 def get_effective_datetime(now: datetime) -> datetime:
+    """
+    Ajusta la hora para que el día operativo empiece a las 05:00.
+    Si la hora está entre 00:00 y 04:59, pertenece al día anterior.
+    """
     if now.tzinfo is None:
         now = CATANIA_TZ.localize(now)
     if now.hour < 5:
@@ -112,7 +116,6 @@ EXTRA_TRAMOS_REVERSE = [
 # DETECCIÓN DE HORA PUNTA (7-9, 13-14, 17:15-19:45, lunes a viernes, sept-jun)
 # ============================================================================
 def is_peak_hour(now: datetime) -> bool:
-    # Para hora punta usamos la hora real (sin ajuste de día), porque depende de la hora del día
     if now.weekday() >= 5:
         return False
     if is_festivo_nazionale(now):
@@ -320,9 +323,6 @@ def get_last_train_sant_agata(station: str) -> time:
 
 def get_next_departure_sant_agata(station: str, now: datetime) -> Tuple[Optional[datetime], int, int, bool]:
     eff = get_effective_datetime(now)
-    # Para Sant'Agata, el horario especial rige en días festivos, pero debemos usar eff para saber qué día es.
-    # Sin embargo, los horarios de trenes en Sant'Agata están definidos en el JSON? asumimos que se comporta como festivo pero con su propio horario.
-    # Dejamos la función original pero usando eff para la fecha.
     current_time = now.time()
     first = get_first_train_sant_agata(station)
     last = get_last_train_sant_agata(station)
@@ -379,18 +379,16 @@ FESTIVI_NAZIONALI = [
 ]
 
 def is_new_years_eve(now: datetime) -> bool:
-    # Nochevieja y Año Nuevo tienen tratamiento especial
-    # Utilizamos la fecha real (sin ajuste) porque el servicio nocturno especial cruza medianoche
     eff = get_effective_datetime(now)
-    # Si es 31 de diciembre (efectivo) y hora >= 12, o 1 de enero (efectivo) y hora < 3
+    # Nochevieja: 31 de diciembre a partir de las 12:00
     if eff.month == 12 and eff.day == 31 and now.hour >= 12:
         return True
+    # Año Nuevo: 1 de enero hasta las 3:00
     if eff.month == 1 and eff.day == 1 and now.hour < 3:
         return True
     return False
 
 def get_next_departure_new_years_eve(station: str, now: datetime) -> Tuple[Optional[datetime], int, int, bool]:
-    # Similar a la lógica de Sant'Agata pero con horario especial de Nochevieja
     current_time = now.time()
     if station == "Montepo":
         first = time(6, 0)
@@ -526,10 +524,8 @@ def get_opening_time(now: datetime, station: str = None) -> Tuple[int, int]:
     if is_sant_agata(eff):
         first = get_first_train_sant_agata(station if station else "Montepo")
         return (first.hour, first.minute)
-    # Todos los festivos abren a las 7:00 (usando la fecha efectiva)
-    if is_festivo_nazionale(now):  # ya usa eff internamente
+    if is_festivo_nazionale(now):
         return (7, 0)
-    # Días laborables normales (no festivos)
     return (6, 0)
 
 def get_closing_time(now: datetime, station: str) -> Tuple[int, int]:
@@ -540,18 +536,16 @@ def get_closing_time(now: datetime, station: str) -> Tuple[int, int]:
         last = get_last_train_sant_agata(station)
         return (last.hour, last.minute)
 
-    if is_festivo_nazionale(now):  # ya usa eff internamente
-        # Los festivos que caen en viernes (4), sábado (5) o domingo (6) tienen cierre a la 1:00
-        # Usamos eff.weekday() porque indica el día efectivo
-        if eff.weekday() in (4, 5, 6):
+    if is_festivo_nazionale(now):
+        # Festivo: si cae en viernes o sábado, cierre a la 1:00; si no, a las 22:30
+        if eff.weekday() in (4, 5):
             return (1, 0)
         else:
             return (22, 30)
     else:
-        weekday = eff.weekday()
-        if weekday in (4, 5):    # viernes o sábado efectivo
+        if eff.weekday() in (4, 5):
             return (1, 0)
-        else:                    # lunes a jueves, domingo
+        else:
             return (22, 30)
 
 # ============================================================================
@@ -574,11 +568,11 @@ def get_override_weekday(now: datetime) -> Optional[int]:
             return 5
     return None
 
+# ============================================================================
+# OBTENER LISTA DE HORARIOS (la clave del problema)
+# ============================================================================
 def get_schedule_list(station: str, now: datetime) -> List[time]:
-    # Obtener la fecha efectiva (día operativo)
     eff = get_effective_datetime(now)
-    
-    # Sobrescritura por fechas especiales (Nochevieja, Sant'Agata, etc.)
     override = get_override_weekday(now)
     if override is not None:
         if override == 4:
@@ -590,17 +584,13 @@ def get_schedule_list(station: str, now: datetime) -> List[time]:
         else:
             schedule_list = SCHEDULES[station]["weekday"]
     else:
-        # Determinar si hoy es festivo nacional (usando la fecha efectiva)
         if is_festivo_nazionale(now):
             # Día festivo: elegir horario según el día de la semana efectivo
-            weekday = eff.weekday()
-            # Viernes (4) o sábado (5) -> usar horario de sábado (que incluye noche hasta 1:00)
-            if weekday == 4 or weekday == 5:
+            if eff.weekday() in (4, 5):  # viernes o sábado
                 schedule_list = SCHEDULES[station]["saturday"]
-            else:  # Domingo (6) o entre semana -> usar horario de domingo (cierre 22:30)
+            else:  # domingo o lunes a jueves
                 schedule_list = SCHEDULES[station]["sunday"]
         else:
-            # Día normal no festivo
             weekday_num = eff.weekday()
             if weekday_num == 4:
                 schedule_list = SCHEDULES[station]["friday"]
@@ -615,7 +605,6 @@ def get_schedule_list(station: str, now: datetime) -> List[time]:
     current_time = now.time()
     if schedule_list:
         first_train = schedule_list[0]
-        # Si es de madrugada (hora < 6) y no hay trenes hoy todavía, buscar en el día anterior
         if current_time < first_train and current_time.hour < 6:
             yesterday = eff - timedelta(days=1)
             y_override = get_override_weekday(yesterday)
@@ -638,17 +627,14 @@ def get_schedule_list(station: str, now: datetime) -> List[time]:
                     yesterday_list = SCHEDULES[station]["sunday"]
                 else:
                     yesterday_list = SCHEDULES[station]["weekday"]
-            # Si el día anterior tiene trenes en horario nocturno (después de las 22:00 o antes de las 6:00)
             if any(t.hour >= 22 or t.hour < 6 for t in yesterday_list):
                 return yesterday_list
-    
     return schedule_list
 
 def get_next_departure(station: str, now: datetime) -> Tuple[Optional[datetime], int, int, bool]:
     eff = get_effective_datetime(now)
     # Bloque de cierre nocturno entre 1:00 y 6:00 (excepto noches especiales)
     if 1 <= now.hour < 6:
-        # Excepciones: madrugada del 1 de enero o días de Sant'Agata
         if (now.month == 1 and now.day == 1 and 1 <= now.hour < 3) or \
            (now.month == 2 and now.day in [4,5,6] and 1 <= now.hour < 2):
             pass
@@ -714,10 +700,8 @@ def format_time(minutes: int, seconds: int) -> str:
             return f"{minutes} minuti e 30 secondi"
 
 def get_last_train_message(now: datetime) -> str:
-    # Nochevieja y Año Nuevo
     if (now.month == 12 and now.day == 31 and now.hour >= 12) or (now.month == 1 and now.day == 1 and now.hour < 3):
         return "🎉 Oggi orario speciale: ultimo treno alle 03:00. Buon anno! 🎉"
-    
     if now.hour < 20 or (now.hour == 20 and now.minute < 30):
         return ""
     if is_sant_agata(now) or is_closed_all_day(now):
