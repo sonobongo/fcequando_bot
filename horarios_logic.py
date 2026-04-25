@@ -492,6 +492,12 @@ def is_festivo_nazionale(now: datetime) -> bool:
         return False
     if is_easter_monday(now):
         return True
+    
+    # NUEVO: Los festivos nacionales que caen en sábado (weekday=5) no se consideran festivos
+    # para efectos de horario de metro. Si quieres también para viernes (4) o domingo (6), amplía la condición.
+    if (now.month, now.day) in FESTIVI_NAZIONALI and now.weekday() == 5:  # sábado
+        return False
+    
     return (now.month, now.day) in FESTIVI_NAZIONALI
 
 # ============================================================================
