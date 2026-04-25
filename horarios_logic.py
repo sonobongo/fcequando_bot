@@ -74,10 +74,6 @@ def get_measured_travel_time(origen: str, destino: str, direccion: str, now: dat
 # AJUSTE DE DÍA OPERATIVO (empieza a las 05:00, termina a las 01:30 del día siguiente)
 # ============================================================================
 def get_effective_datetime(now: datetime) -> datetime:
-    """
-    Ajusta la hora para que el día operativo empiece a las 05:00.
-    Si la hora está entre 00:00 y 04:59, pertenece al día anterior.
-    """
     if now.tzinfo is None:
         now = CATANIA_TZ.localize(now)
     if now.hour < 5:
@@ -579,8 +575,11 @@ def get_override_weekday(now: datetime) -> Optional[int]:
     return None
 
 def get_schedule_list(station: str, now: datetime) -> List[time]:
+    # Obtener la fecha efectiva (día operativo)
     eff = get_effective_datetime(now)
-    override = get_override_weekday(now)  # ya usa eff internamente
+    
+    # Sobrescritura por fechas especiales (Nochevieja, Sant'Agata, etc.)
+    override = get_override_weekday(now)
     if override is not None:
         if override == 4:
             schedule_list = SCHEDULES[station]["friday"]
@@ -591,14 +590,17 @@ def get_schedule_list(station: str, now: datetime) -> List[time]:
         else:
             schedule_list = SCHEDULES[station]["weekday"]
     else:
+        # Determinar si hoy es festivo nacional (usando la fecha efectiva)
         if is_festivo_nazionale(now):
             # Día festivo: elegir horario según el día de la semana efectivo
             weekday = eff.weekday()
-            if weekday in (4, 5):  # viernes o sábado
+            # Viernes (4) o sábado (5) -> usar horario de sábado (que incluye noche hasta 1:00)
+            if weekday == 4 or weekday == 5:
                 schedule_list = SCHEDULES[station]["saturday"]
-            else:  # domingo o lunes a jueves (festivo entre semana)
+            else:  # Domingo (6) o entre semana -> usar horario de domingo (cierre 22:30)
                 schedule_list = SCHEDULES[station]["sunday"]
         else:
+            # Día normal no festivo
             weekday_num = eff.weekday()
             if weekday_num == 4:
                 schedule_list = SCHEDULES[station]["friday"]
@@ -609,33 +611,37 @@ def get_schedule_list(station: str, now: datetime) -> List[time]:
             else:
                 schedule_list = SCHEDULES[station]["weekday"]
     
-    # Lógica del día anterior para horarios nocturnos (si es muy temprano, usar el horario del día anterior)
+    # Lógica para madrugada (antes de la primera salida)
     current_time = now.time()
-    first_train = schedule_list[0] if schedule_list else None
-    if first_train and current_time < first_train and current_time.hour < 6:
-        yesterday = eff - timedelta(days=1)
-        y_override = get_override_weekday(yesterday)
-        if y_override is not None:
-            if y_override == 4:
-                yesterday_list = SCHEDULES[station]["friday"]
-            elif y_override == 5:
-                yesterday_list = SCHEDULES[station]["saturday"]
-            elif y_override == 6:
-                yesterday_list = SCHEDULES[station]["sunday"]
+    if schedule_list:
+        first_train = schedule_list[0]
+        # Si es de madrugada (hora < 6) y no hay trenes hoy todavía, buscar en el día anterior
+        if current_time < first_train and current_time.hour < 6:
+            yesterday = eff - timedelta(days=1)
+            y_override = get_override_weekday(yesterday)
+            if y_override is not None:
+                if y_override == 4:
+                    yesterday_list = SCHEDULES[station]["friday"]
+                elif y_override == 5:
+                    yesterday_list = SCHEDULES[station]["saturday"]
+                elif y_override == 6:
+                    yesterday_list = SCHEDULES[station]["sunday"]
+                else:
+                    yesterday_list = SCHEDULES[station]["weekday"]
             else:
-                yesterday_list = SCHEDULES[station]["weekday"]
-        else:
-            y_weekday = yesterday.weekday()
-            if y_weekday == 4:
-                yesterday_list = SCHEDULES[station]["friday"]
-            elif y_weekday == 5:
-                yesterday_list = SCHEDULES[station]["saturday"]
-            elif y_weekday == 6:
-                yesterday_list = SCHEDULES[station]["sunday"]
-            else:
-                yesterday_list = SCHEDULES[station]["weekday"]
-        if any(t.hour >= 22 or t.hour < 6 for t in yesterday_list):
-            return yesterday_list
+                y_weekday = yesterday.weekday()
+                if y_weekday == 4:
+                    yesterday_list = SCHEDULES[station]["friday"]
+                elif y_weekday == 5:
+                    yesterday_list = SCHEDULES[station]["saturday"]
+                elif y_weekday == 6:
+                    yesterday_list = SCHEDULES[station]["sunday"]
+                else:
+                    yesterday_list = SCHEDULES[station]["weekday"]
+            # Si el día anterior tiene trenes en horario nocturno (después de las 22:00 o antes de las 6:00)
+            if any(t.hour >= 22 or t.hour < 6 for t in yesterday_list):
+                return yesterday_list
+    
     return schedule_list
 
 def get_next_departure(station: str, now: datetime) -> Tuple[Optional[datetime], int, int, bool]:
