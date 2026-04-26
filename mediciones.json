@@ -310,6 +310,22 @@
         { "origen": "Giovanni XXIII", "destino": "Stesicoro", "tiempo_seg": 121.209 }
       ],
       "trayectos_vuelta": []
+    },
+    {
+      "id": "20260425_sabado_2302_10pct",
+      "fecha": "2026-04-25",
+      "dia_semana": "sabado",
+      "hora": "23:02",
+      "ocupacion": 0.1,
+      "observacion": "Afluencia 10%, tiempos de carga y descarga incluidos como observaciones por separado.",
+      "trayectos_ida": [
+        { "origen": "Milo", "destino": "Borgo", "tiempo_seg": 86.720, "observacion": "carga/descarga 23.850s" },
+        { "origen": "Borgo", "destino": "Italia", "tiempo_seg": 156.760, "observacion": "carga/descarga 27.595s (sin parada en Giuffrida)" },
+        { "origen": "Italia", "destino": "Galatea", "tiempo_seg": 73.530, "observacion": "carga/descarga 19.720s" },
+        { "origen": "Galatea", "destino": "Giovanni XXIII", "tiempo_seg": 130.711, "observacion": "carga/descarga 23.720s" },
+        { "origen": "Giovanni XXIII", "destino": "Stesicoro", "tiempo_seg": 155.841, "observacion": "sin dato de carga" }
+      ],
+      "trayectos_vuelta": []
     }
   ]
 }
