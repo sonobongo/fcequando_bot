@@ -573,14 +573,14 @@ def get_schedule_list(station: str, now: datetime) -> List[time]:
             schedule_list = SCHEDULES[station]["weekday"]
     else:
         if is_festivo_nazionale(now):
-            weekday_real = now.weekday()
-            if weekday_real == 4:
+            weekday_eff = eff.weekday()
+            if weekday_eff == 4:   # viernes efectivo
                 schedule_list = SCHEDULES[station].get("friday_holiday", SCHEDULES[station]["sunday"])
-            elif weekday_real == 5:
+            elif weekday_eff == 5: # sábado efectivo
                 schedule_list = SCHEDULES[station].get("saturday_holiday", SCHEDULES[station]["sunday"])
-            elif weekday_real == 6:
+            elif weekday_eff == 6: # domingo efectivo
                 schedule_list = SCHEDULES[station]["sunday"]
-            else:
+            else:                  # lunes a jueves efectivo
                 schedule_list = SCHEDULES[station].get("weekday_holiday", SCHEDULES[station]["sunday"])
         else:
             weekday_num = now.weekday()
