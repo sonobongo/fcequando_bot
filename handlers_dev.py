@@ -4,10 +4,10 @@ import unicodedata
 import logging
 import re
 from datetime import datetime, timedelta
-from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove
+from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from horarios_logic import *
-from horarios_logic import CATANIA_TZ
+from horarios_logic import CATANIA_TZ, format_time, format_time_precise
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +37,27 @@ BOTON_TO_KEY = {
 }
 
 # ============================================================================
+# FUNCIÓN PARA OBTENER LA HORA SIMULADA (test estático o live)
+# ============================================================================
+def get_simulated_now(context: ContextTypes.DEFAULT_TYPE) -> datetime:
+    if 'test_time' in context.chat_data:
+        sim = context.chat_data['test_time']
+        if sim.tzinfo is None:
+            sim = CATANIA_TZ.localize(sim)
+        return sim
+    if 'test_live_base' in context.chat_data:
+        base = context.chat_data['test_live_base']
+        base_real = context.chat_data.get('test_live_real')
+        if base_real is None:
+            base_real = datetime.now(CATANIA_TZ)
+            context.chat_data['test_live_real'] = base_real
+        if base.tzinfo is None:
+            base = CATANIA_TZ.localize(base)
+        delta = datetime.now(CATANIA_TZ) - base_real
+        return base + delta
+    return datetime.now(CATANIA_TZ)
+
+# ============================================================================
 # FUNCIÓN PARA ELIMINAR "[]"
 # ============================================================================
 def clean_text_for_display(text: str) -> str:
@@ -49,7 +70,7 @@ def clean_text_for_display(text: str) -> str:
     return text
 
 # ============================================================================
-# FUNCIÓN PARA ALMACENAR IDS
+# ALMACENAR IDS
 # ============================================================================
 async def store_id(context, message):
     if message and hasattr(message, 'message_id'):
@@ -69,6 +90,89 @@ def stop_super_update(context):
         except Exception:
             pass
         context.chat_data.pop('super_task', None)
+
+# ============================================================================
+# CONSEJO TRAS 20 CONSULTAS DE ESTACIONES (SOLO UNA VEZ)
+# ============================================================================
+async def maybe_send_home_tip(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    count = context.chat_data.get('consulta_count', 0)
+    count += 1
+    context.chat_data['consulta_count'] = count
+    if count == 20:
+        tip_msg = (
+            "ℹ️ **Consigli:**\n"
+            "Puoi creare un accesso diretto da FCE Quando, nel tuo schermo principale.\n"
+            "Apri il profilo del bot ➜ tre puntini ➜ 'Aggiungi alla Home'."
+        )
+        await update.message.reply_text(tip_msg, parse_mode='Markdown')
+
+# ============================================================================
+# COUNTDOWN PARA CABECERAS
+# ============================================================================
+async def update_countdown(context, chat_id, message_id, initial_remaining, station, dest, next_dep, dev_mode):
+    remaining = initial_remaining
+    while remaining > 10:
+        await asyncio.sleep(10)
+        if not context.chat_data.get('countdown_active', False):
+            return
+        try:
+            now = get_simulated_now(context)
+            remaining_calc = (next_dep - now).total_seconds()
+            if remaining_calc <= 0:
+                new_msg = f"🚇 Il treno per {dest} è partito."
+                keyboard_inline = InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🔄 Aggiornare", callback_data=f"agg_cabecera_{station.lower()}")]
+                ])
+                await context.bot.edit_message_caption(chat_id=chat_id, message_id=message_id, caption=new_msg, parse_mode='Markdown', reply_markup=keyboard_inline)
+                context.chat_data['countdown_active'] = False
+                return
+            mins_rest = int(remaining_calc // 60)
+            secs_rest = int(remaining_calc % 60)
+            if dev_mode:
+                time_str = format_time_precise(mins_rest, secs_rest)
+            else:
+                time_str = format_time(mins_rest, secs_rest)
+            new_msg = f"Il treno è in binario. Partirà tra **{time_str}**."
+            await context.bot.edit_message_caption(chat_id=chat_id, message_id=message_id, caption=new_msg, parse_mode='Markdown')
+            remaining = remaining_calc
+        except Exception as e:
+            logger.error(f"Error en countdown: {e}")
+            break
+    if context.chat_data.get('countdown_active', False):
+        try:
+            now = get_simulated_now(context)
+            station_key = "montepo" if station == "Montepo" else "stesicoro"
+            next_dep_new, minutes, seconds, has_trains = get_next_departure(station, now)
+            if not has_trains:
+                close_h, close_m = get_closing_time(now, station)
+                new_msg = f"🚇 Non ci sono più treni oggi. Il servizio termina alle {close_h:02d}:{close_m:02d}."
+            else:
+                dest = "Stesicoro" if station == "Montepo" else "Monte Po"
+                remaining_new = (next_dep_new - now).total_seconds()
+                mins_rest = int(remaining_new // 60)
+                secs_rest = int(remaining_new % 60)
+                if dev_mode:
+                    time_str = format_time_precise(mins_rest, secs_rest)
+                else:
+                    time_str = format_time(mins_rest, secs_rest)
+                if remaining_new <= 60:
+                    new_msg = f"Il treno è in binario. Partirà tra **{time_str}**."
+                else:
+                    if mins_rest <= 4:
+                        new_msg = f"Il treno è in binario. Partirà tra **{time_str}**."
+                    else:
+                        if minutes < SHORT_TIME_THRESHOLD:
+                            new_msg = f"🚇 Prossimo treno per {dest} parte tra **{time_str}**."
+                        else:
+                            new_msg = f"🚇 Prossimo treno per {dest} parte tra **{time_str}**, alle {next_dep_new.strftime('%H:%M')}."
+            keyboard_inline = InlineKeyboardMarkup([
+                [InlineKeyboardButton("🔄 Aggiornare", callback_data=f"agg_cabecera_{station.lower()}")]
+            ])
+            await context.bot.edit_message_caption(chat_id=chat_id, message_id=message_id, caption=new_msg, parse_mode='Markdown', reply_markup=keyboard_inline)
+        except Exception as e:
+            logger.error(f"Error al finalizar countdown: {e}")
+        finally:
+            context.chat_data['countdown_active'] = False
 
 # ============================================================================
 # BUS NESIMA → HUMANITAS
@@ -103,7 +207,7 @@ def get_bus_message_montepo_advanced(now: datetime) -> str:
     return ""
 
 # ============================================================================
-# CONSTRUCCIÓN DE MENSAJES TEMPORALES (msg2 y msg3) con soporte para modo dev
+# CONSTRUCCIÓN DE MENSAJES TEMPORALES (msg2 y msg3)
 # ============================================================================
 def build_temporary_messages(now: datetime, estacion_key: str, dev_mode: bool = False):
     info_mp, info_st = get_next_train_at_station(now, estacion_key)
@@ -342,7 +446,7 @@ async def send_message_3(update: Update, context: ContextTypes.DEFAULT_TYPE, msg
         return await send_default(update, context, msg, reply_markup)
 
 # ============================================================================
-# FUNCIÓN PARA ENVIAR msg2 y msg3 (con botón retardado)
+# ENVÍO DE MENSAJES 2 Y 3 (junto con el botón para intermedias)
 # ============================================================================
 async def send_messages_2_and_3(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str, now: datetime, simulated: bool = False, show_button: bool = True):
     dev_mode = context.chat_data.get('dev_mode', False)
@@ -382,7 +486,7 @@ async def send_messages_2_and_3(update: Update, context: ContextTypes.DEFAULT_TY
     return tuple(ids) if ids else None
 
 # ============================================================================
-# REFRESCAR SOLO MENSAJES 2 y 3 (sin foto)
+# REFRESCAR SOLO MENSAJES 2 y 3
 # ============================================================================
 async def refresh_messages_only(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str):
     chat_id = update.effective_chat.id
@@ -395,20 +499,13 @@ async def refresh_messages_only(update: Update, context: ContextTypes.DEFAULT_TY
                 pass
         context.chat_data.pop('refresh_msg_ids', None)
     
-    simulated = context.chat_data.get('test_time')
-    if simulated:
-        if simulated.tzinfo is None:
-            simulated = CATANIA_TZ.localize(simulated)
-        now = simulated
-    else:
-        now = datetime.now(CATANIA_TZ)
-    
-    new_ids = await send_messages_2_and_3(update, context, estacion_key, now, simulated is not None, show_button=True)
+    now = get_simulated_now(context)
+    new_ids = await send_messages_2_and_3(update, context, estacion_key, now, simulated=(context.chat_data.get('test_time') is not None or context.chat_data.get('test_live_base') is not None), show_button=True)
     if new_ids:
         context.chat_data['refresh_msg_ids'] = list(new_ids)
 
 # ============================================================================
-# CALLBACK PARA EL BOTÓN "AGGIORNARE"
+# CALLBACKS
 # ============================================================================
 async def aggiornare_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -431,12 +528,16 @@ async def aggiornare_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     })()
     await refresh_messages_only(fake_update, context, estacion_key)
 
-# ============================================================================
-# CALLBACK PARA EL BOTÓN EN CABECERAS (Monte Po y Stesicoro)
-# ============================================================================
 async def aggiornare_cabecera_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
+    if 'countdown_task' in context.chat_data:
+        try:
+            context.chat_data['countdown_task'].cancel()
+        except:
+            pass
+        context.chat_data.pop('countdown_task', None)
+        context.chat_data['countdown_active'] = False
     estacion_key = query.data.split("_")[2]
     chat_id = query.message.chat_id
     
@@ -448,18 +549,11 @@ async def aggiornare_cabecera_callback(update: Update, context: ContextTypes.DEF
     await send_header_response(chat_id, context, estacion_key, is_update=True)
 
 # ============================================================================
-# FUNCIÓN AUXILIAR PARA ENVIAR RESPUESTA DE CABECERA (con soporte para modo dev)
+# FUNCIÓN AUXILIAR PARA ENVIAR RESPUESTA DE CABECERA
 # ============================================================================
 async def send_header_response(chat_id, context, estacion_key, is_update=False):
     try:
-        simulated = context.chat_data.get('test_time')
-        if simulated:
-            if simulated.tzinfo is None:
-                simulated = CATANIA_TZ.localize(simulated)
-            now = simulated
-        else:
-            now = datetime.now(CATANIA_TZ)
-        
+        now = get_simulated_now(context)
         dev_mode = context.chat_data.get('dev_mode', False)
         station = "Montepo" if estacion_key == "montepo" else "Stesicoro"
         closed, next_open, special_closing_msg = is_metro_closed(now, station)
@@ -478,7 +572,7 @@ async def send_header_response(chat_id, context, estacion_key, is_update=False):
             context.chat_data['main_msg_id'] = msg1.message_id
             await store_id(context, msg1)
         
-        # ========== MENSAJES ESPECIALES PARA FECHAS SEÑALADAS ==========
+        # Fechas especiales
         if (now.month == 12 and now.day == 31 and now.hour >= 12) or (now.month == 1 and now.day == 1 and now.hour < 3):
             msg = "🎉 Orario speciale di Capodanno: il servizio termina alle 03:00. Buon anno! 🎉"
             img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_default.png"
@@ -534,6 +628,29 @@ async def send_header_response(chat_id, context, estacion_key, is_update=False):
         secs_rest = int(remaining.total_seconds() % 60)
         total_seconds_rest = int(remaining.total_seconds())
         
+        if total_seconds_rest <= 60:
+            if dev_mode:
+                time_str = format_time_precise(mins_rest, secs_rest)
+            else:
+                time_str = format_time(mins_rest, secs_rest)
+            msg = f"Il treno è in binario. Partirà tra **{time_str}**."
+            img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_trenoarriva_cabeceras.png"
+            cache_buster = int(time_module.time())
+            img_url = f"{img_url}?v={cache_buster}"
+            msg2 = await context.bot.send_photo(chat_id=chat_id, photo=img_url, caption=msg, parse_mode='Markdown')
+            await store_id(context, msg2)
+            context.chat_data['countdown_msg_id'] = msg2.message_id
+            if 'countdown_task' in context.chat_data:
+                try:
+                    context.chat_data['countdown_task'].cancel()
+                except:
+                    pass
+            context.chat_data['countdown_active'] = True
+            task = asyncio.create_task(update_countdown(context, chat_id, msg2.message_id, total_seconds_rest, station, dest, next_dep, dev_mode))
+            context.chat_data['countdown_task'] = task
+            return
+        
+        # Mensaje normal (cuando faltan más de 60 segundos)
         if dev_mode:
             time_str_rest = format_time_precise(mins_rest, secs_rest)
             time_str = format_time_precise(minutes, seconds)
@@ -591,6 +708,7 @@ async def send_header_response(chat_id, context, estacion_key, is_update=False):
         else:
             msg2 = await context.bot.send_message(chat_id=chat_id, text=msg, parse_mode='Markdown', reply_markup=keyboard_inline)
         await store_id(context, msg2)
+        context.chat_data['main_msg_id'] = msg2.message_id
     
     except Exception as e:
         logger.error(f"Error en send_header_response: {e}")
@@ -600,31 +718,31 @@ async def send_header_response(chat_id, context, estacion_key, is_update=False):
             pass
 
 # ============================================================================
-# RESPUESTA PRINCIPAL (foto + msg2/msg3) - SIN MENSAJE "caricando informazione..."
+# RESPUESTA PRINCIPAL (foto + msg2/msg3)
 # ============================================================================
 async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str, return_to_main: bool = True):
-    # Detener actualización automática de super si está activa
-    stop_super_update(context)
+    if 'countdown_task' in context.chat_data:
+        try:
+            context.chat_data['countdown_task'].cancel()
+        except:
+            pass
+        context.chat_data.pop('countdown_task', None)
+        context.chat_data['countdown_active'] = False
     
+    stop_super_update(context)
     context.chat_data['last_return_to_main'] = return_to_main
-    simulated = context.chat_data.get('test_time')
+    now = get_simulated_now(context)
     demo_mode = context.chat_data.get('demo_mode', False)
-    if simulated:
-        if simulated.tzinfo is None:
-            simulated = CATANIA_TZ.localize(simulated)
-        now = simulated
-    else:
-        now = datetime.now(CATANIA_TZ)
     
     test_indicator = ""
-    if simulated and not demo_mode:
+    if (context.chat_data.get('test_time') is not None or context.chat_data.get('test_live_base') is not None) and not demo_mode:
         test_indicator = "🧪 [TEST MODE] "
 
     if estacion_key in ["montepo", "stesicoro"]:
         await send_header_response(update.message.chat_id, context, estacion_key, is_update=False)
+        await maybe_send_home_tip(update, context)
         return
 
-    # ESTACIONES INTERMEDIAS
     closed, next_open, special_closing_msg = is_metro_closed(now, "Montepo")
     if closed:
         if next_open.date() > now.date():
@@ -645,6 +763,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
             msg1 = await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
         context.chat_data['main_msg_id'] = msg1.message_id
         await store_id(context, msg1)
+        await maybe_send_home_tip(update, context)
         return
 
     nombre = NOMBRE_MOSTRAR.get(estacion_key, estacion_key.capitalize())
@@ -678,9 +797,11 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
     context.chat_data['main_msg_id'] = msg1.message_id
     await store_id(context, msg1)
 
-    ids = await send_messages_2_and_3(update, context, estacion_key, now, simulated is not None, show_button=True)
+    ids = await send_messages_2_and_3(update, context, estacion_key, now, simulated=(context.chat_data.get('test_time') is not None or context.chat_data.get('test_live_base') is not None), show_button=True)
     if ids:
         context.chat_data['refresh_msg_ids'] = list(ids)
+    
+    await maybe_send_home_tip(update, context)
 
 # ============================================================================
 # COMANDOS Y WRAPPERS
@@ -707,6 +828,7 @@ async def handle_button_wrapper(update, context): await cancel_refresh_and_run(u
 async def cmd_testgif_wrapper(update, context): await cancel_refresh_and_run(update, context, cmd_testgif)
 async def test_command_wrapper(update, context): await cancel_refresh_and_run(update, context, test_command)
 async def testfin_command_wrapper(update, context): await cancel_refresh_and_run(update, context, testfin_command)
+async def testlive_command_wrapper(update, context): await cancel_refresh_and_run(update, context, testlive_command)
 
 async def cmd_montepo(update, context):
     context.chat_data['last_station'] = "montepo"
@@ -749,7 +871,7 @@ async def cmd_altri(update, context):
 
 async def start(update, context):
     user = update.effective_user
-    now = datetime.now(CATANIA_TZ)
+    now = get_simulated_now(context)
     last_msg = get_last_train_message(now)
     msg = await update.message.reply_text(
         f"Ciao {user.first_name}! 👋\n\n"
@@ -770,7 +892,8 @@ async def help_command(update, context):
         "/milo - Prossimi treni a Milo\n"
         "/altri - Mostra altre stazioni\n"
         "/fontana, /nesima, /sannullo, /cibali, /borgo, /giuffrida, /italia, /galatea, /giovanni\n"
-        "/test DDMMYYYY HHMM - Attiva modalità test\n"
+        "/test DDMMYYYY HHMM - Attiva modalità test statica\n"
+        "/testlive DDMMYYYY HHMM - Attiva modalità test live (tempo reale)\n"
         "/testfin - Disattiva modalità test\n"
         "/about - Info sul bot\n"
         "/grazie - Info sul bot\n"
@@ -781,9 +904,7 @@ async def help_command(update, context):
     await store_id(context, msg)
 
 async def handle_button(update, context):
-    # Detener actualización automática de super
     stop_super_update(context)
-    
     text = update.message.text
     if text == "Altri":
         await cmd_altri(update, context)
@@ -797,67 +918,109 @@ async def handle_button(update, context):
         await update.message.reply_text("Scelta non valida. Usa i pulsanti.", reply_markup=keyboard_main)
 
 # ============================================================================
-# MODO TEST
+# MODO TEST (estático y live)
 # ============================================================================
 async def test_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Detener actualización automática de super
     stop_super_update(context)
-    
     args = context.args
-    if not args:
-        msg = await update.message.reply_text(
-            "🧪 **Modalità test**\n\n"
-            "Per fissare una data/ora simulata:\n"
+    if not args or len(args) != 2:
+        await update.message.reply_text(
+            "🧪 **Modalità test statica**\n\n"
+            "Il tempo simulato NON avanza.\n"
             "`/test DDMMYYYY HHMM`\n"
             "Esempio: `/test 11022026 1102`\n\n"
-            "Per tornare alla realtà: `/testfin`\n\n"
-            "In modalità test, puoi avanzare/retrocedere di secondi (es. +10s, -30s) o minuti (es. +5m, -2m).",
+            "Per tempo reale usa `/testlive`\n"
+            "Per uscire: `/testfin`",
             parse_mode='Markdown'
         )
-        await store_id(context, msg)
         return
-    if len(args) == 2:
-        date_str, time_str = args[0], args[1]
-        if len(date_str) != 8 or not date_str.isdigit():
-            await update.message.reply_text("Formato data non valido. Usa DDMMYYYY.")
-            return
-        if len(time_str) != 4 or not time_str.isdigit():
-            await update.message.reply_text("Formato ora non valido. Usa HHMM.")
-            return
-        day, month, year = int(date_str[0:2]), int(date_str[2:4]), int(date_str[4:8])
-        hour, minute = int(time_str[0:2]), int(time_str[2:4])
-        if hour > 23 or minute > 59:
-            await update.message.reply_text("Ora non valida.")
-            return
-        try:
-            simulated = datetime(year, month, day, hour, minute)
-        except Exception as e:
-            await update.message.reply_text(f"Data non valida: {e}")
-            return
-        simulated = CATANIA_TZ.localize(simulated)
-        context.chat_data['test_time'] = simulated
-        context.chat_data.pop('demo_mode', None)
-        msg = await update.message.reply_text(
-            f"🧪 **Modalità test attivata**\nOra simulata: {simulated.strftime('%d/%m/%Y %H:%M')}\nUsa i bottoni. Per uscire: `/testfin`\nPer avanzare/retrocedere scrivi +10s, -30s, +5m, -2m, ecc.",
+    date_str, time_str = args[0], args[1]
+    if len(date_str) != 8 or not date_str.isdigit():
+        await update.message.reply_text("Formato data non valido. Usa DDMMYYYY.")
+        return
+    if len(time_str) != 4 or not time_str.isdigit():
+        await update.message.reply_text("Formato ora non valido. Usa HHMM.")
+        return
+    day, month, year = int(date_str[0:2]), int(date_str[2:4]), int(date_str[4:8])
+    hour, minute = int(time_str[0:2]), int(time_str[2:4])
+    if hour > 23 or minute > 59:
+        await update.message.reply_text("Ora non valida.")
+        return
+    try:
+        simulated = datetime(year, month, day, hour, minute)
+    except Exception as e:
+        await update.message.reply_text(f"Data non valida: {e}")
+        return
+    simulated = CATANIA_TZ.localize(simulated)
+    context.chat_data.pop('test_live_base', None)
+    context.chat_data.pop('test_live_real', None)
+    context.chat_data.pop('demo_mode', None)
+    context.chat_data['test_time'] = simulated
+    await update.message.reply_text(
+        f"🧪 **Modalità test statica attivata**\nOra simulata: {simulated.strftime('%d/%m/%Y %H:%M')}\nIl tempo non avanza.\nUsa /testfin per uscire.\nPer avanzare manualmente: +5m, -10s, ecc.",
+        parse_mode='Markdown'
+    )
+
+async def testlive_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    stop_super_update(context)
+    args = context.args
+    if not args or len(args) != 2:
+        await update.message.reply_text(
+            "🕒 **Modalità test live**\n\n"
+            "Il tempo simulato avanza automaticamente (1 secondo reale = 1 secondo simulato).\n"
+            "`/testlive DDMMYYYY HHMM`\n"
+            "Esempio: `/testlive 11022026 1102`\n\n"
+            "Per uscire: `/testfin`",
             parse_mode='Markdown'
         )
-        await store_id(context, msg)
         return
-    await update.message.reply_text("Comando non riconosciuto. Usa /test DDMMYYYY HHMM")
+    date_str, time_str = args[0], args[1]
+    if len(date_str) != 8 or not date_str.isdigit():
+        await update.message.reply_text("Formato data non valido. Usa DDMMYYYY.")
+        return
+    if len(time_str) != 4 or not time_str.isdigit():
+        await update.message.reply_text("Formato ora non valido. Usa HHMM.")
+        return
+    day, month, year = int(date_str[0:2]), int(date_str[2:4]), int(date_str[4:8])
+    hour, minute = int(time_str[0:2]), int(time_str[2:4])
+    if hour > 23 or minute > 59:
+        await update.message.reply_text("Ora non valida.")
+        return
+    try:
+        simulated = datetime(year, month, day, hour, minute)
+    except Exception as e:
+        await update.message.reply_text(f"Data non valida: {e}")
+        return
+    simulated = CATANIA_TZ.localize(simulated)
+    context.chat_data.pop('test_time', None)
+    context.chat_data.pop('demo_mode', None)
+    context.chat_data['test_live_base'] = simulated
+    context.chat_data['test_live_real'] = datetime.now(CATANIA_TZ)
+    await update.message.reply_text(
+        f"🕒 **Modalità test live attivata**\nOra simulata: {simulated.strftime('%d/%m/%Y %H:%M')}\nIl tempo avanzerà in tempo reale.\nUsa /testfin per uscire.",
+        parse_mode='Markdown'
+    )
 
 async def testfin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Detener actualización automática de super
     stop_super_update(context)
-    
-    if context.chat_data and 'test_time' in context.chat_data:
-        del context.chat_data['test_time']
+    if 'countdown_task' in context.chat_data:
+        try:
+            context.chat_data['countdown_task'].cancel()
+        except:
+            pass
+        context.chat_data.pop('countdown_task', None)
+        context.chat_data['countdown_active'] = False
+    if 'test_time' in context.chat_data or 'test_live_base' in context.chat_data:
+        context.chat_data.pop('test_time', None)
+        context.chat_data.pop('test_live_base', None)
+        context.chat_data.pop('test_live_real', None)
         context.chat_data.pop('demo_mode', None)
-        await update.message.reply_text("✅ Modalità test/demo disattivata. Ora reale ripristinata.")
+        await update.message.reply_text("✅ Modalità test disattivata. Ora reale ripristinata.")
     else:
-        await update.message.reply_text("⚠️ Nessuna modalità test/demo attiva.")
+        await update.message.reply_text("⚠️ Nessuna modalità test attiva.")
 
 # ============================================================================
-# FUNCIONES PARA "SUPER" (versión simplificada: tiempos en estaciones, separadores vacíos)
+# FUNCIONES PARA "SUPER" - VERSIÓN SIMPLIFICADA (pero funcional)
 # ============================================================================
 async def get_super_status(now: datetime) -> str:
     estaciones_orden = ["montepo", "fontana", "nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "giovanni", "stesicoro"]
@@ -866,7 +1029,6 @@ async def get_super_status(now: datetime) -> str:
     for idx, estacion in enumerate(estaciones_orden):
         nombre = NOMBRE_MOSTRAR.get(estacion, estacion.capitalize())
         
-        # ---- Línea de la estación (solo si hay tren con ≤59 segundos) ----
         if estacion == "montepo":
             next_dep, mins, secs, has = get_next_departure("Montepo", now)
             if has:
@@ -909,7 +1071,6 @@ async def get_super_status(now: datetime) -> str:
             else:
                 lines.append(f"⚪️ {nombre}")
         
-        # ---- Separador: siempre vacío (sin flechas ni números) ----
         if estacion != "stesicoro":
             lines.append("▫️")
     
@@ -923,13 +1084,7 @@ async def auto_update_super(context, chat_id, message_id, cycles=40, interval=3)
                 return
         if not context.chat_data.get('super_active', False):
             return
-        simulated = context.chat_data.get('test_time')
-        if simulated:
-            if simulated.tzinfo is None:
-                simulated = CATANIA_TZ.localize(simulated)
-            now = simulated
-        else:
-            now = datetime.now(CATANIA_TZ)
+        now = get_simulated_now(context)
         new_msg = await get_super_status(now)
         try:
             await context.bot.edit_message_text(text=new_msg, chat_id=chat_id, message_id=message_id, parse_mode='Markdown')
@@ -946,7 +1101,6 @@ async def auto_update_super(context, chat_id, message_id, cycles=40, interval=3)
         context.chat_data.pop('super_task', None)
 
 async def send_super_response(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Detener cualquier tarea anterior
     if 'super_task' in context.chat_data:
         context.chat_data['super_active'] = False
         try:
@@ -954,14 +1108,7 @@ async def send_super_response(update: Update, context: ContextTypes.DEFAULT_TYPE
         except Exception:
             pass
         context.chat_data.pop('super_task', None)
-    
-    simulated = context.chat_data.get('test_time')
-    if simulated:
-        if simulated.tzinfo is None:
-            simulated = CATANIA_TZ.localize(simulated)
-        now = simulated
-    else:
-        now = datetime.now(CATANIA_TZ)
+    now = get_simulated_now(context)
     msg = await get_super_status(now)
     result = await update.message.reply_text(msg, parse_mode='Markdown')
     message_id = result.message_id
@@ -975,7 +1122,6 @@ async def send_super_response(update: Update, context: ContextTypes.DEFAULT_TYPE
 async def aggiornare_super_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    # Detener la tarea actual
     if 'super_task' in context.chat_data:
         context.chat_data['super_active'] = False
         try:
@@ -986,15 +1132,8 @@ async def aggiornare_super_callback(update: Update, context: ContextTypes.DEFAUL
     message = query.message
     chat_id = message.chat_id
     message_id = message.message_id
-    simulated = context.chat_data.get('test_time')
-    if simulated:
-        if simulated.tzinfo is None:
-            simulated = CATANIA_TZ.localize(simulated)
-        now = simulated
-    else:
-        now = datetime.now(CATANIA_TZ)
+    now = get_simulated_now(context)
     new_msg = await get_super_status(now)
-    # Editar el mensaje para quitar el botón y actualizar contenido
     try:
         await query.edit_message_text(text=new_msg, parse_mode='Markdown')
     except Exception as e:
@@ -1005,7 +1144,6 @@ async def aggiornare_super_callback(update: Update, context: ContextTypes.DEFAUL
             await message.delete()
         except:
             pass
-    # Reiniciar ciclo
     context.chat_data['super_msg_id'] = message_id
     context.chat_data['super_chat_id'] = chat_id
     context.chat_data['super_active'] = True
@@ -1016,12 +1154,11 @@ async def aggiornare_super_callback(update: Update, context: ContextTypes.DEFAUL
 # MODO NONNA: DETECCIÓN DE NOMBRE DE ESTACIÓN CON ERRORES TIPOGRÁFICOS Y ALIAS
 # ============================================================================
 async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Detener actualización automática de super si está activa
     stop_super_update(context)
     
     texto = update.message.text.strip()
     
-    # ========== RESPUESTA A PALABRAS CLAVE (about, grazie) ==========
+    # Respuesta a palabras clave (about, grazie)
     texto_lower = texto.lower()
     texto_normalized = re.sub(r'^/', '', texto_lower)
     texto_normalized = re.sub(r'\.$', '', texto_normalized)
@@ -1035,13 +1172,13 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await store_id(context, result)
         return
     
-    # ========== RESPUESTA A "super" (solo palabra exacta) ==========
+    # Respuesta a "super"
     if re.match(r'^(/?)super[.!?]*$', texto_normalized):
         await send_super_response(update, context)
         return
     
-    # ========== AVANCE/RETROCESO DE TIEMPO EN MODO TEST (+/- segundos o minutos) ==========
-    if 'test_time' in context.chat_data:
+    # Avance/retroceso manual en modo test
+    if 'test_time' in context.chat_data or 'test_live_base' in context.chat_data:
         match = re.match(r'^([+-])(\d+)([sm]?)$', texto_normalized)
         if match:
             signo = match.group(1)
@@ -1053,46 +1190,25 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 delta = timedelta(minutes=cantidad)
             if signo == '-':
                 delta = -delta
-            simulated = context.chat_data['test_time']
-            if simulated.tzinfo is None:
-                simulated = CATANIA_TZ.localize(simulated)
-            nueva_simulacion = simulated + delta
-            context.chat_data['test_time'] = nueva_simulacion
+            now_sim = get_simulated_now(context)
+            nueva_base = now_sim + delta
+            if 'test_time' in context.chat_data:
+                context.chat_data['test_time'] = nueva_base
+            else:
+                context.chat_data['test_live_base'] = nueva_base
+                context.chat_data['test_live_real'] = datetime.now(CATANIA_TZ)
+            await update.message.reply_text(f"⏩ {cantidad}{unidad}. Nuovo orario simulato: {nueva_base.strftime('%d/%m/%Y %H:%M:%S')}")
             last_station = context.chat_data.get('last_station')
             if last_station:
                 await send_station_response(update, context, last_station, return_to_main=False)
-            else:
-                await update.message.reply_text(f"⏩ Modifica di {cantidad}{unidad}. Nuovo orario simulato: {nueva_simulacion.strftime('%d/%m/%Y %H:%M:%S')}")
             return
     
-    # ========== AVANCE DE TIEMPO EN MODO TEST (formato antiguo, solo minutos) ==========
-    if 'test_time' in context.chat_data and texto_normalized.startswith('+'):
-        try:
-            minutos = int(texto_normalized[1:])
-            if 1 <= minutos <= 99:
-                simulated = context.chat_data['test_time']
-                if simulated.tzinfo is None:
-                    simulated = CATANIA_TZ.localize(simulated)
-                nueva_simulacion = simulated + timedelta(minutes=minutos)
-                context.chat_data['test_time'] = nueva_simulacion
-                last_station = context.chat_data.get('last_station')
-                if last_station:
-                    await send_station_response(update, context, last_station, return_to_main=False)
-                else:
-                    await update.message.reply_text(f"⏩ Avanzati {minutos} minuti. Nuovo orario simulato: {nueva_simulacion.strftime('%d/%m/%Y %H:%M')}")
-                return
-            else:
-                await update.message.reply_text("Puoi avanzare da 1 a 99 minuti. Esempio: +5")
-                return
-        except ValueError:
-            pass
-    
+    # Detección de estación por nombre (modo nonna)
     import unicodedata
     texto_norm = unicodedata.normalize('NFKD', texto.lower()).encode('ASCII', 'ignore').decode('ASCII')
     texto_limpio = ' '.join(texto_norm.split())
     palabras = texto_limpio.split()
 
-    # ========== DETECCIÓN DE PALABRAS CLAVE (calles cercanas) ==========
     KEYWORDS = {
         "corso sicilia": "stesicoro",
         "repubblica": "stesicoro",
@@ -1180,7 +1296,7 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await send_station_response(update, context, mejor_clave_kw, return_to_main=True)
         return
 
-    # ========== REGLA ESPECIAL: palabras que empiezan por ESTE/STE o terminan en CORO/COLO/COMO ==========
+    # Regla especial Stesicoro
     for palabra in palabras:
         palabra_lower = palabra.lower()
         if (palabra_lower.startswith('este') or palabra_lower.startswith('ste')) or \
@@ -1188,7 +1304,7 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
             await send_station_response(update, context, "stesicoro", return_to_main=True)
             return
 
-    # ========== ALIAS (sinónimos de estaciones) ==========
+    # Alias
     ALIASES = {
         "misterbianco": "montepo",
         "humanitas": "nesima",
@@ -1287,9 +1403,9 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await send_station_response(update, context, mejor_clave, return_to_main=True)
         return
 
-    msg = await update.message.reply_text(
+    # No reconocido
+    await update.message.reply_text(
         "Stazione non riconosciuta. Le stazioni disponibili sono: " +
         ", ".join(NOMBRE_MOSTRAR.values()) + ".\nPuoi anche usare alias come 'Misterbianco' (Monte Po) o 'Humanitas' (Nesima).",
         reply_markup=keyboard_main
     )
-    await store_id(context, msg)
