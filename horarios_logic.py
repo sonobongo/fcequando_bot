@@ -109,10 +109,10 @@ EXTRA_TRAMOS_REVERSE = [
 ]
 
 # ============================================================================
-# DETECCIÓN DE HORA PUNTA
+# DETECCIÓN DE HORA PUNTA (solo lunes a viernes, sin domingos)
 # ============================================================================
 def is_peak_hour(now: datetime) -> bool:
-    if now.weekday() >= 5:
+    if now.weekday() >= 5:           # sábado o domingo
         return False
     if is_festivo_nazionale(now):
         return False
@@ -129,16 +129,21 @@ def is_peak_hour(now: datetime) -> bool:
         return True
     return False
 
+# ============================================================================
+# EXTRA DE 5 SEGUNDOS PARA GIOVANNI XXIII (incluye domingos tarde si lunes laborable)
+# ============================================================================
 def should_add_giovanni_extra(now: datetime) -> bool:
+    # Caso original: lunes a viernes laborables, de 13:00 a 18:00, sept-jun
     if now.weekday() < 5 and not is_festivo_nazionale(now):
         month = now.month
         if (month >= 9 or month <= 6) and 13 <= now.hour < 18:
             return True
-    if now.weekday() == 6:
+    # Nuevo caso: domingo por la tarde (17:30 - 19:45) si el lunes siguiente es laborable (sept-jun y no festivo)
+    if now.weekday() == 6:   # domingo
         month = now.month
-        if (month >= 9 or month <= 6) and 18 <= now.hour < 21:
+        if (month >= 9 or month <= 6) and ((now.hour == 17 and now.minute >= 30) or (now.hour == 18) or (now.hour == 19 and now.minute <= 45)):
             tomorrow = now + timedelta(days=1)
-            if not is_festivo_nazionale(tomorrow) and tomorrow.weekday() < 5:
+            if tomorrow.weekday() < 5 and not is_festivo_nazionale(tomorrow) and (tomorrow.month >= 9 or tomorrow.month <= 6):
                 return True
     return False
 
@@ -574,13 +579,13 @@ def get_schedule_list(station: str, now: datetime) -> List[time]:
     else:
         if is_festivo_nazionale(now):
             weekday_eff = eff.weekday()
-            if weekday_eff == 4:   # viernes efectivo
+            if weekday_eff == 4:
                 schedule_list = SCHEDULES[station].get("friday_holiday", SCHEDULES[station]["sunday"])
-            elif weekday_eff == 5: # sábado efectivo
+            elif weekday_eff == 5:
                 schedule_list = SCHEDULES[station].get("saturday_holiday", SCHEDULES[station]["sunday"])
-            elif weekday_eff == 6: # domingo efectivo
+            elif weekday_eff == 6:
                 schedule_list = SCHEDULES[station]["sunday"]
-            else:                  # lunes a jueves efectivo
+            else:
                 schedule_list = SCHEDULES[station].get("weekday_holiday", SCHEDULES[station]["sunday"])
         else:
             weekday_num = now.weekday()
@@ -593,7 +598,6 @@ def get_schedule_list(station: str, now: datetime) -> List[time]:
             else:
                 schedule_list = SCHEDULES[station]["weekday"]
     
-    # Lógica para madrugada (antes de la primera salida)
     if not schedule_list:
         return schedule_list
     current_time = now.time()
@@ -625,10 +629,9 @@ def get_schedule_list(station: str, now: datetime) -> List[time]:
     return schedule_list
 
 # ============================================================================
-# PRÓXIMO TREN (versión definitiva y simplificada)
+# PRÓXIMO TREN (versión corregida con now.date())
 # ============================================================================
 def get_next_departure(station: str, now: datetime) -> Tuple[Optional[datetime], int, int, bool]:
-    # Cierre nocturno
     if 1 <= now.hour < 6:
         if (now.month == 1 and now.day == 1 and 1 <= now.hour < 3) or \
            (now.month == 2 and now.day in [4,5,6] and 1 <= now.hour < 2):
@@ -644,15 +647,7 @@ def get_next_departure(station: str, now: datetime) -> Tuple[Optional[datetime],
     if not schedule_list:
         return (None, 0, 0, False)
     
-    # Determinar la fecha base para "hoy"
-    # Regla: si es domingo y hora < 5, usar la fecha real, sino la fecha efectiva.
-    if now.hour < 5 and now.weekday() == 6:
-        base_date = now.date()
-    else:
-        base_date = get_effective_datetime(now).date()
-    
     current_time = now.time()
-    # Buscar el primer horario de hoy que sea mayor que la hora actual
     next_dep_time = None
     for dep_time in schedule_list:
         if dep_time > current_time:
@@ -660,19 +655,18 @@ def get_next_departure(station: str, now: datetime) -> Tuple[Optional[datetime],
             break
     
     if next_dep_time:
-        next_dt = datetime.combine(base_date, next_dep_time)
-        next_dt = CATANIA_TZ.localize(next_dt)
-        # Si por casualidad el resultado es <= now (ej. por cambio de zona horaria), sumamos un día
-        if next_dt <= now:
-            next_dt += timedelta(days=1)
+        candidate = datetime.combine(now.date(), next_dep_time)
+        if candidate.tzinfo is None:
+            candidate = CATANIA_TZ.localize(candidate)
+        if candidate <= now:
+            candidate += timedelta(days=1)
     else:
-        # No hay más trenes hoy: tomar el primero de mañana
-        tomorrow = base_date + timedelta(days=1)
-        next_dt = datetime.combine(tomorrow, schedule_list[0])
-        next_dt = CATANIA_TZ.localize(next_dt)
+        tomorrow = now.date() + timedelta(days=1)
+        candidate = datetime.combine(tomorrow, schedule_list[0])
+        candidate = CATANIA_TZ.localize(candidate)
     
-    delta = int((next_dt - now).total_seconds())
-    return (next_dt, delta // 60, delta % 60, True)
+    delta = int((candidate - now).total_seconds())
+    return (candidate, delta // 60, delta % 60, True)
 
 def get_next_departure_after(station: str, now: datetime, after_time: time) -> Tuple[Optional[datetime], int, int, bool]:
     if 1 <= now.hour < 6:
@@ -694,12 +688,6 @@ def get_next_departure_after(station: str, now: datetime, after_time: time) -> T
     if not schedule_list:
         return (None, 0, 0, False)
     
-    if now.hour < 5 and now.weekday() == 6:
-        base_date = now.date()
-    else:
-        base_date = get_effective_datetime(now).date()
-    
-    # Buscar el primer horario después de after_time (en el mismo día)
     next_dep_time = None
     for dep_time in schedule_list:
         if dep_time > after_time:
@@ -707,36 +695,42 @@ def get_next_departure_after(station: str, now: datetime, after_time: time) -> T
             break
     
     if next_dep_time:
-        next_dt = datetime.combine(base_date, next_dep_time)
-        next_dt = CATANIA_TZ.localize(next_dt)
-        if next_dt <= now:
-            next_dt += timedelta(days=1)
+        candidate = datetime.combine(now.date(), next_dep_time)
+        if candidate.tzinfo is None:
+            candidate = CATANIA_TZ.localize(candidate)
+        if candidate <= now:
+            candidate += timedelta(days=1)
     else:
-        tomorrow = base_date + timedelta(days=1)
-        next_dt = datetime.combine(tomorrow, schedule_list[0])
-        next_dt = CATANIA_TZ.localize(next_dt)
+        tomorrow = now.date() + timedelta(days=1)
+        candidate = datetime.combine(tomorrow, schedule_list[0])
+        candidate = CATANIA_TZ.localize(candidate)
     
-    delta = int((next_dt - now).total_seconds())
-    return (next_dt, delta // 60, delta % 60, True)
+    delta = int((candidate - now).total_seconds())
+    return (candidate, delta // 60, delta % 60, True)
 
+# ============================================================================
+# FORMATO DE TIEMPO (con fracciones de 10 segundos cuando ≤ 90 segundos)
+# ============================================================================
 def format_time(minutes: int, seconds: int) -> str:
-    if minutes >= SHORT_TIME_THRESHOLD:
+    total_seconds = minutes * 60 + seconds
+    if total_seconds > 90:
         return f"{minutes} minuti"
+    rounded_seconds = (seconds // 10) * 10
     if minutes == 0:
-        if seconds == 0:
+        if rounded_seconds == 0:
             return "subito"
         else:
-            return "30 secondi"
+            return f"{rounded_seconds} secondi"
     elif minutes == 1:
-        if seconds < 30:
+        if rounded_seconds == 0:
             return "1 minuto"
         else:
-            return "1 minuto e 30 secondi"
+            return f"1 minuto e {rounded_seconds} secondi"
     else:
-        if seconds < 30:
+        if rounded_seconds == 0:
             return f"{minutes} minuti"
         else:
-            return f"{minutes} minuti e 30 secondi"
+            return f"{minutes} minuti e {rounded_seconds} secondi"
 
 def get_last_train_message(now: datetime) -> str:
     if (now.month == 12 and now.day == 31 and now.hour >= 12) or (now.month == 1 and now.day == 1 and now.hour < 3):
