@@ -1020,60 +1020,315 @@ async def testfin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⚠️ Nessuna modalità test attiva.")
 
 # ============================================================================
-# FUNCIONES PARA "SUPER" - VERSIÓN SIMPLIFICADA (pero funcional)
+# FUNCIONES PARA "SUPER" - Tracking de posición de trenes en tiempo real
 # ============================================================================
+
+def _build_train_positions(now: datetime):
+    """
+    Para cada tren en ruta, calcula su posición actual en la línea.
+
+    STATIONS (idx 0..11): montepo, fontana, nesima, sannullo, cibali, milo,
+                           borgo, giuffrida, italia, galatea, giovanni, stesicoro
+
+    Los tiempos acumulados desde cada cabecera son:
+      t_fwd[i] = segundos desde montepo hasta STATIONS[i]   (dirección 🔻)
+      t_rev[i] = segundos desde stesicoro hasta STATIONS[i] (dirección 🔺)
+                 donde el recorrido reverse es 11→10→...→0
+
+    Para un tren que lleva 'elapsed' segundos en ruta:
+      - Si t_fwd[i] <= elapsed < t_fwd[i+1]: está en el segmento ▫️ entre i e i+1
+          * Si (t_fwd[i+1] - elapsed) <= 59: pos_type='arriving', station_idx=i+1
+          * Si no:                            pos_type='between',  segment_idx=i
+      - Análogo para reverse.
+
+    El 'segment_idx' siempre es el índice menor de los dos extremos del segmento,
+    de modo que coincide con el ▫️ entre STATIONS[segment_idx] y STATIONS[segment_idx+1].
+    """
+    from horarios_logic import (
+        get_schedule_list, get_total_seconds_from_montepo,
+        get_total_seconds_from_stesicoro, is_metro_closed, CATANIA_TZ
+    )
+
+    STATIONS = ["montepo", "fontana", "nesima", "sannullo", "cibali", "milo",
+                "borgo", "giuffrida", "italia", "galatea", "giovanni", "stesicoro"]
+    N = len(STATIONS)
+
+    # Tiempos acumulados forward (montepo=0, fontana=t1, ..., stesicoro=T)
+    t_fwd = [get_total_seconds_from_montepo(st, now) for st in STATIONS]
+    t_fwd[0] = 0
+
+    # Tiempos acumulados reverse en orden de recorrido: stesicoro→giovanni→...→montepo
+    # rev_route[k] = STATIONS index del k-ésimo punto del recorrido reverse
+    # rev_times[k] = segundos acumulados desde stesicoro hasta rev_route[k]
+    rev_route = list(reversed(range(N)))  # [11, 10, 9, ..., 0]
+    rev_times = [get_total_seconds_from_stesicoro(STATIONS[i], now) for i in rev_route]
+    # rev_times[0] debe ser 0 (stesicoro→stesicoro). Si no lo es, forzar:
+    rev_times[0] = 0
+
+    forward_trains = []
+    reverse_trains = []
+
+    # ---------- Trenes FORWARD: Monte Po → Stesicoro (🔻) ----------
+    closed_mp, _, _ = is_metro_closed(now, "Montepo")
+    if not closed_mp:
+        total_fwd = t_fwd[N - 1]  # duración total del trayecto
+        for salida_t in get_schedule_list("Montepo", now):
+            dep_dt = CATANIA_TZ.localize(datetime.combine(now.date(), salida_t))
+            elapsed = (now - dep_dt).total_seconds()
+            if elapsed < 0:
+                continue  # aún no ha salido
+            if elapsed > total_fwd + 120:
+                continue  # ya llegó hace más de 2 min
+
+            pos_type = segment_idx = station_idx = secs_remaining = None
+
+            # Buscar en qué segmento está
+            for i in range(N - 1):
+                if t_fwd[i] <= elapsed < t_fwd[i + 1]:
+                    secs_to_next = t_fwd[i + 1] - elapsed
+                    if secs_to_next <= 59:
+                        pos_type, station_idx, secs_remaining = 'arriving', i + 1, int(secs_to_next)
+                    else:
+                        pos_type, segment_idx, secs_remaining = 'between', i, int(secs_to_next)
+                    break
+
+            # Ya pasó la última estación → está llegando a Stesicoro
+            if pos_type is None and elapsed >= t_fwd[N - 1]:
+                pos_type, station_idx, secs_remaining = 'arriving', N - 1, 0
+
+            if pos_type:
+                forward_trains.append({
+                    'pos_type': pos_type,
+                    'segment_idx': segment_idx,
+                    'station_idx': station_idx,
+                    'secs_remaining': secs_remaining,
+                    'elapsed': elapsed,
+                    'dep_dt': dep_dt,
+                })
+
+    # ---------- Trenes REVERSE: Stesicoro → Monte Po (🔺) ----------
+    closed_st, _, _ = is_metro_closed(now, "Stesicoro")
+    if not closed_st:
+        total_rev = rev_times[N - 1]  # duración total stesicoro→montepo
+        for salida_t in get_schedule_list("Stesicoro", now):
+            dep_dt = CATANIA_TZ.localize(datetime.combine(now.date(), salida_t))
+            elapsed = (now - dep_dt).total_seconds()
+            if elapsed < 0:
+                continue
+            if elapsed > total_rev + 120:
+                continue
+
+            pos_type = segment_idx = station_idx = secs_remaining = None
+
+            # Buscar en qué segmento del recorrido reverse está
+            # rev_route[k] = índice en STATIONS del k-ésimo punto
+            # segmento k: entre rev_route[k] y rev_route[k+1]
+            # El segment_idx visual = min(rev_route[k], rev_route[k+1])
+            #   = min de los dos índices de estación → coincide con el ▫️ entre ellas
+            for k in range(N - 1):
+                if rev_times[k] <= elapsed < rev_times[k + 1]:
+                    secs_to_next = rev_times[k + 1] - elapsed
+                    # La "siguiente estación" en ruta reverse es rev_route[k+1]
+                    next_sta_idx = rev_route[k + 1]  # índice en STATIONS[]
+                    if secs_to_next <= 59:
+                        pos_type = 'arriving'
+                        station_idx = next_sta_idx
+                        secs_remaining = int(secs_to_next)
+                    else:
+                        pos_type = 'between'
+                        # segmento visual: el ▫️ entre las dos estaciones adyacentes
+                        segment_idx = min(rev_route[k], rev_route[k + 1])
+                        secs_remaining = int(secs_to_next)
+                    break
+
+            if pos_type is None and elapsed >= total_rev:
+                pos_type, station_idx, secs_remaining = 'arriving', 0, 0  # montepo
+
+            if pos_type:
+                reverse_trains.append({
+                    'pos_type': pos_type,
+                    'segment_idx': segment_idx,
+                    'station_idx': station_idx,
+                    'secs_remaining': secs_remaining,
+                    'elapsed': elapsed,
+                    'dep_dt': dep_dt,
+                })
+
+    return forward_trains, reverse_trains, t_fwd, rev_times, rev_route
+
+
+def _get_train_position_idx(train):
+    """
+    Devuelve la posición del tren como un índice fraccionario en la línea [0..11].
+    - 'arriving' en station_idx X  → posición = X
+    - 'between' en segment_idx S   → posición = S + 0.5
+    Esto permite comparar posiciones de dos trenes en la misma dirección.
+    """
+    if train['pos_type'] == 'arriving':
+        return float(train['station_idx'])
+    else:
+        return float(train['segment_idx']) + 0.5
+
+
+def _filter_trains_min_separation(trains, min_gap_stations=3):
+    """
+    Elimina trenes demasiado juntos en la misma ruta, midiendo la separación
+    en número de estaciones (posición en la línea), NO en tiempo transcurrido.
+
+    Usar elapsed como proxy falla porque la frecuencia de la FCE (~600s entre
+    trenes) es menor que el gap mínimo por tiempo (720s = 6 est × 120s),
+    lo que provocaba que trenes válidos fueran descartados.
+
+    min_gap_stations = 3 → mínimo 3 estaciones de separación entre trenes.
+    Esto permite mostrar hasta 4 trenes en una línea de 12 estaciones.
+    """
+    if not trains:
+        return trains
+    # Ordenar por posición en la línea (el más cercano al origen primero)
+    sorted_t = sorted(trains, key=_get_train_position_idx)
+    filtered = []
+    for t in sorted_t:
+        pos_t = _get_train_position_idx(t)
+        too_close = any(
+            abs(pos_t - _get_train_position_idx(f)) < min_gap_stations
+            for f in filtered
+        )
+        if not too_close:
+            filtered.append(t)
+    return filtered
+
+
 async def get_super_status(now: datetime) -> str:
-    estaciones_orden = ["montepo", "fontana", "nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "giovanni", "stesicoro"]
-    lines = []
-    
-    for idx, estacion in enumerate(estaciones_orden):
-        nombre = NOMBRE_MOSTRAR.get(estacion, estacion.capitalize())
-        
-        if estacion == "montepo":
-            next_dep, mins, secs, has = get_next_departure("Montepo", now)
-            if has:
-                total = mins*60 + secs
-                if total <= 59:
-                    lines.append(f"⚪️ {nombre} 🔻 Stesicoro: {total//60:02d}:{total%60:02d}")
-                else:
-                    lines.append(f"⚪️ {nombre}")
-            else:
-                lines.append(f"⚪️ {nombre}")
-        elif estacion == "stesicoro":
-            next_dep, mins, secs, has = get_next_departure("Stesicoro", now)
-            if has:
-                total = mins*60 + secs
-                if total <= 59:
-                    lines.append(f"⚪️ {nombre} 🔺 Monte Po: {total//60:02d}:{total%60:02d}")
-                else:
-                    lines.append(f"⚪️ {nombre}")
-            else:
-                lines.append(f"⚪️ {nombre}")
+    """
+    Construye el mensaje del SUPERVISORE con tracking de posición de trenes.
+
+    Formato de la línea:
+      ⚪️ Monte Po  [🔺 In Binario / 🔺 00:45]
+      ▫️  [🔻 si hay tren en tránsito]
+      ⚪️ Fontana  [🔻 00:23  🔺 00:51]
+      ▫️
+      ...
+
+    Reglas:
+      - En segmento ▫️: solo la flecha (sin contador).
+      - En estación ⚪️: flecha + MM:SS restantes para la llegada.
+      - En cabecera: si faltan ≤4min → "In Binario"; si ≤59s → cronómetro MM:SS.
+    """
+    from horarios_logic import get_schedule_list, is_metro_closed, CATANIA_TZ
+
+    STATIONS = ["montepo", "fontana", "nesima", "sannullo", "cibali", "milo",
+                "borgo", "giuffrida", "italia", "galatea", "giovanni", "stesicoro"]
+    N = len(STATIONS)
+
+    forward_trains, reverse_trains, t_fwd, rev_times, rev_route = _build_train_positions(now)
+
+    # Separación mínima: 6 estaciones ≈ 720s
+    forward_trains = _filter_trains_min_separation(forward_trains, min_gap_stations=3)
+    reverse_trains = _filter_trains_min_separation(reverse_trains, min_gap_stations=3)
+
+    # ---- Calcular estado de las CABECERAS para los próximos trenes ----
+    # Cabecera Monte Po (🔻): próximo tren que saldrá de aquí
+    mp_label = None
+    closed_mp, _, _ = is_metro_closed(now, "Montepo")
+    if not closed_mp:
+        for salida_t in get_schedule_list("Montepo", now):
+            dep_dt = CATANIA_TZ.localize(datetime.combine(now.date(), salida_t))
+            secs_to_dep = (dep_dt - now).total_seconds()
+            if secs_to_dep > 0:
+                if secs_to_dep <= 59:
+                    mp_label = f"🔻 {int(secs_to_dep)//60:02d}:{int(secs_to_dep)%60:02d}"
+                elif secs_to_dep <= 240:  # 4 min
+                    mp_label = "🔻 In Binario"
+                break
+
+    # Cabecera Stesicoro (🔺): próximo tren que saldrá de aquí
+    st_label = None
+    closed_st, _, _ = is_metro_closed(now, "Stesicoro")
+    if not closed_st:
+        for salida_t in get_schedule_list("Stesicoro", now):
+            dep_dt = CATANIA_TZ.localize(datetime.combine(now.date(), salida_t))
+            secs_to_dep = (dep_dt - now).total_seconds()
+            if secs_to_dep > 0:
+                if secs_to_dep <= 59:
+                    st_label = f"🔺 {int(secs_to_dep)//60:02d}:{int(secs_to_dep)%60:02d}"
+                elif secs_to_dep <= 240:
+                    st_label = "🔺 In Binario"
+                break
+
+    # ---- Indexar posiciones de trenes en tránsito ----
+    # fwd_at_station[i] = secs_remaining del tren forward llegando a STATIONS[i]
+    # fwd_at_segment[i] = True si hay tren forward en el ▫️ entre STATIONS[i] y STATIONS[i+1]
+    fwd_at_station = {}
+    fwd_at_segment = set()
+    for tr in forward_trains:
+        if tr['pos_type'] == 'arriving':
+            idx = tr['station_idx']
+            if idx not in fwd_at_station or tr['secs_remaining'] < fwd_at_station[idx]:
+                fwd_at_station[idx] = tr['secs_remaining']
         else:
-            info_mp, info_st = get_next_train_at_station(now, estacion)
-            mejor_tiempo = None
-            mejor_texto = None
-            if info_mp:
-                paso, mins, secs, _ = info_mp
-                total = mins*60 + secs
-                if total <= 59:
-                    mejor_tiempo = total
-                    mejor_texto = f"{nombre} 🔻 Stesicoro: {total//60:02d}:{total%60:02d}"
-            if info_st:
-                paso, mins, secs, _ = info_st
-                total = mins*60 + secs
-                if total <= 59:
-                    if mejor_tiempo is None or total < mejor_tiempo:
-                        mejor_tiempo = total
-                        mejor_texto = f"{nombre} 🔺 Monte Po: {total//60:02d}:{total%60:02d}"
-            if mejor_texto:
-                lines.append(f"⚪️ {mejor_texto}")
+            fwd_at_segment.add(tr['segment_idx'])
+
+    rev_at_station = {}
+    rev_at_segment = set()
+    for tr in reverse_trains:
+        if tr['pos_type'] == 'arriving':
+            idx = tr['station_idx']
+            if idx not in rev_at_station or tr['secs_remaining'] < rev_at_station[idx]:
+                rev_at_station[idx] = tr['secs_remaining']
+        else:
+            rev_at_segment.add(tr['segment_idx'])
+
+    # ---- Construir la línea visual ----
+    lines = []
+
+    for i, estacion in enumerate(STATIONS):
+        nombre = NOMBRE_MOSTRAR.get(estacion, estacion.capitalize())
+        tags = []
+
+        if estacion == "montepo":
+            # Tren reverse (🔺) llegando a montepo desde la línea
+            if i in rev_at_station:
+                s = rev_at_station[i]
+                tags.append("🔺 In Binario" if s == 0 else f"🔺 {s//60:02d}:{s%60:02d}")
+            # Próximo tren que parte de montepo (🔻)
+            if mp_label:
+                tags.append(mp_label)
+
+        elif estacion == "stesicoro":
+            # Tren forward (🔻) llegando a stesicoro desde la línea
+            if i in fwd_at_station:
+                s = fwd_at_station[i]
+                tags.append("🔻 In Binario" if s == 0 else f"🔻 {s//60:02d}:{s%60:02d}")
+            # Próximo tren que parte de stesicoro (🔺)
+            if st_label:
+                tags.append(st_label)
+
+        else:
+            # Estación intermedia
+            if i in fwd_at_station:
+                s = fwd_at_station[i]
+                tags.append(f"🔻 {s//60:02d}:{s%60:02d}")
+            if i in rev_at_station:
+                s = rev_at_station[i]
+                tags.append(f"🔺 {s//60:02d}:{s%60:02d}")
+
+        if tags:
+            lines.append(f"⚪️ {nombre}  {'  '.join(tags)}")
+        else:
+            lines.append(f"⚪️ {nombre}")
+
+        # ---- Segmento ▫️ entre esta estación y la siguiente ----
+        if i < N - 1:
+            seg_tags = []
+            if i in fwd_at_segment:
+                seg_tags.append("🔻")
+            if i in rev_at_segment:
+                seg_tags.append("🔺")
+            if seg_tags:
+                lines.append(f"▫️  {'  '.join(seg_tags)}")
             else:
-                lines.append(f"⚪️ {nombre}")
-        
-        if estacion != "stesicoro":
-            lines.append("▫️")
-    
+                lines.append("▫️")
+
     return "🛂 **SUPERVISORE: Monitoraggio degli arrivi dei treni**\n\n" + "\n".join(lines)
 
 async def auto_update_super(context, chat_id, message_id, cycles=40, interval=3):
@@ -1084,7 +1339,13 @@ async def auto_update_super(context, chat_id, message_id, cycles=40, interval=3)
                 return
         if not context.chat_data.get('super_active', False):
             return
-        now = get_simulated_now(context)
+        simulated = context.chat_data.get('test_time')
+        if simulated:
+            if simulated.tzinfo is None:
+                simulated = CATANIA_TZ.localize(simulated)
+            now = simulated
+        else:
+            now = datetime.now(CATANIA_TZ)
         new_msg = await get_super_status(now)
         try:
             await context.bot.edit_message_text(text=new_msg, chat_id=chat_id, message_id=message_id, parse_mode='Markdown')
@@ -1101,6 +1362,7 @@ async def auto_update_super(context, chat_id, message_id, cycles=40, interval=3)
         context.chat_data.pop('super_task', None)
 
 async def send_super_response(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Detener cualquier tarea anterior
     if 'super_task' in context.chat_data:
         context.chat_data['super_active'] = False
         try:
@@ -1108,7 +1370,14 @@ async def send_super_response(update: Update, context: ContextTypes.DEFAULT_TYPE
         except Exception:
             pass
         context.chat_data.pop('super_task', None)
-    now = get_simulated_now(context)
+    
+    simulated = context.chat_data.get('test_time')
+    if simulated:
+        if simulated.tzinfo is None:
+            simulated = CATANIA_TZ.localize(simulated)
+        now = simulated
+    else:
+        now = datetime.now(CATANIA_TZ)
     msg = await get_super_status(now)
     result = await update.message.reply_text(msg, parse_mode='Markdown')
     message_id = result.message_id
@@ -1122,6 +1391,7 @@ async def send_super_response(update: Update, context: ContextTypes.DEFAULT_TYPE
 async def aggiornare_super_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
+    # Detener la tarea actual
     if 'super_task' in context.chat_data:
         context.chat_data['super_active'] = False
         try:
@@ -1132,8 +1402,15 @@ async def aggiornare_super_callback(update: Update, context: ContextTypes.DEFAUL
     message = query.message
     chat_id = message.chat_id
     message_id = message.message_id
-    now = get_simulated_now(context)
+    simulated = context.chat_data.get('test_time')
+    if simulated:
+        if simulated.tzinfo is None:
+            simulated = CATANIA_TZ.localize(simulated)
+        now = simulated
+    else:
+        now = datetime.now(CATANIA_TZ)
     new_msg = await get_super_status(now)
+    # Editar el mensaje para quitar el botón y actualizar contenido
     try:
         await query.edit_message_text(text=new_msg, parse_mode='Markdown')
     except Exception as e:
@@ -1144,6 +1421,7 @@ async def aggiornare_super_callback(update: Update, context: ContextTypes.DEFAUL
             await message.delete()
         except:
             pass
+    # Reiniciar ciclo
     context.chat_data['super_msg_id'] = message_id
     context.chat_data['super_chat_id'] = chat_id
     context.chat_data['super_active'] = True
