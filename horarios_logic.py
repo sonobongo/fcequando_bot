@@ -74,10 +74,6 @@ def get_measured_travel_time(origen: str, destino: str, direccion: str, now: dat
 # AJUSTE DE DÍA OPERATIVO (empieza a las 05:00)
 # ============================================================================
 def get_effective_datetime(now: datetime) -> datetime:
-    """
-    Ajusta la hora para que el día operativo empiece a las 05:00.
-    Si la hora está entre 00:00 y 04:59, pertenece al día anterior.
-    """
     if now.tzinfo is None:
         now = CATANIA_TZ.localize(now)
     if now.hour < 5:
@@ -113,7 +109,7 @@ EXTRA_TRAMOS_REVERSE = [
 ]
 
 # ============================================================================
-# DETECCIÓN DE HORA PUNTA (7-9, 13-14, 17:15-19:45, lunes a viernes, sept-jun)
+# DETECCIÓN DE HORA PUNTA
 # ============================================================================
 def is_peak_hour(now: datetime) -> bool:
     if now.weekday() >= 5:
@@ -133,9 +129,6 @@ def is_peak_hour(now: datetime) -> bool:
         return True
     return False
 
-# ============================================================================
-# EXTRA DE 5 SEGUNDOS PARA GIOVANNI XXIII (13:00-18:00, laborables, sept-jun)
-# ============================================================================
 def should_add_giovanni_extra(now: datetime) -> bool:
     if now.weekday() < 5 and not is_festivo_nazionale(now):
         month = now.month
@@ -150,7 +143,7 @@ def should_add_giovanni_extra(now: datetime) -> bool:
     return False
 
 # ============================================================================
-# TIEMPOS DE VIAJE (con extra de Giovanni y extra de cabecera en punta)
+# TIEMPOS DE VIAJE
 # ============================================================================
 def get_travel_time_from_montepo(station: str, now: datetime) -> int:
     total_seconds = 0
@@ -513,13 +506,12 @@ def is_festivo_nazionale(now: datetime) -> bool:
     return (eff.month, eff.day) in FESTIVI_NAZIONALI
 
 # ============================================================================
-# FUNCIONES DE HORARIOS (comunes)
+# HORARIOS DE APERTURA Y CIERRE (usando el día real para el cierre)
 # ============================================================================
 def get_opening_time(now: datetime, station: str = None) -> Tuple[int, int]:
-    eff = get_effective_datetime(now)
     if is_new_years_eve(now):
         return (12, 0)
-    if is_sant_agata(eff):
+    if is_sant_agata(now):
         first = get_first_train_sant_agata(station if station else "Montepo")
         return (first.hour, first.minute)
     if is_festivo_nazionale(now):
@@ -527,20 +519,19 @@ def get_opening_time(now: datetime, station: str = None) -> Tuple[int, int]:
     return (6, 0)
 
 def get_closing_time(now: datetime, station: str) -> Tuple[int, int]:
-    eff = get_effective_datetime(now)
     if is_new_years_eve(now):
         return (3, 0)
-    if is_sant_agata(eff):
+    if is_sant_agata(now):
         last = get_last_train_sant_agata(station)
         return (last.hour, last.minute)
 
     if is_festivo_nazionale(now):
-        if eff.weekday() in (4, 5):
+        if now.weekday() in (4, 5, 6):
             return (1, 0)
         else:
             return (22, 30)
     else:
-        if eff.weekday() in (4, 5):
+        if now.weekday() in (4, 5):
             return (1, 0)
         else:
             return (22, 30)
@@ -566,7 +557,7 @@ def get_override_weekday(now: datetime) -> Optional[int]:
     return None
 
 # ============================================================================
-# OBTENER LISTA DE HORARIOS (ahora usa now.weekday() para la selección)
+# OBTENER LISTA DE HORARIOS (con excepciones para festivos)
 # ============================================================================
 def get_schedule_list(station: str, now: datetime) -> List[time]:
     eff = get_effective_datetime(now)
@@ -582,18 +573,16 @@ def get_schedule_list(station: str, now: datetime) -> List[time]:
             schedule_list = SCHEDULES[station]["weekday"]
     else:
         if is_festivo_nazionale(now):
-            # Usamos el día de la semana real (now.weekday()) para elegir el tipo de horario festivo
             weekday_real = now.weekday()
-            if weekday_real == 4:   # viernes
+            if weekday_real == 4:
                 schedule_list = SCHEDULES[station].get("friday_holiday", SCHEDULES[station]["sunday"])
-            elif weekday_real == 5: # sábado
+            elif weekday_real == 5:
                 schedule_list = SCHEDULES[station].get("saturday_holiday", SCHEDULES[station]["sunday"])
-            elif weekday_real == 6: # domingo
+            elif weekday_real == 6:
                 schedule_list = SCHEDULES[station]["sunday"]
-            else:                   # lunes a jueves
+            else:
                 schedule_list = SCHEDULES[station].get("weekday_holiday", SCHEDULES[station]["sunday"])
         else:
-            # Días normales: usamos now.weekday() (día real)
             weekday_num = now.weekday()
             if weekday_num == 4:
                 schedule_list = SCHEDULES[station]["friday"]
@@ -635,11 +624,10 @@ def get_schedule_list(station: str, now: datetime) -> List[time]:
     return schedule_list
 
 # ============================================================================
-# PRÓXIMO TREN (con manejo especial para domingo madrugada)
+# PRÓXIMO TREN (definitivamente corregido)
 # ============================================================================
 def get_next_departure(station: str, now: datetime) -> Tuple[Optional[datetime], int, int, bool]:
     eff = get_effective_datetime(now)
-    # Bloque de cierre nocturno entre 1:00 y 6:00 (excepto noches especiales)
     if 1 <= now.hour < 6:
         if (now.month == 1 and now.day == 1 and 1 <= now.hour < 3) or \
            (now.month == 2 and now.day in [4,5,6] and 1 <= now.hour < 2):
@@ -652,9 +640,51 @@ def get_next_departure(station: str, now: datetime) -> Tuple[Optional[datetime],
         return get_next_departure_sant_agata(station, now)
     
     schedule_list = get_schedule_list(station, now)
+    if not schedule_list:
+        return (None, 0, 0, False)
     
-    # Determinar la fecha base para combinar con las horas de salida
-    # Excepción: si es domingo y hora < 5, usar la fecha real (hoy) porque los horarios de domingo en madrugada corresponden al mismo día.
+    if now.hour < 5 and now.weekday() == 6:
+        base_date = now.date()
+    else:
+        base_date = eff.date()
+    
+    # Buscar el primer tren que sea > now
+    best_dt = None
+    for dep_time in schedule_list:
+        candidate = datetime.combine(base_date, dep_time)
+        if candidate.tzinfo is None:
+            candidate = CATANIA_TZ.localize(candidate)
+        if candidate <= now:
+            candidate += timedelta(days=1)
+        if best_dt is None or candidate < best_dt:
+            best_dt = candidate
+    
+    if best_dt is None:
+        # Si no encontramos ninguno (por ejemplo, si la lista está vacía o todos son +1 día pero no los consideramos)
+        return (None, 0, 0, False)
+    
+    delta = int((best_dt - now).total_seconds())
+    return (best_dt, delta // 60, delta % 60, True)
+
+def get_next_departure_after(station: str, now: datetime, after_time: time) -> Tuple[Optional[datetime], int, int, bool]:
+    eff = get_effective_datetime(now)
+    if 1 <= now.hour < 6:
+        if (now.month == 1 and now.day == 1 and 1 <= now.hour < 3) or \
+           (now.month == 2 and now.day in [4,5,6] and 1 <= now.hour < 2):
+            pass
+        else:
+            return (None, 0, 0, False)
+    if is_sant_agata(now):
+        fake_now = datetime.combine(eff.date(), after_time) + timedelta(minutes=1)
+        fake_now = CATANIA_TZ.localize(fake_now)
+        return get_next_departure(station, fake_now)
+    if is_new_years_eve(now):
+        fake_now = datetime.combine(eff.date(), after_time) + timedelta(minutes=1)
+        fake_now = CATANIA_TZ.localize(fake_now)
+        return get_next_departure(station, fake_now)
+    
+    schedule_list = get_schedule_list(station, now)
+    # Usar la misma lógica de fecha base
     if now.hour < 5 and now.weekday() == 6:
         base_date = now.date()
     else:
@@ -662,6 +692,8 @@ def get_next_departure(station: str, now: datetime) -> Tuple[Optional[datetime],
     
     best_dt = None
     for dep_time in schedule_list:
+        if dep_time <= after_time:
+            continue
         candidate = datetime.combine(base_date, dep_time)
         if candidate.tzinfo is None:
             candidate = CATANIA_TZ.localize(candidate)
@@ -674,56 +706,35 @@ def get_next_departure(station: str, now: datetime) -> Tuple[Optional[datetime],
         return (best_dt, delta // 60, delta % 60, True)
     return (None, 0, 0, False)
 
-def get_next_departure(station: str, now: datetime) -> Tuple[Optional[datetime], int, int, bool]:
-    eff = get_effective_datetime(now)
-    
-    # Si el metro está cerrado según horario (por cierre nocturno entre 1:00 y 6:00, excepto excepciones)
-    if 1 <= now.hour < 6:
-        if (now.month == 1 and now.day == 1 and 1 <= now.hour < 3) or \
-           (now.month == 2 and now.day in [4,5,6] and 1 <= now.hour < 2):
-            pass
+def format_time(minutes: int, seconds: int) -> str:
+    if minutes >= SHORT_TIME_THRESHOLD:
+        return f"{minutes} minuti"
+    if minutes == 0:
+        if seconds == 0:
+            return "subito"
         else:
-            return (None, 0, 0, False)
-    
-    if is_new_years_eve(now):
-        return get_next_departure_new_years_eve(station, now)
-    if is_sant_agata(now):
-        return get_next_departure_sant_agata(station, now)
-    
-    # Obtener la lista de horarios para hoy (día efectivo)
-    schedule_list = get_schedule_list(station, now)
-    
-    # Determinar la fecha base: para madrugada de domingo se usa la fecha actual, si no la del día efectivo
-    if now.hour < 5 and now.weekday() == 6:
-        base_date = now.date()
+            return "30 secondi"
+    elif minutes == 1:
+        if seconds < 30:
+            return "1 minuto"
+        else:
+            return "1 minuto e 30 secondi"
     else:
-        base_date = eff.date()
-    
-    # Construir todos los posibles datetime (hoy y mañana) y quedarse con el primero > now
-    best_dt = None
-    for dep_time in schedule_list:
-        # Candidato para hoy
-        candidate_today = datetime.combine(base_date, dep_time)
-        if candidate_today.tzinfo is None:
-            candidate_today = CATANIA_TZ.localize(candidate_today)
-        # Si ya pasó, considerar el de mañana
-        if candidate_today > now:
-            candidate = candidate_today
+        if seconds < 30:
+            return f"{minutes} minuti"
         else:
-            candidate = candidate_today + timedelta(days=1)
-        
-        if best_dt is None or candidate < best_dt:
-            best_dt = candidate
-    
-    if best_dt:
-        delta = int((best_dt - now).total_seconds())
-        # Si el tren sale en menos de 1 minuto, mostrar minutos/segundos adecuados
-        return (best_dt, delta // 60, delta % 60, True)
-    return (None, 0, 0, False)
+            return f"{minutes} minuti e 30 secondi"
 
-# ============================================================================
-# FUNCIÓN PRINCIPAL IS_METRO_CLOSED
-# ============================================================================
+def get_last_train_message(now: datetime) -> str:
+    if (now.month == 12 and now.day == 31 and now.hour >= 12) or (now.month == 1 and now.day == 1 and now.hour < 3):
+        return "🎉 Oggi orario speciale: ultimo treno alle 03:00. Buon anno! 🎉"
+    if now.hour < 20 or (now.hour == 20 and now.minute < 30):
+        return ""
+    if is_sant_agata(now) or is_closed_all_day(now):
+        return ""
+    close_h, close_m = get_closing_time(now, "Montepo")
+    return f"📌 Oggi la metro chiude alle {close_h:02d}:{close_m:02d}."
+
 def is_metro_closed(now: datetime, station: str) -> Tuple[bool, Optional[datetime], str]:
     if now.tzinfo is None:
         now = CATANIA_TZ.localize(now)
@@ -763,8 +774,9 @@ def is_metro_closed(now: datetime, station: str) -> Tuple[bool, Optional[datetim
         if current_time >= opening_time or current_time < closing_time:
             return (False, None, "")
         else:
-            next_open = datetime.combine(now.date(), opening_time)
-            if next_open <= now:
+            if current_time < opening_time:
+                next_open = datetime.combine(now.date(), opening_time)
+            else:
                 next_open = datetime.combine(now.date() + timedelta(days=1), opening_time)
             next_open = CATANIA_TZ.localize(next_open)
             return (True, next_open, "")
@@ -779,7 +791,7 @@ def is_metro_closed(now: datetime, station: str) -> Tuple[bool, Optional[datetim
         return (False, None, "")
 
 # ============================================================================
-# FUNCIONES PARA ESTACIONES INTERMEDIAS (usando segundos exactos)
+# FUNCIONES PARA ESTACIONES INTERMEDIAS
 # ============================================================================
 def get_total_seconds_from_montepo(station: str, now: datetime) -> int:
     if now.tzinfo is None:
