@@ -674,71 +674,52 @@ def get_next_departure(station: str, now: datetime) -> Tuple[Optional[datetime],
         return (best_dt, delta // 60, delta % 60, True)
     return (None, 0, 0, False)
 
-def get_next_departure_after(station: str, now: datetime, after_time: time) -> Tuple[Optional[datetime], int, int, bool]:
+def get_next_departure(station: str, now: datetime) -> Tuple[Optional[datetime], int, int, bool]:
     eff = get_effective_datetime(now)
+    
+    # Si el metro está cerrado según horario (por cierre nocturno entre 1:00 y 6:00, excepto excepciones)
     if 1 <= now.hour < 6:
         if (now.month == 1 and now.day == 1 and 1 <= now.hour < 3) or \
            (now.month == 2 and now.day in [4,5,6] and 1 <= now.hour < 2):
             pass
         else:
             return (None, 0, 0, False)
-    if is_sant_agata(now):
-        fake_now = datetime.combine(eff.date(), after_time) + timedelta(minutes=1)
-        fake_now = CATANIA_TZ.localize(fake_now)
-        return get_next_departure(station, fake_now)
+    
     if is_new_years_eve(now):
-        fake_now = datetime.combine(eff.date(), after_time) + timedelta(minutes=1)
-        fake_now = CATANIA_TZ.localize(fake_now)
-        return get_next_departure(station, fake_now)
+        return get_next_departure_new_years_eve(station, now)
+    if is_sant_agata(now):
+        return get_next_departure_sant_agata(station, now)
+    
+    # Obtener la lista de horarios para hoy (día efectivo)
     schedule_list = get_schedule_list(station, now)
-    # Usar la misma lógica de fecha base que en get_next_departure
+    
+    # Determinar la fecha base: para madrugada de domingo se usa la fecha actual, si no la del día efectivo
     if now.hour < 5 and now.weekday() == 6:
         base_date = now.date()
     else:
         base_date = eff.date()
+    
+    # Construir todos los posibles datetime (hoy y mañana) y quedarse con el primero > now
     best_dt = None
     for dep_time in schedule_list:
-        if dep_time > after_time:
-            candidate = datetime.combine(base_date, dep_time)
-            if candidate.tzinfo is None:
-                candidate = CATANIA_TZ.localize(candidate)
-            if candidate <= now:
-                candidate += timedelta(days=1)
-            if best_dt is None or candidate < best_dt:
-                best_dt = candidate
+        # Candidato para hoy
+        candidate_today = datetime.combine(base_date, dep_time)
+        if candidate_today.tzinfo is None:
+            candidate_today = CATANIA_TZ.localize(candidate_today)
+        # Si ya pasó, considerar el de mañana
+        if candidate_today > now:
+            candidate = candidate_today
+        else:
+            candidate = candidate_today + timedelta(days=1)
+        
+        if best_dt is None or candidate < best_dt:
+            best_dt = candidate
+    
     if best_dt:
         delta = int((best_dt - now).total_seconds())
+        # Si el tren sale en menos de 1 minuto, mostrar minutos/segundos adecuados
         return (best_dt, delta // 60, delta % 60, True)
     return (None, 0, 0, False)
-
-def format_time(minutes: int, seconds: int) -> str:
-    if minutes >= SHORT_TIME_THRESHOLD:
-        return f"{minutes} minuti"
-    if minutes == 0:
-        if seconds == 0:
-            return "subito"
-        else:
-            return "30 secondi"
-    elif minutes == 1:
-        if seconds < 30:
-            return "1 minuto"
-        else:
-            return "1 minuto e 30 secondi"
-    else:
-        if seconds < 30:
-            return f"{minutes} minuti"
-        else:
-            return f"{minutes} minuti e 30 secondi"
-
-def get_last_train_message(now: datetime) -> str:
-    if (now.month == 12 and now.day == 31 and now.hour >= 12) or (now.month == 1 and now.day == 1 and now.hour < 3):
-        return "🎉 Oggi orario speciale: ultimo treno alle 03:00. Buon anno! 🎉"
-    if now.hour < 20 or (now.hour == 20 and now.minute < 30):
-        return ""
-    if is_sant_agata(now) or is_closed_all_day(now):
-        return ""
-    close_h, close_m = get_closing_time(now, "Montepo")
-    return f"📌 Oggi la metro chiude alle {close_h:02d}:{close_m:02d}."
 
 # ============================================================================
 # FUNCIÓN PRINCIPAL IS_METRO_CLOSED
