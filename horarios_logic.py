@@ -535,10 +535,9 @@ def get_closing_time(now: datetime, station: str) -> Tuple[int, int]:
         return (last.hour, last.minute)
 
     if is_festivo_nazionale(now):
-        # Festivo: según el día efectivo
-        if eff.weekday() in (4, 5):  # viernes o sábado
+        if eff.weekday() in (4, 5):
             return (1, 0)
-        else:  # domingo o lunes a jueves
+        else:
             return (22, 30)
     else:
         if eff.weekday() in (4, 5):
@@ -567,7 +566,7 @@ def get_override_weekday(now: datetime) -> Optional[int]:
     return None
 
 # ============================================================================
-# OBTENER LISTA DE HORARIOS (versión corregida con festivos diferenciados)
+# OBTENER LISTA DE HORARIOS (ahora usa now.weekday() para la selección)
 # ============================================================================
 def get_schedule_list(station: str, now: datetime) -> List[time]:
     eff = get_effective_datetime(now)
@@ -583,17 +582,19 @@ def get_schedule_list(station: str, now: datetime) -> List[time]:
             schedule_list = SCHEDULES[station]["weekday"]
     else:
         if is_festivo_nazionale(now):
-            weekday_eff = eff.weekday()
-            if weekday_eff == 4:   # viernes
+            # Usamos el día de la semana real (now.weekday()) para elegir el tipo de horario festivo
+            weekday_real = now.weekday()
+            if weekday_real == 4:   # viernes
                 schedule_list = SCHEDULES[station].get("friday_holiday", SCHEDULES[station]["sunday"])
-            elif weekday_eff == 5: # sábado
+            elif weekday_real == 5: # sábado
                 schedule_list = SCHEDULES[station].get("saturday_holiday", SCHEDULES[station]["sunday"])
-            elif weekday_eff == 6: # domingo
+            elif weekday_real == 6: # domingo
                 schedule_list = SCHEDULES[station]["sunday"]
-            else:                  # lunes a jueves
+            else:                   # lunes a jueves
                 schedule_list = SCHEDULES[station].get("weekday_holiday", SCHEDULES[station]["sunday"])
         else:
-            weekday_num = eff.weekday()
+            # Días normales: usamos now.weekday() (día real)
+            weekday_num = now.weekday()
             if weekday_num == 4:
                 schedule_list = SCHEDULES[station]["friday"]
             elif weekday_num == 5:
@@ -633,8 +634,12 @@ def get_schedule_list(station: str, now: datetime) -> List[time]:
                 return yesterday_list
     return schedule_list
 
+# ============================================================================
+# PRÓXIMO TREN (con manejo especial para domingo madrugada)
+# ============================================================================
 def get_next_departure(station: str, now: datetime) -> Tuple[Optional[datetime], int, int, bool]:
     eff = get_effective_datetime(now)
+    # Bloque de cierre nocturno entre 1:00 y 6:00 (excepto noches especiales)
     if 1 <= now.hour < 6:
         if (now.month == 1 and now.day == 1 and 1 <= now.hour < 3) or \
            (now.month == 2 and now.day in [4,5,6] and 1 <= now.hour < 2):
@@ -645,14 +650,28 @@ def get_next_departure(station: str, now: datetime) -> Tuple[Optional[datetime],
         return get_next_departure_new_years_eve(station, now)
     if is_sant_agata(now):
         return get_next_departure_sant_agata(station, now)
-    current_time = now.time()
+    
     schedule_list = get_schedule_list(station, now)
+    
+    # Determinar la fecha base para combinar con las horas de salida
+    # Excepción: si es domingo y hora < 5, usar la fecha real (hoy) porque los horarios de domingo en madrugada corresponden al mismo día.
+    if now.hour < 5 and now.weekday() == 6:
+        base_date = now.date()
+    else:
+        base_date = eff.date()
+    
+    best_dt = None
     for dep_time in schedule_list:
-        if dep_time > current_time:
-            next_dt = datetime.combine(eff.date(), dep_time)
-            next_dt = CATANIA_TZ.localize(next_dt)
-            delta = int((next_dt - now).total_seconds())
-            return (next_dt, delta // 60, delta % 60, True)
+        candidate = datetime.combine(base_date, dep_time)
+        if candidate.tzinfo is None:
+            candidate = CATANIA_TZ.localize(candidate)
+        if candidate <= now:
+            candidate += timedelta(days=1)
+        if best_dt is None or candidate < best_dt:
+            best_dt = candidate
+    if best_dt:
+        delta = int((best_dt - now).total_seconds())
+        return (best_dt, delta // 60, delta % 60, True)
     return (None, 0, 0, False)
 
 def get_next_departure_after(station: str, now: datetime, after_time: time) -> Tuple[Optional[datetime], int, int, bool]:
@@ -672,12 +691,24 @@ def get_next_departure_after(station: str, now: datetime, after_time: time) -> T
         fake_now = CATANIA_TZ.localize(fake_now)
         return get_next_departure(station, fake_now)
     schedule_list = get_schedule_list(station, now)
+    # Usar la misma lógica de fecha base que en get_next_departure
+    if now.hour < 5 and now.weekday() == 6:
+        base_date = now.date()
+    else:
+        base_date = eff.date()
+    best_dt = None
     for dep_time in schedule_list:
         if dep_time > after_time:
-            next_dt = datetime.combine(eff.date(), dep_time)
-            next_dt = CATANIA_TZ.localize(next_dt)
-            delta = int((next_dt - now).total_seconds())
-            return (next_dt, delta // 60, delta % 60, True)
+            candidate = datetime.combine(base_date, dep_time)
+            if candidate.tzinfo is None:
+                candidate = CATANIA_TZ.localize(candidate)
+            if candidate <= now:
+                candidate += timedelta(days=1)
+            if best_dt is None or candidate < best_dt:
+                best_dt = candidate
+    if best_dt:
+        delta = int((best_dt - now).total_seconds())
+        return (best_dt, delta // 60, delta % 60, True)
     return (None, 0, 0, False)
 
 def format_time(minutes: int, seconds: int) -> str:
