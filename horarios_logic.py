@@ -74,6 +74,10 @@ def get_measured_travel_time(origen: str, destino: str, direccion: str, now: dat
 # AJUSTE DE DÍA OPERATIVO (empieza a las 05:00)
 # ============================================================================
 def get_effective_datetime(now: datetime) -> datetime:
+    """
+    Ajusta la hora para que el día operativo empiece a las 05:00.
+    Si la hora está entre 00:00 y 04:59, pertenece al día anterior.
+    """
     if now.tzinfo is None:
         now = CATANIA_TZ.localize(now)
     if now.hour < 5:
@@ -531,9 +535,10 @@ def get_closing_time(now: datetime, station: str) -> Tuple[int, int]:
         return (last.hour, last.minute)
 
     if is_festivo_nazionale(now):
-        if eff.weekday() in (4, 5):
+        # Festivo: según el día efectivo
+        if eff.weekday() in (4, 5):  # viernes o sábado
             return (1, 0)
-        else:
+        else:  # domingo o lunes a jueves
             return (22, 30)
     else:
         if eff.weekday() in (4, 5):
@@ -562,19 +567,10 @@ def get_override_weekday(now: datetime) -> Optional[int]:
     return None
 
 # ============================================================================
-# OBTENER LISTA DE HORARIOS (VERSIÓN CORREGIDA CON EXCEPCIONES DIRECTAS)
+# OBTENER LISTA DE HORARIOS (versión corregida con festivos diferenciados)
 # ============================================================================
 def get_schedule_list(station: str, now: datetime) -> List[time]:
     eff = get_effective_datetime(now)
-    
-    # ----- EXCEPCIONES DURAS PARA FESTIVOS 2026 (por si falla la lógica) -----
-    # Lista de fechas festivas que caen en viernes o sábado en 2026
-    # 25/04 (sábado), 1/05 (viernes), 15/08 (sábado), 26/12 (sábado)
-    if (eff.month, eff.day) in [(4,25), (5,1), (8,15), (12,26)]:
-        # Para estas fechas, usar horario de sábado
-        return SCHEDULES[station]["saturday"]
-    # -----------------------------------------------------------------------
-    
     override = get_override_weekday(now)
     if override is not None:
         if override == 4:
@@ -587,10 +583,15 @@ def get_schedule_list(station: str, now: datetime) -> List[time]:
             schedule_list = SCHEDULES[station]["weekday"]
     else:
         if is_festivo_nazionale(now):
-            if eff.weekday() in (4, 5):  # viernes o sábado
-                schedule_list = SCHEDULES[station]["saturday"]
-            else:
+            weekday_eff = eff.weekday()
+            if weekday_eff == 4:   # viernes
+                schedule_list = SCHEDULES[station].get("friday_holiday", SCHEDULES[station]["sunday"])
+            elif weekday_eff == 5: # sábado
+                schedule_list = SCHEDULES[station].get("saturday_holiday", SCHEDULES[station]["sunday"])
+            elif weekday_eff == 6: # domingo
                 schedule_list = SCHEDULES[station]["sunday"]
+            else:                  # lunes a jueves
+                schedule_list = SCHEDULES[station].get("weekday_holiday", SCHEDULES[station]["sunday"])
         else:
             weekday_num = eff.weekday()
             if weekday_num == 4:
