@@ -317,13 +317,83 @@
       "dia_semana": "sabado",
       "hora": "23:02",
       "ocupacion": 0.1,
-      "observacion": "Afluencia 10%, tiempos de carga y descarga incluidos como observaciones por separado.",
+      "observacion": "Afluencia 10%, tiempos de carga incluidos",
       "trayectos_ida": [
-        { "origen": "Milo", "destino": "Borgo", "tiempo_seg": 86.720, "observacion": "carga/descarga 23.850s" },
-        { "origen": "Borgo", "destino": "Italia", "tiempo_seg": 156.760, "observacion": "carga/descarga 27.595s (sin parada en Giuffrida)" },
-        { "origen": "Italia", "destino": "Galatea", "tiempo_seg": 73.530, "observacion": "carga/descarga 19.720s" },
-        { "origen": "Galatea", "destino": "Giovanni XXIII", "tiempo_seg": 130.711, "observacion": "carga/descarga 23.720s" },
-        { "origen": "Giovanni XXIII", "destino": "Stesicoro", "tiempo_seg": 155.841, "observacion": "sin dato de carga" }
+        { "origen": "Milo", "destino": "Borgo", "tiempo_seg": 110.570, "tiempo_carga_seg": 23.850 },
+        { "origen": "Borgo", "destino": "Italia", "tiempo_seg": 184.355, "tiempo_carga_seg": 27.595, "observacion": "sin parada en Giuffrida" },
+        { "origen": "Italia", "destino": "Galatea", "tiempo_seg": 93.250, "tiempo_carga_seg": 19.720 },
+        { "origen": "Galatea", "destino": "Giovanni XXIII", "tiempo_seg": 154.431, "tiempo_carga_seg": 23.720 },
+        { "origen": "Giovanni XXIII", "destino": "Stesicoro", "tiempo_seg": 155.841 }
+      ],
+      "trayectos_vuelta": []
+    },
+    {
+      "id": "20260427_lunes_1920_60pct_punta",
+      "fecha": "2026-04-27",
+      "dia_semana": "lunes",
+      "hora": "19:20",
+      "ocupacion": 0.6,
+      "observacion": "hora punta, aforo 60%, incluye tiempos de carga",
+      "trayectos_vuelta": [
+        { "origen": "Stesicoro", "destino": "Giovanni XXIII", "tiempo_seg": 138.890, "tiempo_carga_seg": 27.220 },
+        { "origen": "Giovanni XXIII", "destino": "Galatea", "tiempo_seg": 156.070, "tiempo_carga_seg": 36.740 },
+        { "origen": "Galatea", "destino": "Italia", "tiempo_seg": 94.780, "tiempo_carga_seg": 32.300 },
+        { "origen": "Italia", "destino": "Giuffrida", "tiempo_seg": 103.090, "tiempo_carga_seg": 23.570 },
+        { "origen": "Giuffrida", "destino": "Borgo", "tiempo_seg": 103.780, "tiempo_carga_seg": 28.350 }
+      ],
+      "trayectos_ida": []
+    },
+    {
+      "id": "20260427_lunes_1930_50pct_punta",
+      "fecha": "2026-04-27",
+      "dia_semana": "lunes",
+      "hora": "19:30",
+      "ocupacion": 0.5,
+      "observacion": "hora punta, aforo 50%, incluye tiempos de carga",
+      "trayectos_vuelta": [
+        { "origen": "Borgo", "destino": "Giuffrida", "tiempo_seg": 105.010, "tiempo_carga_seg": 23.730 },
+        { "origen": "Giuffrida", "destino": "Italia", "tiempo_seg": 111.440, "tiempo_carga_seg": 28.340 }
+      ],
+      "trayectos_ida": []
+    },
+    {
+      "id": "20260427_lunes_1500_40pct_valle",
+      "fecha": "2026-04-27",
+      "dia_semana": "lunes",
+      "hora": "15:00",
+      "ocupacion": 0.4,
+      "observacion": "hora valle, aforo 40%, incluye tiempos de carga",
+      "trayectos_vuelta": [
+        { "origen": "Italia", "destino": "Giuffrida", "tiempo_seg": 103.790, "tiempo_carga_seg": 20.000 },
+        { "origen": "Giuffrida", "destino": "Borgo", "tiempo_seg": 129.450, "tiempo_carga_seg": 29.750 },
+        { "origen": "Borgo", "destino": "Milo", "tiempo_seg": 144.420, "tiempo_carga_seg": 23.960 },
+        { "origen": "Milo", "destino": "Cibali", "tiempo_seg": 134.660, "tiempo_carga_seg": 30.150 },
+        { "origen": "Cibali", "destino": "San Nullo", "tiempo_seg": 133.880, "tiempo_carga_seg": 31.640 },
+        { "origen": "San Nullo", "destino": "Nesima", "tiempo_seg": 145.710, "tiempo_carga_seg": 24.910 },
+        { "origen": "Nesima", "destino": "Fontana", "tiempo_seg": 112.130, "tiempo_carga_seg": 19.540 },
+        { "origen": "Fontana", "destino": "Monte Po", "tiempo_seg": 94.090 }
+      ],
+      "trayectos_ida": []
+    },
+    {
+      "id": "20260427_lunes_1100_20pct_valle",
+      "fecha": "2026-04-27",
+      "dia_semana": "lunes",
+      "hora": "11:00",
+      "ocupacion": 0.2,
+      "observacion": "hora valle, aforo 20%, incluye tiempos de carga",
+      "trayectos_ida": [
+        { "origen": "Monte Po", "destino": "Fontana", "tiempo_seg": 108.690, "tiempo_carga_seg": 11.500 },
+        { "origen": "Fontana", "destino": "Nesima", "tiempo_seg": 107.170, "tiempo_carga_seg": 14.400 },
+        { "origen": "Nesima", "destino": "San Nullo", "tiempo_seg": 142.390, "tiempo_carga_seg": 12.340 },
+        { "origen": "San Nullo", "destino": "Cibali", "tiempo_seg": 95.780, "tiempo_carga_seg": 10.640 },
+        { "origen": "Cibali", "destino": "Milo", "tiempo_seg": 131.260, "tiempo_carga_seg": 20.560 },
+        { "origen": "Milo", "destino": "Borgo", "tiempo_seg": 108.900, "tiempo_carga_seg": 19.250 },
+        { "origen": "Borgo", "destino": "Giuffrida", "tiempo_seg": 96.600, "tiempo_carga_seg": 16.220 },
+        { "origen": "Giuffrida", "destino": "Italia", "tiempo_seg": 102.350, "tiempo_carga_seg": 15.250 },
+        { "origen": "Italia", "destino": "Galatea", "tiempo_seg": 95.290, "tiempo_carga_seg": 10.170 },
+        { "origen": "Galatea", "destino": "Giovanni XXIII", "tiempo_seg": 137.850, "tiempo_carga_seg": 15.260 },
+        { "origen": "Giovanni XXIII", "destino": "Stesicoro", "tiempo_seg": 137.170 }
       ],
       "trayectos_vuelta": []
     }
