@@ -112,7 +112,8 @@ EXTRA_TRAMOS_REVERSE = [
 # DETECCIÓN DE HORA PUNTA (solo lunes a viernes, sin domingos)
 # ============================================================================
 def is_peak_hour(now: datetime) -> bool:
-    if now.weekday() >= 5:           # sábado o domingo
+    # Días: lunes a viernes laborables, no festivos
+    if now.weekday() >= 5:
         return False
     if is_festivo_nazionale(now):
         return False
@@ -121,10 +122,13 @@ def is_peak_hour(now: datetime) -> bool:
         return False
     hour = now.hour
     minute = now.minute
+    # Franja mañana: 7:00 a 9:00 (inclusive)
     if 7 <= hour <= 9:
         return True
-    if 13 <= hour <= 14:
+    # Franja mediodía: 13:00 a 14:30 (hasta 14:30)
+    if (hour == 13) or (hour == 14 and minute <= 30):
         return True
+    # Franja tarde: 17:15 a 19:45
     if (hour == 17 and minute >= 15) or (hour == 18) or (hour == 19 and minute <= 45):
         return True
     return False
