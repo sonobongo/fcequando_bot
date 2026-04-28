@@ -429,7 +429,7 @@ async def send_message_2(update: Update, context: ContextTypes.DEFAULT_TYPE, msg
     msg = clean_text_for_display(msg)
     if msg is None:
         return None
-    if tiempo_restante is not None and (tiempo_restante <= 90 or mins <= 1):
+    if tiempo_restante is not None and tiempo_restante <= 90:
         return await send_treno_arrivo(update, context, msg, "Monte Po")
     elif current_station_key and current_station_key != "montepo":
         gif_url = f"https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_stesicoro_{current_station_key}.gif"
@@ -444,7 +444,7 @@ async def send_message_3(update: Update, context: ContextTypes.DEFAULT_TYPE, msg
     if "nessun treno in arrivo al momento" in msg:
         msg = msg.replace("nessun treno in arrivo al momento", "Il servizio è terminato")
         return await send_text_only(update, context, msg, reply_markup)
-    if tiempo_restante is not None and (tiempo_restante <= 90 or mins <= 1):
+    if tiempo_restante is not None and tiempo_restante <= 90:
         img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_trenoarriva.png"
         cache_buster = int(time_module.time())
         img_url = f"{img_url}?v={cache_buster}"
