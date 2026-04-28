@@ -177,7 +177,7 @@ def main():
 
     logger.info("Bot avviato.")
     print("Bot funzionante... In attesa di messaggi.")
-    app.run_polling(allowed_updates=Update.ALL_TYPES)
+    app.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
 
 if __name__ == '__main__':
     main()
