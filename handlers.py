@@ -629,8 +629,9 @@ async def send_header_response(chat_id, context, estacion_key, is_update=False):
         total_seconds_rest = int(remaining.total_seconds())
         
         if total_seconds_rest <= 60:
-            if dev_mode:
-                time_str = format_time_precise(mins_rest, secs_rest)
+    # Siempre usar format_time_precise para tiempos cortos (muestra segundos cada 10s)
+    time_str = format_time_precise(mins_rest, secs_rest)
+    msg = f"Il treno è in binario. Partirà tra **{time_str}**."
             else:
                 time_str = format_time(mins_rest, secs_rest)
             msg = f"Il treno è in binario. Partirà tra **{time_str}**."
