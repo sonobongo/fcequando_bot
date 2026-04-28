@@ -448,6 +448,47 @@ async def aggiornare_cabecera_callback(update: Update, context: ContextTypes.DEF
     await send_header_response(chat_id, context, estacion_key, is_update=True)
 
 # ============================================================================
+# AUTO-UPDATE CABECERA: actualiza cada 10s cuando queda < 60s, sin botón
+# ============================================================================
+async def _cabecera_countdown(context, chat_id, message_id, next_dep, station, dest, dev_mode, estacion_key):
+    """Edita el caption cada 10s mientras queden < 60s para la salida. Sin botón hasta el final."""
+    keyboard_inline = InlineKeyboardMarkup([
+        [InlineKeyboardButton("🔄 Aggiornare", callback_data=f"agg_cabecera_{estacion_key}")]
+    ])
+    while True:
+        await asyncio.sleep(10)
+        if not context.chat_data.get('cabecera_countdown_active', False):
+            return
+        now = get_simulated_now(context)
+        remaining_secs = (next_dep - now).total_seconds()
+        if remaining_secs <= 0:
+            # Tren partió — mostrar botón aggiornare
+            try:
+                await context.bot.edit_message_caption(
+                    chat_id=chat_id, message_id=message_id,
+                    caption=f"🚇 Il treno per {dest} è partito.",
+                    parse_mode='Markdown', reply_markup=keyboard_inline
+                )
+            except Exception:
+                pass
+            context.chat_data['cabecera_countdown_active'] = False
+            return
+        mins_r = int(remaining_secs // 60)
+        secs_r = int(remaining_secs % 60)
+        time_str = format_time_precise(mins_r, secs_r) if dev_mode else format_time(mins_r, secs_r)
+        msg = f"Il treno è in binario. Partirà tra **{time_str}**."
+        try:
+            await context.bot.edit_message_caption(
+                chat_id=chat_id, message_id=message_id,
+                caption=msg, parse_mode='Markdown'
+                # Sin reply_markup → sin botón durante el countdown
+            )
+        except Exception as e:
+            logger.error(f"Error en _cabecera_countdown: {e}")
+            break
+    context.chat_data['cabecera_countdown_active'] = False
+
+# ============================================================================
 # FUNCIÓN AUXILIAR PARA ENVIAR RESPUESTA DE CABECERA (con soporte para modo dev)
 # ============================================================================
 async def send_header_response(chat_id, context, estacion_key, is_update=False):
@@ -584,13 +625,30 @@ async def send_header_response(chat_id, context, estacion_key, is_update=False):
                 else:
                     img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_binario_stesicoro.jpg"
         
+        # Si queda < 60s: enviar SIN botón y lanzar auto-update cada 10s
+        use_countdown = total_seconds_rest < 60
+        send_keyboard = keyboard_inline if not use_countdown else None
+
         if img_url:
             cache_buster = int(time_module.time())
             img_url = f"{img_url}?v={cache_buster}"
-            msg2 = await context.bot.send_photo(chat_id=chat_id, photo=img_url, caption=msg, parse_mode='Markdown', reply_markup=keyboard_inline)
+            msg2 = await context.bot.send_photo(chat_id=chat_id, photo=img_url, caption=msg, parse_mode='Markdown', reply_markup=send_keyboard)
         else:
-            msg2 = await context.bot.send_message(chat_id=chat_id, text=msg, parse_mode='Markdown', reply_markup=keyboard_inline)
+            msg2 = await context.bot.send_message(chat_id=chat_id, text=msg, parse_mode='Markdown', reply_markup=send_keyboard)
         await store_id(context, msg2)
+
+        if use_countdown:
+            # Cancelar countdown previo si lo hubiera
+            if 'cabecera_countdown_task' in context.chat_data:
+                try:
+                    context.chat_data['cabecera_countdown_task'].cancel()
+                except Exception:
+                    pass
+            context.chat_data['cabecera_countdown_active'] = True
+            task = asyncio.create_task(
+                _cabecera_countdown(context, chat_id, msg2.message_id, next_dep, station, dest, dev_mode, estacion_key)
+            )
+            context.chat_data['cabecera_countdown_task'] = task
     
     except Exception as e:
         logger.error(f"Error en send_header_response: {e}")
