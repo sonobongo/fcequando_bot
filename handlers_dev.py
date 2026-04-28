@@ -1065,63 +1065,210 @@ async def testfin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⚠️ Nessuna modalità test attiva.")
 
 # ============================================================================
-# FUNCIONES PARA "SUPER" - VERSIÓN SIMPLIFICADA (pero funcional)
+# FUNCIONES PARA "SUPER" - Tracking de posición de trenes en tiempo real
 # ============================================================================
+def _build_train_positions(now: datetime):
+    from horarios_logic import (
+        get_schedule_list, get_total_seconds_from_montepo,
+        get_total_seconds_from_stesicoro, is_metro_closed, CATANIA_TZ
+    )
+    STATIONS = ["montepo", "fontana", "nesima", "sannullo", "cibali", "milo",
+                "borgo", "giuffrida", "italia", "galatea", "giovanni", "stesicoro"]
+    N = len(STATIONS)
+    t_fwd = [get_total_seconds_from_montepo(st, now) for st in STATIONS]
+    t_fwd[0] = 0
+    rev_route = list(reversed(range(N)))
+    rev_times = [get_total_seconds_from_stesicoro(STATIONS[i], now) for i in rev_route]
+    rev_times[0] = 0
+
+    forward_trains = []
+    reverse_trains = []
+
+    closed_mp, _, _ = is_metro_closed(now, "Montepo")
+    if not closed_mp:
+        total_fwd = t_fwd[N - 1]
+        for salida_t in get_schedule_list("Montepo", now):
+            dep_dt = CATANIA_TZ.localize(datetime.combine(now.date(), salida_t))
+            elapsed = (now - dep_dt).total_seconds()
+            if elapsed < 0 or elapsed > total_fwd + 120:
+                continue
+            pos_type = segment_idx = station_idx = secs_remaining = None
+            for i in range(N - 1):
+                if t_fwd[i] <= elapsed < t_fwd[i + 1]:
+                    secs_to_next = t_fwd[i + 1] - elapsed
+                    if secs_to_next <= 59:
+                        pos_type, station_idx, secs_remaining = 'arriving', i + 1, int(secs_to_next)
+                    else:
+                        pos_type, segment_idx, secs_remaining = 'between', i, int(secs_to_next)
+                    break
+            if pos_type is None and elapsed >= t_fwd[N - 1]:
+                pos_type, station_idx, secs_remaining = 'arriving', N - 1, 0
+            if pos_type:
+                forward_trains.append({'pos_type': pos_type, 'segment_idx': segment_idx,
+                                       'station_idx': station_idx, 'secs_remaining': secs_remaining,
+                                       'elapsed': elapsed, 'dep_dt': dep_dt})
+
+    closed_st, _, _ = is_metro_closed(now, "Stesicoro")
+    if not closed_st:
+        total_rev = rev_times[N - 1]
+        for salida_t in get_schedule_list("Stesicoro", now):
+            dep_dt = CATANIA_TZ.localize(datetime.combine(now.date(), salida_t))
+            elapsed = (now - dep_dt).total_seconds()
+            if elapsed < 0 or elapsed > total_rev + 120:
+                continue
+            pos_type = segment_idx = station_idx = secs_remaining = None
+            for k in range(N - 1):
+                if rev_times[k] <= elapsed < rev_times[k + 1]:
+                    secs_to_next = rev_times[k + 1] - elapsed
+                    next_sta_idx = rev_route[k + 1]
+                    if secs_to_next <= 59:
+                        pos_type, station_idx, secs_remaining = 'arriving', next_sta_idx, int(secs_to_next)
+                    else:
+                        pos_type, segment_idx, secs_remaining = 'between', min(rev_route[k], rev_route[k + 1]), int(secs_to_next)
+                    break
+            if pos_type is None and elapsed >= total_rev:
+                pos_type, station_idx, secs_remaining = 'arriving', 0, 0
+            if pos_type:
+                reverse_trains.append({'pos_type': pos_type, 'segment_idx': segment_idx,
+                                       'station_idx': station_idx, 'secs_remaining': secs_remaining,
+                                       'elapsed': elapsed, 'dep_dt': dep_dt})
+    return forward_trains, reverse_trains, t_fwd, rev_times, rev_route
+
+
+def _get_train_position_idx(train):
+    """Posición fraccionaria en la línea [0..11]. Estación=X, segmento=X+0.5"""
+    if train['pos_type'] == 'arriving':
+        return float(train['station_idx'])
+    else:
+        return float(train['segment_idx']) + 0.5
+
+
+def _filter_trains_min_separation(trains, min_gap_stations=3):
+    """
+    Filtra trenes demasiado juntos midiendo separación en posición real (estaciones),
+    NO en tiempo elapsed. Usar elapsed fallaba porque la frecuencia FCE (~600s)
+    era menor que el umbral por tiempo (720s), descartando trenes válidos.
+    """
+    if not trains:
+        return trains
+    sorted_t = sorted(trains, key=_get_train_position_idx)
+    filtered = []
+    for t in sorted_t:
+        pos_t = _get_train_position_idx(t)
+        if not any(abs(pos_t - _get_train_position_idx(f)) < min_gap_stations for f in filtered):
+            filtered.append(t)
+    return filtered
+
+
 async def get_super_status(now: datetime) -> str:
-    estaciones_orden = ["montepo", "fontana", "nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "giovanni", "stesicoro"]
-    lines = []
-    
-    for idx, estacion in enumerate(estaciones_orden):
-        nombre = NOMBRE_MOSTRAR.get(estacion, estacion.capitalize())
-        
-        if estacion == "montepo":
-            next_dep, mins, secs, has = get_next_departure("Montepo", now)
-            if has:
-                total = mins*60 + secs
-                if total <= 59:
-                    lines.append(f"⚪️ {nombre} 🔻 Stesicoro: {total//60:02d}:{total%60:02d}")
-                else:
-                    lines.append(f"⚪️ {nombre}")
-            else:
-                lines.append(f"⚪️ {nombre}")
-        elif estacion == "stesicoro":
-            next_dep, mins, secs, has = get_next_departure("Stesicoro", now)
-            if has:
-                total = mins*60 + secs
-                if total <= 59:
-                    lines.append(f"⚪️ {nombre} 🔺 Monte Po: {total//60:02d}:{total%60:02d}")
-                else:
-                    lines.append(f"⚪️ {nombre}")
-            else:
-                lines.append(f"⚪️ {nombre}")
+    from horarios_logic import get_schedule_list, is_metro_closed, CATANIA_TZ
+    STATIONS = ["montepo", "fontana", "nesima", "sannullo", "cibali", "milo",
+                "borgo", "giuffrida", "italia", "galatea", "giovanni", "stesicoro"]
+    N = len(STATIONS)
+    forward_trains, reverse_trains, t_fwd, rev_times, rev_route = _build_train_positions(now)
+    forward_trains = _filter_trains_min_separation(forward_trains, min_gap_stations=3)
+    reverse_trains = _filter_trains_min_separation(reverse_trains, min_gap_stations=3)
+
+    # Labels de cabecera: próximo tren que parte (In Binario si ≤4 min, cronómetro si ≤59s)
+    mp_label = None
+    closed_mp, _, _ = is_metro_closed(now, "Montepo")
+    if not closed_mp:
+        for salida_t in get_schedule_list("Montepo", now):
+            dep_dt = CATANIA_TZ.localize(datetime.combine(now.date(), salida_t))
+            secs_to_dep = (dep_dt - now).total_seconds()
+            if secs_to_dep > 0:
+                if secs_to_dep <= 59:
+                    mp_label = f"🔻 {int(secs_to_dep)//60:02d}:{int(secs_to_dep)%60:02d}"
+                elif secs_to_dep <= 240:
+                    mp_label = "🔻 In Binario"
+                break
+    st_label = None
+    closed_st, _, _ = is_metro_closed(now, "Stesicoro")
+    if not closed_st:
+        for salida_t in get_schedule_list("Stesicoro", now):
+            dep_dt = CATANIA_TZ.localize(datetime.combine(now.date(), salida_t))
+            secs_to_dep = (dep_dt - now).total_seconds()
+            if secs_to_dep > 0:
+                if secs_to_dep <= 59:
+                    st_label = f"🔺 {int(secs_to_dep)//60:02d}:{int(secs_to_dep)%60:02d}"
+                elif secs_to_dep <= 240:
+                    st_label = "🔺 In Binario"
+                break
+
+    fwd_at_station = {}
+    fwd_at_segment = set()
+    for tr in forward_trains:
+        if tr['pos_type'] == 'arriving':
+            idx = tr['station_idx']
+            if idx not in fwd_at_station or tr['secs_remaining'] < fwd_at_station[idx]:
+                fwd_at_station[idx] = tr['secs_remaining']
         else:
-            info_mp, info_st = get_next_train_at_station(now, estacion)
-            mejor_tiempo = None
-            mejor_texto = None
-            if info_mp:
-                paso, mins, secs, _ = info_mp
-                total = mins*60 + secs
-                if total <= 59:
-                    mejor_tiempo = total
-                    mejor_texto = f"{nombre} 🔻 Stesicoro: {total//60:02d}:{total%60:02d}"
-            if info_st:
-                paso, mins, secs, _ = info_st
-                total = mins*60 + secs
-                if total <= 59:
-                    if mejor_tiempo is None or total < mejor_tiempo:
-                        mejor_tiempo = total
-                        mejor_texto = f"{nombre} 🔺 Monte Po: {total//60:02d}:{total%60:02d}"
-            if mejor_texto:
-                lines.append(f"⚪️ {mejor_texto}")
+            fwd_at_segment.add(tr['segment_idx'])
+    rev_at_station = {}
+    rev_at_segment = set()
+    for tr in reverse_trains:
+        if tr['pos_type'] == 'arriving':
+            idx = tr['station_idx']
+            if idx not in rev_at_station or tr['secs_remaining'] < rev_at_station[idx]:
+                rev_at_station[idx] = tr['secs_remaining']
+        else:
+            rev_at_segment.add(tr['segment_idx'])
+
+    lines = []
+    for i, estacion in enumerate(STATIONS):
+        nombre = NOMBRE_MOSTRAR.get(estacion, estacion.capitalize())
+        tags = []
+
+        if estacion == "montepo":
+            if i in rev_at_station:
+                s = rev_at_station[i]
+                if s == 0:
+                    # Tren en cabecera: ocupa el slot, no coexiste con label de salida
+                    tags.append("🔺 In Binario")
+                else:
+                    tags.append(f"🔺 {s//60:02d}:{s%60:02d}")
+                    if mp_label:
+                        tags.append(mp_label)
             else:
-                lines.append(f"⚪️ {nombre}")
-        
-        if estacion != "stesicoro":
-            lines.append("▫️")
-    
+                if mp_label:
+                    tags.append(mp_label)
+
+        elif estacion == "stesicoro":
+            if i in fwd_at_station:
+                s = fwd_at_station[i]
+                if s == 0:
+                    tags.append("🔻 In Binario")
+                else:
+                    tags.append(f"🔻 {s//60:02d}:{s%60:02d}")
+                    if st_label:
+                        tags.append(st_label)
+            else:
+                if st_label:
+                    tags.append(st_label)
+
+        else:
+            if i in fwd_at_station:
+                s = fwd_at_station[i]
+                tags.append(f"🔻 {s//60:02d}:{s%60:02d}")
+            if i in rev_at_station:
+                s = rev_at_station[i]
+                tags.append(f"🔺 {s//60:02d}:{s%60:02d}")
+
+        lines.append(f"⚪️ {nombre}  {'  '.join(tags)}" if tags else f"⚪️ {nombre}")
+
+        if i < N - 1:
+            seg_tags = []
+            if i in fwd_at_segment:
+                seg_tags.append("🔻")
+            if i in rev_at_segment:
+                seg_tags.append("🔺")
+            lines.append(f"▫️  {'  '.join(seg_tags)}" if seg_tags else "▫️")
+
     return "🛂 **SUPERVISORE: Monitoraggio degli arrivi dei treni**\n\n" + "\n".join(lines)
 
+
 async def auto_update_super(context, chat_id, message_id, cycles=40, interval=3):
+    last_sent_msg = None
     for ciclo in range(1, cycles + 1):
         for _ in range(interval):
             await asyncio.sleep(1)
@@ -1131,11 +1278,18 @@ async def auto_update_super(context, chat_id, message_id, cycles=40, interval=3)
             return
         now = get_simulated_now(context)
         new_msg = await get_super_status(now)
-        try:
-            await context.bot.edit_message_text(text=new_msg, chat_id=chat_id, message_id=message_id, parse_mode='Markdown')
-        except Exception as e:
-            logger.error(f"Error al actualizar super: {e}")
-            break
+        # Solo editar si el mensaje cambió Y hay números visibles (trenes llegando a estaciones).
+        # Si todos los trenes están en segmentos ▫️, el texto no cambia entre ciclos:
+        # no tiene sentido consumir quota de la API de Telegram editando sin cambios.
+        has_numbers = any(c.isdigit() for c in new_msg.split("SUPERVISORE")[-1])
+        msg_changed = new_msg != last_sent_msg
+        if msg_changed and (has_numbers or last_sent_msg is None):
+            try:
+                await context.bot.edit_message_text(text=new_msg, chat_id=chat_id, message_id=message_id, parse_mode='Markdown')
+                last_sent_msg = new_msg
+            except Exception as e:
+                logger.error(f"Error al actualizar super: {e}")
+                break
     if context.chat_data.get('super_active', False):
         keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔄 Aggiornare", callback_data="aggiornare_super")]])
         try:
@@ -1143,6 +1297,7 @@ async def auto_update_super(context, chat_id, message_id, cycles=40, interval=3)
         except Exception:
             await context.bot.send_message(chat_id=chat_id, text=new_msg, parse_mode='Markdown', reply_markup=keyboard)
         context.chat_data['super_active'] = False
+        context.chat_data.pop('super_task', None)
         context.chat_data.pop('super_task', None)
 
 async def send_super_response(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1249,8 +1404,161 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
             return
     
     # Detección de estación por nombre (modo nonna)
-    # [Aquí debes mantener tu lógica original de KEYWORDS, ALIASES, levenshtein_distance]
-    # Por brevedad no se incluye todo el código, pero debes conservarlo de tu versión anterior.
+    import unicodedata
+    texto_norm = unicodedata.normalize('NFKD', texto.lower()).encode('ASCII', 'ignore').decode('ASCII')
+    texto_limpio = ' '.join(texto_norm.split())
+    palabras = texto_limpio.split()
+
+    KEYWORDS = {
+        "corso sicilia": "stesicoro", "repubblica": "stesicoro",
+        "archimede": "giovanni", "liberta": "giovanni", "centrale": "giovanni",
+        "jonio": "galatea", "pasubio": "galatea", "palmanova": "galatea", "messina": "galatea",
+        "firenze": "italia", "ramondetta": "italia", "scammacca": "italia", "veneto": "italia",
+        "carvana": "giuffrida", "abraham": "giuffrida", "lincoln": "giuffrida",
+        "empedocle": "borgo", "signorelli": "borgo",
+        "bronte": "milo", "fleming": "milo",
+        "bergamo": "cibali", "galermo": "cibali", "massimino": "cibali", "stadio": "cibali",
+        "usodimare": "sannullo", "uso di mare": "sannullo", "sebastiano": "sannullo",
+        "lorenzo": "nesima", "bolano": "nesima", "filippo": "nesima", "eredia": "nesima",
+        "garibaldi": "fontana",
+        "carlo": "montepo", "marx": "montepo",
+    }
+    KEYWORDS_NORM = {}
+    for kw, station in KEYWORDS.items():
+        kw_norm = unicodedata.normalize('NFKD', kw.lower()).encode('ASCII', 'ignore').decode('ASCII')
+        KEYWORDS_NORM[kw_norm] = station
+
+    def levenshtein_distance(a: str, b: str) -> int:
+        if len(a) < len(b):
+            return levenshtein_distance(b, a)
+        if len(b) == 0:
+            return len(a)
+        previous_row = list(range(len(b) + 1))
+        for i, ca in enumerate(a):
+            current_row = [i + 1]
+            for j, cb in enumerate(b):
+                insertions = previous_row[j + 1] + 1
+                deletions = current_row[j] + 1
+                substitutions = previous_row[j] + (ca != cb)
+                current_row.append(min(insertions, deletions, substitutions))
+            previous_row = current_row
+        return previous_row[-1]
+
+    mejor_clave_kw = None
+    for kw_norm, station in KEYWORDS_NORM.items():
+        if kw_norm in texto_limpio:
+            mejor_clave_kw = station
+            break
+    if not mejor_clave_kw:
+        for kw_norm, station in KEYWORDS_NORM.items():
+            kw_palabras = kw_norm.split()
+            if len(kw_palabras) > 1:
+                continue
+            kw_len = len(kw_norm)
+            for palabra in palabras:
+                if len(palabra) <= 2:
+                    continue
+                dist = levenshtein_distance(palabra, kw_norm)
+                if (kw_len <= 4 and dist == 0) or (kw_len > 4 and dist <= 1):
+                    mejor_clave_kw = station
+                    break
+            if mejor_clave_kw:
+                break
+    if mejor_clave_kw:
+        await send_station_response(update, context, mejor_clave_kw, return_to_main=True)
+        return
+
+    # Regla especial: palabras que empiezan por ESTE/STE o terminan en CORO/COLO/COMO
+    for palabra in palabras:
+        if (palabra.startswith('este') or palabra.startswith('ste')) or \
+           (palabra.endswith('coro') or palabra.endswith('colo') or palabra.endswith('como')):
+            await send_station_response(update, context, "stesicoro", return_to_main=True)
+            return
+
+    ALIASES = {
+        "misterbianco": "montepo", "humanitas": "nesima",
+        "centro sicilia": "nesima", "centrosicilia": "nesima",
+        "mister bianco": "montepo", "mr bianco": "montepo", "mr. bianco": "montepo",
+        "giovanni": "giovanni", "giovanni xxiii": "giovanni",
+        "stesicoro": "stesicoro",
+        "monte po": "montepo", "monte": "montepo",
+        "san nullo": "sannullo", "nullo": "sannullo",
+    }
+    alias_norm = {}
+    for alias, clave in ALIASES.items():
+        alias_clean = unicodedata.normalize('NFKD', alias.lower()).encode('ASCII', 'ignore').decode('ASCII')
+        alias_norm[alias_clean] = clave
+
+    matches = []
+    for alias, clave in alias_norm.items():
+        if alias in texto_limpio:
+            matches.append((texto_limpio.find(alias), clave))
+    if not matches:
+        if texto_limpio.startswith("giovanni x"):
+            matches.append((0, "giovanni"))
+    if not matches:
+        for alias, clave in alias_norm.items():
+            max_dist = 1 if clave == "borgo" else 2
+            for i, palabra in enumerate(palabras):
+                if len(palabra) <= 3:
+                    continue
+                dist = levenshtein_distance(palabra, alias)
+                if dist <= max_dist:
+                    pos = sum(len(p) + 1 for p in palabras[:i])
+                    matches.append((pos, clave))
+                    break
+            if matches:
+                break
+
+    estaciones = list(NOMBRE_MOSTRAR.items())
+    estaciones.sort(key=lambda x: len(x[1]), reverse=True)
+    for clave, nombre in estaciones:
+        nombre_norm = unicodedata.normalize('NFKD', nombre.lower()).encode('ASCII', 'ignore').decode('ASCII')
+        start = 0
+        while True:
+            pos = texto_limpio.find(nombre_norm, start)
+            if pos == -1:
+                break
+            matches.append((pos, clave))
+            start = pos + 1
+
+    if not matches:
+        for clave, nombre in estaciones:
+            nombre_norm = unicodedata.normalize('NFKD', nombre.lower()).encode('ASCII', 'ignore').decode('ASCII')
+            max_dist = 1 if clave == "borgo" else 2
+            for i, palabra in enumerate(palabras):
+                if len(palabra) <= 3:
+                    continue
+                dist = levenshtein_distance(palabra, nombre_norm)
+                if dist <= max_dist:
+                    pos = sum(len(p) + 1 for p in palabras[:i])
+                    matches.append((pos, clave))
+                    break
+            if matches:
+                break
+
+    if not matches:
+        for clave, nombre in estaciones:
+            nombre_norm = unicodedata.normalize('NFKD', nombre.lower()).encode('ASCII', 'ignore').decode('ASCII')
+            if nombre_norm.startswith(texto_limpio) and len(texto_limpio) >= 3:
+                matches.append((0, clave))
+                break
+            if texto_limpio.startswith(nombre_norm) and len(nombre_norm) >= 3:
+                matches.append((0, clave))
+                break
+
+    if not matches:
+        if texto_limpio.startswith("gal"):
+            matches.append((0, "galatea"))
+        elif "galaxia" in texto_limpio:
+            matches.append((0, "galatea"))
+
+    if matches:
+        matches.sort(key=lambda x: x[0])
+        mejor_clave = matches[0][1]
+        await send_station_response(update, context, mejor_clave, return_to_main=True)
+        return
+
     await update.message.reply_text(
         "Stazione non riconosciuta. Le stazioni disponibili sono: " +
         ", ".join(NOMBRE_MOSTRAR.values()) + ".\nPuoi anche usare alias come 'Misterbianco' (Monte Po) o 'Humanitas' (Nesima).",
