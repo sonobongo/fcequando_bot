@@ -37,6 +37,27 @@ BOTON_TO_KEY = {
 }
 
 # ============================================================================
+# FUNCIÓN PARA OBTENER LA HORA SIMULADA (test estático o live)
+# ============================================================================
+def get_simulated_now(context: ContextTypes.DEFAULT_TYPE) -> datetime:
+    if 'test_time' in context.chat_data:
+        sim = context.chat_data['test_time']
+        if sim.tzinfo is None:
+            sim = CATANIA_TZ.localize(sim)
+        return sim
+    if 'test_live_base' in context.chat_data:
+        base = context.chat_data['test_live_base']
+        base_real = context.chat_data.get('test_live_real')
+        if base_real is None:
+            base_real = datetime.now(CATANIA_TZ)
+            context.chat_data['test_live_real'] = base_real
+        if base.tzinfo is None:
+            base = CATANIA_TZ.localize(base)
+        delta = datetime.now(CATANIA_TZ) - base_real
+        return base + delta
+    return datetime.now(CATANIA_TZ)
+
+# ============================================================================
 # FUNCIÓN PARA ELIMINAR "[]"
 # ============================================================================
 def clean_text_for_display(text: str) -> str:
@@ -717,7 +738,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
     context.chat_data['main_msg_id'] = msg1.message_id
     await store_id(context, msg1)
 
-    ids = await send_messages_2_and_3(update, context, estacion_key, now, simulated is not None, show_button=True)
+    ids = await send_messages_2_and_3(update, context, estacion_key, now, simulated=(context.chat_data.get('test_time') is not None or context.chat_data.get('test_live_base') is not None), show_button=True)
     if ids:
         context.chat_data['refresh_msg_ids'] = list(ids)
 
