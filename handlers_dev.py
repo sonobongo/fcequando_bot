@@ -3,7 +3,7 @@ import time as time_module
 import unicodedata
 import logging
 import re
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, time
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove
 from telegram.ext import ContextTypes
 from horarios_logic import *
@@ -688,23 +688,37 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
     closed, next_open, special_closing_msg = is_metro_closed(now, "Montepo")
     if closed:
         if next_open.date() > now.date():
-            msg = f"{special_closing_msg}\n🚇 La metropolitana è chiusa in questo momento. Riaprirà domani alle {next_open.strftime('%H:%M')}."
+            reopen_str = f"domani alle {next_open.strftime('%H:%M')}"
         else:
-            mins_to_open = int((next_open - now).total_seconds() // 60)
-            if mins_to_open <= 60:
+            reopen_str = f"alle {next_open.strftime('%H:%M')}"
+        mins_to_open = int((next_open - now).total_seconds() // 60)
+        if mins_to_open <= 60:
+            try:
                 first_train, _, _, has_first = get_next_departure("Montepo", now)
                 if not has_first:
-                    first_train, _, _, _ = get_next_departure("Montepo", now + timedelta(days=1))
-                msg = f"{special_closing_msg}\n🚇 La metropolitana è chiusa in questo momento. Il primo treno da Monte Po partirà alle {first_train.strftime('%H:%M')}."
-            else:
-                msg = f"{special_closing_msg}\n🚇 La metropolitana è chiusa in questo momento.\n🕒 Riaprirà alle {next_open.strftime('%H:%M')}."
-        img = get_station_image(estacion_key, now)
-        if img:
-            msg1 = await update.message.reply_photo(photo=img, caption=msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
+                    tomorrow = datetime.combine(now.date() + timedelta(days=1), time(0, 0))
+                    tomorrow = CATANIA_TZ.localize(tomorrow)
+                    first_train, _, _, _ = get_next_departure("Montepo", tomorrow)
+                msg = f"🚇 La metropolitana è chiusa. Il primo treno da Monte Po partirà alle {first_train.strftime('%H:%M')}."
+            except Exception:
+                msg = f"🚇 La metropolitana è chiusa. Riaprirà {reopen_str}."
         else:
-            msg1 = await update.message.reply_text(msg, reply_markup=keyboard_main if return_to_main else keyboard_altri)
-        context.chat_data['main_msg_id'] = msg1.message_id
-        await store_id(context, msg1)
+            msg = f"🚇 La metropolitana è chiusa. Riaprirà {reopen_str}."
+        try:
+            img = get_station_image(estacion_key, now)
+            if img:
+                msg1 = await update.message.reply_photo(photo=img, caption=msg, parse_mode='Markdown', reply_markup=keyboard_main if return_to_main else keyboard_altri)
+            else:
+                msg1 = await update.message.reply_text(msg, parse_mode='Markdown', reply_markup=keyboard_main if return_to_main else keyboard_altri)
+            context.chat_data['main_msg_id'] = msg1.message_id
+            await store_id(context, msg1)
+        except Exception as e:
+            logger.error(f"Error enviando mensaje de metro cerrado: {e}")
+            try:
+                msg1 = await update.message.reply_text(msg, reply_markup=keyboard_main)
+                context.chat_data['main_msg_id'] = msg1.message_id
+            except Exception:
+                pass
         return
 
     nombre = NOMBRE_MOSTRAR.get(estacion_key, estacion_key.capitalize())
