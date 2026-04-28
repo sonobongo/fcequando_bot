@@ -972,6 +972,7 @@ def format_time_precise(minutes: int, seconds: int) -> str:
     total_seconds = minutes * 60 + seconds
     if total_seconds > 90:
         return format_time(minutes, seconds)
+    # Redondear a la decena inferior
     rounded_seconds = (seconds // 10) * 10
     if minutes == 0:
         if rounded_seconds == 0:
@@ -982,6 +983,7 @@ def format_time_precise(minutes: int, seconds: int) -> str:
         if rounded_seconds == 0:
             return "1 minuto"
         else:
+            # Para 1 minuto y 30 segundos, mostrar "1 minuto e 30 secondi"
             return f"1 minuto e {rounded_seconds} secondi"
     else:
         if rounded_seconds == 0:
