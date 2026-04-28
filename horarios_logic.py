@@ -775,12 +775,29 @@ def is_metro_closed(now: datetime, station: str) -> Tuple[bool, Optional[datetim
             return (True, next_open, special_msg)
     
     if 1 <= now.hour < 6:
-        open_h, open_m = get_opening_time(now, station)
-        next_open = datetime.combine(now.date(), time(open_h, open_m))
-        if next_open <= now:
-            next_open = datetime.combine(now.date() + timedelta(days=1), time(open_h, open_m))
-        next_open = CATANIA_TZ.localize(next_open)
-        return (True, next_open, "🚇 La metropolitana è chiusa in questo momento.")
+        # Antes de marcar como cerrado, verificar si el horario de hoy
+        # tiene cierre nocturno (ej. viernes/sábado cierran a 01:00).
+        # En ese caso, si aún no ha llegado la hora de cierre, el metro sigue abierto.
+        close_h_check, close_m_check = get_closing_time(now, station)
+        if close_h_check >= 1:
+            closing_time_check = time(close_h_check, close_m_check)
+            if now.time() < closing_time_check:
+                # El metro sigue abierto según su horario de hoy
+                pass
+            else:
+                open_h, open_m = get_opening_time(now, station)
+                next_open = datetime.combine(now.date(), time(open_h, open_m))
+                if next_open <= now:
+                    next_open = datetime.combine(now.date() + timedelta(days=1), time(open_h, open_m))
+                next_open = CATANIA_TZ.localize(next_open)
+                return (True, next_open, "🚇 La metropolitana è chiusa in questo momento.")
+        else:
+            open_h, open_m = get_opening_time(now, station)
+            next_open = datetime.combine(now.date(), time(open_h, open_m))
+            if next_open <= now:
+                next_open = datetime.combine(now.date() + timedelta(days=1), time(open_h, open_m))
+            next_open = CATANIA_TZ.localize(next_open)
+            return (True, next_open, "🚇 La metropolitana è chiusa in questo momento.")
     
     current_time = now.time()
     open_h, open_m = get_opening_time(now, station)
