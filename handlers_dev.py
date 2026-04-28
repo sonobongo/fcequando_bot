@@ -257,7 +257,7 @@ def build_temporary_messages(now: datetime, estacion_key: str, dev_mode: bool = 
             else:
                 line = f"🔺 **Per Monte Po**: Passa tra **{time_str}**.\n"
         estaciones_localizacion = ["nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "fontana"]
-        if estacion_key in estaciones_localizacion and 1 <= mins <= 10 and (mins*60 + secs) > 90:
+        if estacion_key in estaciones_localizacion and 1 <= mins <= 10 and (mins*60 + secs) > 119:
             rest_seconds = mins*60 + secs
             total_seconds = get_total_seconds_from_stesicoro(estacion_key, now)
             if rest_seconds < total_seconds:
@@ -288,7 +288,7 @@ def build_temporary_messages(now: datetime, estacion_key: str, dev_mode: bool = 
                     elif "non ancora partito" not in current_station_text:
                         line += f"   [il treno si trova attualmente a {current_station_text}]\n"
         msg2 += line
-        if (mins*60 + secs) <= 90 and next_info:
+        if (mins*60 + secs) <= 119 and next_info:
             paso2, mins2, secs2 = next_info
             if dev_mode:
                 time_str2 = format_time_precise(mins2, secs2)
@@ -345,14 +345,14 @@ def build_temporary_messages(now: datetime, estacion_key: str, dev_mode: bool = 
             else:
                 current_station_text = None
         estaciones_localizacion2 = ["nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "giovanni"]
-        if estacion_key in estaciones_localizacion2 and 1 <= mins <= 10 and (mins*60 + secs) > 90:
+        if estacion_key in estaciones_localizacion2 and 1 <= mins <= 10 and (mins*60 + secs) > 119:
             if rest_seconds < total_seconds and current_station_text:
                 if "appena partito" in current_station_text:
                     line += f"   [{current_station_text}]\n"
                 elif "non ancora partito" not in current_station_text:
                     line += f"   [il treno si trova attualmente a {current_station_text}]\n"
         msg3 = line
-        if (mins*60 + secs) <= 90 and next_info:
+        if (mins*60 + secs) <= 119 and next_info:
             paso2, mins2, secs2 = next_info
             if dev_mode:
                 time_str2 = format_time_precise(mins2, secs2)
@@ -429,7 +429,7 @@ async def send_message_2(update: Update, context: ContextTypes.DEFAULT_TYPE, msg
     msg = clean_text_for_display(msg)
     if msg is None:
         return None
-    if tiempo_restante is not None and tiempo_restante <= 90:
+    if tiempo_restante is not None and tiempo_restante <= 119:
         return await send_treno_arrivo(update, context, msg, "Monte Po")
     elif current_station_key and current_station_key != "montepo":
         gif_url = f"https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_stesicoro_{current_station_key}.gif"
@@ -444,7 +444,7 @@ async def send_message_3(update: Update, context: ContextTypes.DEFAULT_TYPE, msg
     if "nessun treno in arrivo al momento" in msg:
         msg = msg.replace("nessun treno in arrivo al momento", "Il servizio è terminato")
         return await send_text_only(update, context, msg, reply_markup)
-    if tiempo_restante is not None and tiempo_restante <= 90:
+    if tiempo_restante is not None and tiempo_restante <= 119:
         img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_trenoarriva.png"
         cache_buster = int(time_module.time())
         img_url = f"{img_url}?v={cache_buster}"
