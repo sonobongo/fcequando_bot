@@ -717,24 +717,22 @@ def get_next_departure_after(station: str, now: datetime, after_time: time) -> T
 # ============================================================================
 def format_time(minutes: int, seconds: int) -> str:
     total_seconds = minutes * 60 + seconds
-    if total_seconds > 90:
-        return f"{minutes} minuti"
+    # Mostrar minutos+segundos para todo el rango 0–119s (hasta 1:59).
+    # A partir de 120s (2 min exactos) redondeamos al minuto más cercano.
+    if total_seconds >= 120:
+        rounded_minutes = (total_seconds + 30) // 60  # redondeo al minuto más cercano
+        return f"{rounded_minutes} minuti"
     rounded_seconds = (seconds // 10) * 10
     if minutes == 0:
         if rounded_seconds == 0:
             return "subito"
         else:
             return f"{rounded_seconds} secondi"
-    elif minutes == 1:
+    else:  # minutes == 1
         if rounded_seconds == 0:
             return "1 minuto"
         else:
             return f"1 minuto e {rounded_seconds} secondi"
-    else:
-        if rounded_seconds == 0:
-            return f"{minutes} minuti"
-        else:
-            return f"{minutes} minuti e {rounded_seconds} secondi"
 
 def get_last_train_message(now: datetime) -> str:
     if (now.month == 12 and now.day == 31 and now.hour >= 12) or (now.month == 1 and now.day == 1 and now.hour < 3):
@@ -970,7 +968,7 @@ def get_current_station_from_stesicoro(now: datetime, seconds_passed: int) -> st
 
 def format_time_precise(minutes: int, seconds: int) -> str:
     total_seconds = minutes * 60 + seconds
-    if total_seconds > 90:
+    if total_seconds >= 120:
         return format_time(minutes, seconds)
     # Redondear a la decena inferior
     rounded_seconds = (seconds // 10) * 10
@@ -979,14 +977,8 @@ def format_time_precise(minutes: int, seconds: int) -> str:
             return "subito"
         else:
             return f"{rounded_seconds} secondi"
-    elif minutes == 1:
+    else:  # minutes == 1
         if rounded_seconds == 0:
             return "1 minuto"
         else:
-            # Para 1 minuto y 30 segundos, mostrar "1 minuto e 30 secondi"
             return f"1 minuto e {rounded_seconds} secondi"
-    else:
-        if rounded_seconds == 0:
-            return f"{minutes} minuti"
-        else:
-            return f"{minutes} minuti e {rounded_seconds} secondi"
