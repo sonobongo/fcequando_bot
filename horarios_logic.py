@@ -717,22 +717,28 @@ def get_next_departure_after(station: str, now: datetime, after_time: time) -> T
 # ============================================================================
 def format_time(minutes: int, seconds: int) -> str:
     total_seconds = minutes * 60 + seconds
-    # Mostrar minutos+segundos para todo el rango 0–119s (hasta 1:59).
-    # A partir de 120s (2 min exactos) redondeamos al minuto más cercano.
-    if total_seconds >= 120:
-        rounded_minutes = (total_seconds + 30) // 60  # redondeo al minuto más cercano
-        return f"{rounded_minutes} minuti"
-    rounded_seconds = (seconds // 10) * 10
-    if minutes == 0:
-        if rounded_seconds == 0:
-            return "subito"
+
+    if total_seconds <= 90:
+        # ≤ 1:30 → tramos de 10 segundos
+        rounded_seconds = (seconds // 10) * 10
+        if minutes == 0:
+            return "subito" if rounded_seconds == 0 else f"{rounded_seconds} secondi"
+        else:  # minutes == 1
+            return "1 minuto" if rounded_seconds == 0 else f"1 minuto e {rounded_seconds} secondi"
+
+    if total_seconds <= 300:
+        # 1:31 – 5:00 → tramos de 30 segundos
+        rounded_total = (total_seconds // 30) * 30
+        r_min = rounded_total // 60
+        r_sec = rounded_total % 60
+        if r_sec == 0:
+            return f"{r_min} minuti" if r_min != 1 else "1 minuto"
         else:
-            return f"{rounded_seconds} secondi"
-    else:  # minutes == 1
-        if rounded_seconds == 0:
-            return "1 minuto"
-        else:
-            return f"1 minuto e {rounded_seconds} secondi"
+            return f"{r_min} minuti e {r_sec} secondi" if r_min != 1 else f"1 minuto e {r_sec} secondi"
+
+    # > 5:00 → minuto más cercano
+    rounded_minutes = (total_seconds + 30) // 60
+    return f"{rounded_minutes} minuti"
 
 def get_last_train_message(now: datetime) -> str:
     if (now.month == 12 and now.day == 31 and now.hour >= 12) or (now.month == 1 and now.day == 1 and now.hour < 3):
@@ -967,18 +973,4 @@ def get_current_station_from_stesicoro(now: datetime, seconds_passed: int) -> st
     return NOMBRE_MOSTRAR["stesicoro"]
 
 def format_time_precise(minutes: int, seconds: int) -> str:
-    total_seconds = minutes * 60 + seconds
-    if total_seconds >= 120:
-        return format_time(minutes, seconds)
-    # Redondear a la decena inferior
-    rounded_seconds = (seconds // 10) * 10
-    if minutes == 0:
-        if rounded_seconds == 0:
-            return "subito"
-        else:
-            return f"{rounded_seconds} secondi"
-    else:  # minutes == 1
-        if rounded_seconds == 0:
-            return "1 minuto"
-        else:
-            return f"1 minuto e {rounded_seconds} secondi"
+    return format_time(minutes, seconds)
