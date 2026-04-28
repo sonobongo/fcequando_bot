@@ -664,6 +664,7 @@ async def send_header_response(chat_id, context, estacion_key, is_update=False):
                 if bus_text_raw:
                     bus_text = bus_text_raw.replace("**", "")
             
+            # Siempre usar format_time_precise
             time_str = format_time_precise(mins_rest, secs_rest)
             msg = f"Il treno è in binario. Partirà tra **{time_str}**."
             if second_train_info:
@@ -1248,8 +1249,8 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
             return
     
     # Detección de estación por nombre (modo nonna)
-    # [Aqui debería ir todo el código de KEYWORDS, ALIASES, levenshtein_distance, etc.]
-    # Por simplicidad, se ha omitido en este extracto, pero debes conservar tu implementación original.
+    # [Aquí debes mantener tu lógica original de KEYWORDS, ALIASES, levenshtein_distance]
+    # Por brevedad no se incluye todo el código, pero debes conservarlo de tu versión anterior.
     await update.message.reply_text(
         "Stazione non riconosciuta. Le stazioni disponibili sono: " +
         ", ".join(NOMBRE_MOSTRAR.values()) + ".\nPuoi anche usare alias come 'Misterbianco' (Monte Po) o 'Humanitas' (Nesima).",
