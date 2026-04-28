@@ -257,7 +257,7 @@ def build_temporary_messages(now: datetime, estacion_key: str, dev_mode: bool = 
             else:
                 line = f"🔺 **Per Monte Po**: Passa tra **{time_str}**.\n"
         estaciones_localizacion = ["nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "fontana"]
-        if estacion_key in estaciones_localizacion and 2 <= mins <= 10:
+        if estacion_key in estaciones_localizacion and 1 <= mins <= 10:
             rest_seconds = mins*60 + secs
             total_seconds = get_total_seconds_from_stesicoro(estacion_key, now)
             if rest_seconds < total_seconds:
@@ -288,7 +288,7 @@ def build_temporary_messages(now: datetime, estacion_key: str, dev_mode: bool = 
                     elif "non ancora partito" not in current_station_text:
                         line += f"   [il treno si trova attualmente a {current_station_text}]\n"
         msg2 += line
-        if mins <= 1 and next_info:
+        if (mins*60 + secs) <= 30 and next_info:
             paso2, mins2, secs2 = next_info
             if dev_mode:
                 time_str2 = format_time_precise(mins2, secs2)
@@ -345,14 +345,14 @@ def build_temporary_messages(now: datetime, estacion_key: str, dev_mode: bool = 
             else:
                 current_station_text = None
         estaciones_localizacion2 = ["nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "giovanni"]
-        if estacion_key in estaciones_localizacion2 and 2 <= mins <= 10:
+        if estacion_key in estaciones_localizacion2 and 1 <= mins <= 10:
             if rest_seconds < total_seconds and current_station_text:
                 if "appena partito" in current_station_text:
                     line += f"   [{current_station_text}]\n"
                 elif "non ancora partito" not in current_station_text:
                     line += f"   [il treno si trova attualmente a {current_station_text}]\n"
         msg3 = line
-        if mins <= 1 and next_info:
+        if (mins*60 + secs) <= 30 and next_info:
             paso2, mins2, secs2 = next_info
             if dev_mode:
                 time_str2 = format_time_precise(mins2, secs2)
