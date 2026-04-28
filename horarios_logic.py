@@ -719,16 +719,19 @@ def format_time(minutes: int, seconds: int) -> str:
     total_seconds = minutes * 60 + seconds
 
     if total_seconds <= 90:
-        # ≤ 1:30 → tramos de 10 segundos
-        rounded_seconds = (seconds // 10) * 10
+        # ≤ 1:30 → tramos de 10 segundos, redondeado al más cercano
+        rounded_seconds = (seconds + 5) // 10 * 10
+        if rounded_seconds == 60:
+            minutes += 1
+            rounded_seconds = 0
         if minutes == 0:
             return "subito" if rounded_seconds == 0 else f"{rounded_seconds} secondi"
         else:  # minutes == 1
             return "1 minuto" if rounded_seconds == 0 else f"1 minuto e {rounded_seconds} secondi"
 
     if total_seconds <= 300:
-        # 1:31 – 5:00 → tramos de 30 segundos
-        rounded_total = (total_seconds // 30) * 30
+        # 1:31 – 5:00 → tramos de 30 segundos, redondeado al más cercano
+        rounded_total = (total_seconds + 15) // 30 * 30
         r_min = rounded_total // 60
         r_sec = rounded_total % 60
         if r_sec == 0:
