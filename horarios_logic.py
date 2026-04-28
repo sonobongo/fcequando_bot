@@ -775,23 +775,19 @@ def is_metro_closed(now: datetime, station: str) -> Tuple[bool, Optional[datetim
             return (True, next_open, special_msg)
     
     if 1 <= now.hour < 6:
-        # Antes de marcar como cerrado, verificar si el horario de hoy
-        # tiene cierre nocturno (ej. viernes/sábado cierran a 01:00).
-        # En ese caso, si aún no ha llegado la hora de cierre, el metro sigue abierto.
+        # Entre 01:00 y 06:00: verificar si el horario de hoy tiene cierre nocturno
+        # (viernes/sábado cierran a 01:00, otros días a 22:30).
+        # Si el cierre es a las 01:00 y ya son las 01:00 o más → cerrado.
+        # Si el cierre es a las 22:30 (ya fue ayer) → también cerrado.
         close_h_check, close_m_check = get_closing_time(now, station)
-        if close_h_check >= 1:
-            closing_time_check = time(close_h_check, close_m_check)
-            if now.time() < closing_time_check:
-                # El metro sigue abierto según su horario de hoy
-                pass
-            else:
-                open_h, open_m = get_opening_time(now, station)
-                next_open = datetime.combine(now.date(), time(open_h, open_m))
-                if next_open <= now:
-                    next_open = datetime.combine(now.date() + timedelta(days=1), time(open_h, open_m))
-                next_open = CATANIA_TZ.localize(next_open)
-                return (True, next_open, "🚇 La metropolitana è chiusa in questo momento.")
+        closing_time_check = time(close_h_check, close_m_check)
+        # Es horario nocturno extendido si el cierre es entre 01:00 y 03:00
+        is_late_closing = 1 <= close_h_check <= 3
+        if is_late_closing and now.time() < closing_time_check:
+            # Aún en servicio (antes del cierre nocturno)
+            pass
         else:
+            # Fuera de servicio
             open_h, open_m = get_opening_time(now, station)
             next_open = datetime.combine(now.date(), time(open_h, open_m))
             if next_open <= now:
