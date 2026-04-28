@@ -398,4 +398,18 @@
       "trayectos_vuelta": []
     }
   ]
-}
+},
+    {
+      "id": "20260428_martes_0944_40pct_valle",
+      "fecha": "2026-04-28",
+      "dia_semana": "martes",
+      "hora": "09:44",
+      "ocupacion": 0.4,
+      "observacion": "hora valle, aforo 40%, incluye tiempos de carga",
+      "trayectos_ida": [
+        { "origen": "Italia", "destino": "Galatea", "tiempo_seg": 98.050, "tiempo_carga_seg": 28.590 },
+        { "origen": "Galatea", "destino": "Giovanni XXIII", "tiempo_seg": 159.960, "tiempo_carga_seg": 22.790 },
+        { "origen": "Giovanni XXIII", "destino": "Stesicoro", "tiempo_seg": 130.000 }
+      ],
+      "trayectos_vuelta": []
+    }
