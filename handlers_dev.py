@@ -107,11 +107,11 @@ async def maybe_send_home_tip(update: Update, context: ContextTypes.DEFAULT_TYPE
         await update.message.reply_text(tip_msg, parse_mode='Markdown')
 
 # ============================================================================
-# COUNTDOWN PARA CABECERAS (con activación a 90 segundos)
+# COUNTDOWN PARA CABECERAS (con información de segundo tren y bus)
 # ============================================================================
-async def update_countdown(context, chat_id, message_id, initial_remaining, station, dest, next_dep, dev_mode):
+async def update_countdown(context, chat_id, message_id, initial_remaining, station, dest, next_dep, dev_mode, second_train_info=None, bus_text=None):
     remaining = initial_remaining
-    last_remaining = remaining  # Para evitar actualizaciones no decrecientes
+    last_remaining = remaining
     while remaining > 10:
         await asyncio.sleep(10)
         if not context.chat_data.get('countdown_active', False):
@@ -120,24 +120,38 @@ async def update_countdown(context, chat_id, message_id, initial_remaining, stat
             now = get_simulated_now(context)
             remaining_calc = (next_dep - now).total_seconds()
             if remaining_calc <= 0:
+                # El tren ha partido
                 new_msg = f"🚇 Il treno per {dest} è partito."
+                if second_train_info:
+                    next2, min2, sec2, has2 = second_train_info
+                    if has2:
+                        remaining2 = (next2 - now).total_seconds()
+                        mins2_rest = int(remaining2 // 60)
+                        new_msg += f"\n\n🚆 Il prossimo treno successivo partirà tra **{mins2_rest} minuti**, alle {next2.strftime('%H:%M')}."
+                if bus_text:
+                    new_msg += f"\n\n{bus_text}"
                 keyboard_inline = InlineKeyboardMarkup([
                     [InlineKeyboardButton("🔄 Aggiornare", callback_data=f"agg_cabecera_{station.lower()}")]
                 ])
                 await context.bot.edit_message_caption(chat_id=chat_id, message_id=message_id, caption=new_msg, parse_mode='Markdown', reply_markup=keyboard_inline)
                 context.chat_data['countdown_active'] = False
                 return
-            # Solo actualizar si el tiempo ha disminuido realmente
             if remaining_calc >= last_remaining:
                 continue
             last_remaining = remaining_calc
             mins_rest = int(remaining_calc // 60)
             secs_rest = int(remaining_calc % 60)
-            # Siempre usar format_time_precise para mostrar segundos exactos
             time_str = format_time_precise(mins_rest, secs_rest)
             new_msg = f"Il treno è in binario. Partirà tra **{time_str}**."
+            if second_train_info:
+                next2, min2, sec2, has2 = second_train_info
+                if has2:
+                    remaining2 = (next2 - now).total_seconds()
+                    mins2_rest = int(remaining2 // 60)
+                    new_msg += f"\n\n🚆 Il prossimo treno successivo partirà tra **{mins2_rest} minuti**, alle {next2.strftime('%H:%M')}."
+            if bus_text:
+                new_msg += f"\n\n{bus_text}"
             await context.bot.edit_message_caption(chat_id=chat_id, message_id=message_id, caption=new_msg, parse_mode='Markdown')
-            remaining = remaining_calc
         except Exception as e:
             logger.error(f"Error en countdown: {e}")
             break
@@ -154,7 +168,7 @@ async def update_countdown(context, chat_id, message_id, initial_remaining, stat
                 remaining_new = (next_dep_new - now).total_seconds()
                 mins_rest = int(remaining_new // 60)
                 secs_rest = int(remaining_new % 60)
-                time_str = format_time_precise(mins_rest, secs_rest)  # Usar preciso también aquí
+                time_str = format_time_precise(mins_rest, secs_rest)
                 if remaining_new <= 60:
                     new_msg = f"Il treno è in binario. Partirà tra **{time_str}**."
                 else:
@@ -165,6 +179,14 @@ async def update_countdown(context, chat_id, message_id, initial_remaining, stat
                             new_msg = f"🚇 Prossimo treno per {dest} parte tra **{time_str}**."
                         else:
                             new_msg = f"🚇 Prossimo treno per {dest} parte tra **{time_str}**, alle {next_dep_new.strftime('%H:%M')}."
+            if second_train_info:
+                next2, min2, sec2, has2 = second_train_info
+                if has2:
+                    remaining2 = (next2 - now).total_seconds()
+                    mins2_rest = int(remaining2 // 60)
+                    new_msg += f"\n\n🚆 Il prossimo treno successivo partirà tra **{mins2_rest} minuti**, alle {next2.strftime('%H:%M')}."
+            if bus_text:
+                new_msg += f"\n\n{bus_text}"
             keyboard_inline = InlineKeyboardMarkup([
                 [InlineKeyboardButton("🔄 Aggiornare", callback_data=f"agg_cabecera_{station.lower()}")]
             ])
@@ -630,9 +652,28 @@ async def send_header_response(chat_id, context, estacion_key, is_update=False):
         
         # COUNTDOWN si falta ≤ 90 segundos (1 minuto y 30 segundos)
         if total_seconds_rest <= 90:
-            # Siempre usar format_time_precise para mostrar segundos exactos
+            # Preparar información del segundo tren
+            second_train_info = None
+            next2, min2, sec2, has2 = get_next_departure_after(station, now, next_dep.time())
+            if has2:
+                second_train_info = (next2, min2, sec2, has2)
+            # Preparar texto de autobús gratuito (solo Monte Po)
+            bus_text = None
+            if estacion_key == "montepo":
+                bus_text_raw = get_bus_message_montepo_advanced(now)
+                if bus_text_raw:
+                    bus_text = bus_text_raw.replace("**", "")
+            
             time_str = format_time_precise(mins_rest, secs_rest)
             msg = f"Il treno è in binario. Partirà tra **{time_str}**."
+            if second_train_info:
+                next2, min2, sec2, has2 = second_train_info
+                remaining2 = (next2 - now).total_seconds()
+                mins2_rest = int(remaining2 // 60)
+                msg += f"\n\n🚆 Il prossimo treno successivo partirà tra **{mins2_rest} minuti**, alle {next2.strftime('%H:%M')}."
+            if bus_text:
+                msg += f"\n\n{bus_text}"
+            
             img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_trenoarriva_cabeceras.png"
             cache_buster = int(time_module.time())
             img_url = f"{img_url}?v={cache_buster}"
@@ -645,7 +686,11 @@ async def send_header_response(chat_id, context, estacion_key, is_update=False):
                 except:
                     pass
             context.chat_data['countdown_active'] = True
-            task = asyncio.create_task(update_countdown(context, chat_id, msg2.message_id, total_seconds_rest, station, dest, next_dep, dev_mode))
+            task = asyncio.create_task(update_countdown(
+                context, chat_id, msg2.message_id, total_seconds_rest, station, dest, next_dep, dev_mode,
+                second_train_info=second_train_info,
+                bus_text=bus_text
+            ))
             context.chat_data['countdown_task'] = task
             return
         
@@ -1203,7 +1248,7 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
             return
     
     # Detección de estación por nombre (modo nonna)
-    # [Aqui debería ir todo el código de KEYWORDS, ALIASES, levenshtein_distance, etc. para que el bot reconozca estaciones escritas mal]
+    # [Aqui debería ir todo el código de KEYWORDS, ALIASES, levenshtein_distance, etc.]
     # Por simplicidad, se ha omitido en este extracto, pero debes conservar tu implementación original.
     await update.message.reply_text(
         "Stazione non riconosciuta. Le stazioni disponibili sono: " +
