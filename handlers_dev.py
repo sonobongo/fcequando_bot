@@ -395,15 +395,9 @@ async def refresh_messages_only(update: Update, context: ContextTypes.DEFAULT_TY
                 pass
         context.chat_data.pop('refresh_msg_ids', None)
     
-    simulated = context.chat_data.get('test_time')
-    if simulated:
-        if simulated.tzinfo is None:
-            simulated = CATANIA_TZ.localize(simulated)
-        now = simulated
-    else:
-        now = datetime.now(CATANIA_TZ)
+    now = get_simulated_now(context)
     
-    new_ids = await send_messages_2_and_3(update, context, estacion_key, now, simulated is not None, show_button=True)
+    new_ids = await send_messages_2_and_3(update, context, estacion_key, now, simulated=(context.chat_data.get('test_time') is not None or context.chat_data.get('test_live_base') is not None), show_button=True)
     if new_ids:
         context.chat_data['refresh_msg_ids'] = list(new_ids)
 
@@ -493,14 +487,7 @@ async def _cabecera_countdown(context, chat_id, message_id, next_dep, station, d
 # ============================================================================
 async def send_header_response(chat_id, context, estacion_key, is_update=False):
     try:
-        simulated = context.chat_data.get('test_time')
-        if simulated:
-            if simulated.tzinfo is None:
-                simulated = CATANIA_TZ.localize(simulated)
-            now = simulated
-        else:
-            now = datetime.now(CATANIA_TZ)
-        
+        now = get_simulated_now(context)
         dev_mode = context.chat_data.get('dev_mode', False)
         station = "Montepo" if estacion_key == "montepo" else "Stesicoro"
         closed, next_open, special_closing_msg = is_metro_closed(now, station)
@@ -539,18 +526,20 @@ async def send_header_response(chat_id, context, estacion_key, is_update=False):
             return
         
         if closed:
+            station_display = "Monte Po" if station == "Montepo" else "Stesicoro"
+            # Calcular hora de reapertura y primer tren
             if next_open.date() > now.date():
-                msg = f"{special_closing_msg}\n🚇 La metropolitana è chiusa in questo momento. Riaprirà domani alle {next_open.strftime('%H:%M')}."
+                reopen_str = f"domani alle {next_open.strftime('%H:%M')}"
             else:
-                mins_to_open = int((next_open - now).total_seconds() // 60)
-                if mins_to_open <= 60:
-                    first_train, _, _, has_first = get_next_departure(station, now)
-                    if not has_first:
-                        first_train, _, _, _ = get_next_departure(station, now + timedelta(days=1))
-                    station_display = "Monte Po" if station == "Montepo" else "Stesicoro"
-                    msg = f"{special_closing_msg}\n🚇 La metropolitana è chiusa in questo momento. Il primo treno da {station_display} partirà alle {first_train.strftime('%H:%M')}."
-                else:
-                    msg = f"{special_closing_msg}\n🚇 La metropolitana è chiusa in questo momento.\n🕒 Riaprirà alle {next_open.strftime('%H:%M')}."
+                reopen_str = f"alle {next_open.strftime('%H:%M')}"
+            mins_to_open = int((next_open - now).total_seconds() // 60)
+            if mins_to_open <= 60:
+                first_train, _, _, has_first = get_next_departure(station, now)
+                if not has_first:
+                    first_train, _, _, _ = get_next_departure(station, now + timedelta(days=1))
+                msg = f"🚇 La metropolitana è chiusa. Il primo treno da {station_display} partirà alle {first_train.strftime('%H:%M')}."
+            else:
+                msg = f"🚇 La metropolitana è chiusa. Riaprirà {reopen_str}."
             img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_default.png"
             cache_buster = int(time_module.time())
             img_url = f"{img_url}?v={cache_buster}"
@@ -661,21 +650,13 @@ async def send_header_response(chat_id, context, estacion_key, is_update=False):
 # RESPUESTA PRINCIPAL (foto + msg2/msg3) - SIN MENSAJE "caricando informazione..."
 # ============================================================================
 async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str, return_to_main: bool = True):
-    # Detener actualización automática de super si está activa
     stop_super_update(context)
-    
     context.chat_data['last_return_to_main'] = return_to_main
-    simulated = context.chat_data.get('test_time')
+    now = get_simulated_now(context)
     demo_mode = context.chat_data.get('demo_mode', False)
-    if simulated:
-        if simulated.tzinfo is None:
-            simulated = CATANIA_TZ.localize(simulated)
-        now = simulated
-    else:
-        now = datetime.now(CATANIA_TZ)
-    
+
     test_indicator = ""
-    if simulated and not demo_mode:
+    if (context.chat_data.get('test_time') is not None or context.chat_data.get('test_live_base') is not None) and not demo_mode:
         test_indicator = "🧪 [TEST MODE] "
 
     if estacion_key in ["montepo", "stesicoro"]:
