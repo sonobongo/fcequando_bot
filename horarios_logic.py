@@ -791,6 +791,10 @@ def is_metro_closed(now: datetime, station: str) -> Tuple[bool, Optional[datetim
             open_h, open_m = get_opening_time(now, station)
             next_open = CATANIA_TZ.localize(datetime.combine(now.date(), time(open_h, open_m)))
             if next_open <= now:
+                # El día siguiente puede tener distinto horario (domingo, festivo...)
+                tomorrow = datetime.combine(now.date() + timedelta(days=1), time(12, 0))
+                tomorrow = CATANIA_TZ.localize(tomorrow)
+                open_h, open_m = get_opening_time(tomorrow, station)
                 next_open = CATANIA_TZ.localize(datetime.combine(now.date() + timedelta(days=1), time(open_h, open_m)))
             return (True, next_open, "🚇 La metropolitana è chiusa in questo momento.")
     
@@ -805,18 +809,20 @@ def is_metro_closed(now: datetime, station: str) -> Tuple[bool, Optional[datetim
             return (False, None, "")
         else:
             if current_time < opening_time:
-                next_open = datetime.combine(now.date(), opening_time)
+                next_open = CATANIA_TZ.localize(datetime.combine(now.date(), opening_time))
             else:
-                next_open = datetime.combine(now.date() + timedelta(days=1), opening_time)
-            next_open = CATANIA_TZ.localize(next_open)
+                tomorrow = CATANIA_TZ.localize(datetime.combine(now.date() + timedelta(days=1), time(12, 0)))
+                oh, om = get_opening_time(tomorrow, station)
+                next_open = CATANIA_TZ.localize(datetime.combine(now.date() + timedelta(days=1), time(oh, om)))
             return (True, next_open, "")
     else:
         if current_time >= closing_time or current_time < opening_time:
             if current_time < opening_time:
-                next_open = datetime.combine(now.date(), opening_time)
+                next_open = CATANIA_TZ.localize(datetime.combine(now.date(), opening_time))
             else:
-                next_open = datetime.combine(now.date() + timedelta(days=1), opening_time)
-            next_open = CATANIA_TZ.localize(next_open)
+                tomorrow = CATANIA_TZ.localize(datetime.combine(now.date() + timedelta(days=1), time(12, 0)))
+                oh, om = get_opening_time(tomorrow, station)
+                next_open = CATANIA_TZ.localize(datetime.combine(now.date() + timedelta(days=1), time(oh, om)))
             return (True, next_open, "")
         return (False, None, "")
 
