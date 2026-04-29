@@ -789,10 +789,9 @@ def is_metro_closed(now: datetime, station: str) -> Tuple[bool, Optional[datetim
         else:
             # Fuera de servicio
             open_h, open_m = get_opening_time(now, station)
-            next_open = datetime.combine(now.date(), time(open_h, open_m))
+            next_open = CATANIA_TZ.localize(datetime.combine(now.date(), time(open_h, open_m)))
             if next_open <= now:
-                next_open = datetime.combine(now.date() + timedelta(days=1), time(open_h, open_m))
-            next_open = CATANIA_TZ.localize(next_open)
+                next_open = CATANIA_TZ.localize(datetime.combine(now.date() + timedelta(days=1), time(open_h, open_m)))
             return (True, next_open, "🚇 La metropolitana è chiusa in questo momento.")
     
     current_time = now.time()
