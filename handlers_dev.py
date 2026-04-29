@@ -104,8 +104,6 @@ async def _cleanup_inactivity(context: ContextTypes.DEFAULT_TYPE):
 
 def _reschedule_inactivity(context: ContextTypes.DEFAULT_TYPE, chat_id: int):
     """Cancela el job anterior y programa uno nuevo de 5 minutos."""
-    if context.job_queue is None:
-        return
     current_jobs = context.job_queue.get_jobs_by_name(f"inactivity_{chat_id}")
     for job in current_jobs:
         job.schedule_removal()
