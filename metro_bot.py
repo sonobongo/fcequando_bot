@@ -33,8 +33,9 @@ def main():
     flask_thread.start()
     logger.info("Flask server avviato sulla porta 8080")
 
+    from telegram.ext import JobQueue
     defaults = Defaults(disable_notification=True)
-    app = Application.builder().token(TOKEN).defaults(defaults).build()
+    app = Application.builder().token(TOKEN).defaults(defaults).job_queue(JobQueue()).build()
 
     # Wrappers per comandi
     async def start_wrapper(update, context): await dev_handlers.start_wrapper(update, context)
