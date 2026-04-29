@@ -70,51 +70,8 @@ def clean_text_for_display(text: str) -> str:
     return text
 
 # ============================================================================
-# LIMPIEZA POR INACTIVIDAD (5 minutos)
+# FUNCIÓN PARA ALMACENAR IDS
 # ============================================================================
-INACTIVITY_SECONDS = 300  # 5 minutos
-
-async def _cleanup_inactivity(context: ContextTypes.DEFAULT_TYPE):
-    """Borra todos los mensajes excepto el de bienvenida tras 5 min de inactividad."""
-    chat_id = context.job.chat_id
-    chat_data = context.application.chat_data.get(chat_id, {})
-    welcome_id = chat_data.get('welcome_msg_id')
-    all_ids = chat_data.get('all_msg_ids', [])
-    for mid in all_ids:
-        if mid == welcome_id:
-            continue
-        try:
-            await context.bot.delete_message(chat_id=chat_id, message_id=mid)
-        except Exception:
-            pass
-    # Limpiar listas de IDs pero conservar el de bienvenida
-    chat_data['all_msg_ids'] = [welcome_id] if welcome_id else []
-    chat_data.pop('refresh_msg_ids', None)
-    chat_data.pop('super_msg_id', None)
-    chat_data.pop('main_msg_id', None)
-    # Parar tasks activas
-    stop_super_update(context)
-    if 'cabecera_countdown_task' in chat_data:
-        try:
-            chat_data['cabecera_countdown_task'].cancel()
-        except Exception:
-            pass
-        chat_data.pop('cabecera_countdown_task', None)
-        chat_data['cabecera_countdown_active'] = False
-
-def _reschedule_inactivity(context: ContextTypes.DEFAULT_TYPE, chat_id: int):
-    """Cancela el job anterior y programa uno nuevo de 5 minutos."""
-    current_jobs = context.job_queue.get_jobs_by_name(f"inactivity_{chat_id}")
-    for job in current_jobs:
-        job.schedule_removal()
-    context.job_queue.run_once(
-        _cleanup_inactivity,
-        when=INACTIVITY_SECONDS,
-        chat_id=chat_id,
-        name=f"inactivity_{chat_id}"
-    )
-
-
 async def store_id(context, message):
     if message and hasattr(message, 'message_id'):
         if 'all_msg_ids' not in context.chat_data:
@@ -470,7 +427,6 @@ async def refresh_messages_only(update: Update, context: ContextTypes.DEFAULT_TY
 # ============================================================================
 async def aggiornare_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    _reschedule_inactivity(context, query.message.chat_id)
     estacion_key = query.data.split("_")[1]
     
     cooldown_key = f"cooldown_{estacion_key}"
@@ -495,7 +451,6 @@ async def aggiornare_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
 # ============================================================================
 async def aggiornare_cabecera_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    _reschedule_inactivity(context, query.message.chat_id)
     await query.answer()
     estacion_key = query.data.split("_")[2]
     chat_id = query.message.chat_id
@@ -904,7 +859,6 @@ async def start(update, context):
     )
     context.chat_data['welcome_msg_id'] = msg.message_id
     await store_id(context, msg)
-    _reschedule_inactivity(context, update.effective_chat.id)
 
 async def help_command(update, context):
     msg = await update.message.reply_text(
@@ -927,7 +881,7 @@ async def help_command(update, context):
     await store_id(context, msg)
 
 async def handle_button(update, context):
-    _reschedule_inactivity(context, update.effective_chat.id)
+    # Detener actualización automática de super
     stop_super_update(context)
     
     text = update.message.text
@@ -1421,7 +1375,7 @@ async def aggiornare_super_callback(update: Update, context: ContextTypes.DEFAUL
 # MODO NONNA: DETECCIÓN DE NOMBRE DE ESTACIÓN CON ERRORES TIPOGRÁFICOS Y ALIAS
 # ============================================================================
 async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    _reschedule_inactivity(context, update.effective_chat.id)
+    # Detener actualización automática de super si está activa
     stop_super_update(context)
     
     texto = update.message.text.strip()
