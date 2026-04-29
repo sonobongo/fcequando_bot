@@ -528,7 +528,14 @@ async def send_header_response(chat_id, context, estacion_key, is_update=False):
             await store_id(context, msg1)
         
         # ========== MENSAJES ESPECIALES PARA FECHAS SEÑALADAS ==========
-        if (now.month == 12 and now.day == 31 and now.hour >= 12) or (now.month == 1 and now.day == 1 and now.hour < 3):
+        if is_sant_agata(now):
+            msg = get_sant_agata_message(station, now)
+            img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_default.png"
+            cache_buster = int(time_module.time())
+            img_url = f"{img_url}?v={cache_buster}"
+            msg2 = await context.bot.send_photo(chat_id=chat_id, photo=img_url, caption=msg, parse_mode='Markdown', reply_markup=keyboard_inline)
+            await store_id(context, msg2)
+            return
             msg = "🎉 Orario speciale di Capodanno: il servizio termina alle 03:00. Buon anno! 🎉"
             img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_default.png"
             cache_buster = int(time_module.time())
@@ -686,6 +693,19 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
 
     if estacion_key in ["montepo", "stesicoro"]:
         await send_header_response(update.message.chat_id, context, estacion_key, is_update=False)
+        return
+
+    # SANT'AGATA: mensaje especial para estaciones intermedias
+    if is_sant_agata(now):
+        nombre = NOMBRE_MOSTRAR.get(estacion_key, estacion_key.capitalize())
+        msg_agata = get_sant_agata_message("Montepo", now)
+        img_station = get_station_image(estacion_key, now)
+        if img_station:
+            msg1 = await update.message.reply_photo(photo=img_station, caption=f"🚇 {nombre}\n\n{msg_agata}", parse_mode='Markdown', reply_markup=keyboard_main if return_to_main else keyboard_altri)
+        else:
+            msg1 = await update.message.reply_text(f"🚇 {nombre}\n\n{msg_agata}", parse_mode='Markdown', reply_markup=keyboard_main if return_to_main else keyboard_altri)
+        context.chat_data['main_msg_id'] = msg1.message_id
+        await store_id(context, msg1)
         return
 
     # ESTACIONES INTERMEDIAS
