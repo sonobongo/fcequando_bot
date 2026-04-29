@@ -324,54 +324,26 @@ def get_last_train_sant_agata(station: str) -> time:
     return str_to_time(SANT_AGATA["special_hours"][station]["last"])
 
 def get_next_departure_sant_agata(station: str, now: datetime) -> Tuple[Optional[datetime], int, int, bool]:
-    eff = get_effective_datetime(now)
-    current_time = now.time()
-    first = get_first_train_sant_agata(station)
-    last = get_last_train_sant_agata(station)
-    first_min = first.hour * 60 + first.minute
-    last_min = last.hour * 60 + last.minute
-    if last_min < first_min:
-        last_min += 24 * 60
-    current_min = current_time.hour * 60 + current_time.minute
-    
-    if current_min < first_min:
-        next_dt = datetime.combine(eff.date(), first)
-        next_dt = CATANIA_TZ.localize(next_dt)
-        sec = int((next_dt - now).total_seconds())
-        return (next_dt, sec // 60, sec % 60, True)
-    if current_min >= last_min:
-        tomorrow = eff.date() + timedelta(days=1)
-        next_dt = datetime.combine(tomorrow, first)
-        next_dt = CATANIA_TZ.localize(next_dt)
-        sec = int((next_dt - now).total_seconds())
-        return (next_dt, sec // 60, sec % 60, True)
-    
-    if current_min < 15 * 60:
-        minutes_since_first = max(0, current_min - first_min)
-        intervals = (minutes_since_first + 9) // 10
-        next_min = first_min + intervals * 10
-        if next_min > 15 * 60:
-            minutes_from_15 = max(0, current_min - 15 * 60)
-            intervals13 = (minutes_from_15 + 12) // 13
-            next_min = 15 * 60 + intervals13 * 13
-    else:
-        minutes_from_15 = max(0, current_min - 15 * 60)
-        intervals13 = (minutes_from_15 + 12) // 13
-        next_min = 15 * 60 + intervals13 * 13
-    
-    if next_min > last_min:
-        tomorrow = eff.date() + timedelta(days=1)
-        next_dt = datetime.combine(tomorrow, first)
-        next_dt = CATANIA_TZ.localize(next_dt)
-        sec = int((next_dt - now).total_seconds())
-        return (next_dt, sec // 60, sec % 60, True)
-    
-    next_hour = next_min // 60
-    next_minute = next_min % 60
-    next_dt = datetime.combine(eff.date(), time(next_hour, next_minute))
-    next_dt = CATANIA_TZ.localize(next_dt)
-    sec = int((next_dt - now).total_seconds())
-    return (next_dt, sec // 60, sec % 60, True)
+    """
+    Durante Sant'Agata no calculamos el próximo tren exacto.
+    Devolvemos (None, 0, 0, False) para que el caller muestre el mensaje especial.
+    """
+    return (None, 0, 0, False)
+
+
+def get_sant_agata_message(station: str, now: datetime) -> str:
+    """
+    Messaggio informativo per Sant'Agata.
+    Montepo: 06:00 – 01:30 | Stesicoro: 06:25 – 02:00
+    Frequenza: ogni 5 min in ora di punta, ogni 7 in ora di valle.
+    """
+    first = SANT_AGATA["special_hours"][station]["first"]
+    last = SANT_AGATA["special_hours"][station]["last"]
+    return (
+        f"🎉 **Orario speciale Sant'Agata**\n"
+        f"Oggi i treni da {station.replace('Montepo','Monte Po')} circolano dalle **{first}** all'**{last}**.\n"
+        f"Frequenza: ogni **5 minuti** in ora di punta, ogni **7 minuti** in ora di valle."
+    )
 
 # ============================================================================
 # DÍAS FESTIVOS NACIONALES Y NOCHEVIEJA
