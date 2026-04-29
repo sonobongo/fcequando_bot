@@ -557,8 +557,12 @@ async def send_header_response(chat_id, context, estacion_key, is_update=False):
             if mins_to_open <= 60:
                 first_train, _, _, has_first = get_next_departure(station, now)
                 if not has_first:
-                    first_train, _, _, _ = get_next_departure(station, now + timedelta(days=1))
-                msg = f"🚇 La metropolitana è chiusa. Il primo treno da {station_display} partirà alle {first_train.strftime('%H:%M')}."
+                    tomorrow = CATANIA_TZ.localize(datetime.combine(now.date() + timedelta(days=1), time(0, 0)))
+                    first_train, _, _, has_first = get_next_departure(station, tomorrow)
+                if has_first and first_train:
+                    msg = f"🚇 La metropolitana è chiusa. Il primo treno da {station_display} partirà alle {first_train.strftime('%H:%M')}."
+                else:
+                    msg = f"🚇 La metropolitana è chiusa. Riaprirà {reopen_str}."
             else:
                 msg = f"🚇 La metropolitana è chiusa. Riaprirà {reopen_str}."
             img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_default.png"
@@ -696,10 +700,12 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
             try:
                 first_train, _, _, has_first = get_next_departure("Montepo", now)
                 if not has_first:
-                    tomorrow = datetime.combine(now.date() + timedelta(days=1), time(0, 0))
-                    tomorrow = CATANIA_TZ.localize(tomorrow)
-                    first_train, _, _, _ = get_next_departure("Montepo", tomorrow)
-                msg = f"🚇 La metropolitana è chiusa. Il primo treno da Monte Po partirà alle {first_train.strftime('%H:%M')}."
+                    tomorrow = CATANIA_TZ.localize(datetime.combine(now.date() + timedelta(days=1), time(0, 0)))
+                    first_train, _, _, has_first = get_next_departure("Montepo", tomorrow)
+                if has_first and first_train:
+                    msg = f"🚇 La metropolitana è chiusa. Il primo treno da Monte Po partirà alle {first_train.strftime('%H:%M')}."
+                else:
+                    msg = f"🚇 La metropolitana è chiusa. Riaprirà {reopen_str}."
             except Exception:
                 msg = f"🚇 La metropolitana è chiusa. Riaprirà {reopen_str}."
         else:
