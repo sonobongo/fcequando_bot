@@ -641,7 +641,11 @@ def get_next_departure(station: str, now: datetime) -> Tuple[Optional[datetime],
            (now.month == 2 and now.day in [4,5,6] and 1 <= now.hour < 2):
             pass
         else:
-            return (None, 0, 0, False)
+            close_h, close_m = get_closing_time(now, station)
+            if 1 <= close_h <= 3 and now.time() < time(close_h, close_m):
+                pass  # viernes/sábado: aún en servicio nocturno
+            else:
+                return (None, 0, 0, False)
     if is_new_years_eve(now):
         return get_next_departure_new_years_eve(station, now)
     if is_sant_agata(now):
@@ -678,7 +682,11 @@ def get_next_departure_after(station: str, now: datetime, after_time: time) -> T
            (now.month == 2 and now.day in [4,5,6] and 1 <= now.hour < 2):
             pass
         else:
-            return (None, 0, 0, False)
+            close_h, close_m = get_closing_time(now, station)
+            if 1 <= close_h <= 3 and now.time() < time(close_h, close_m):
+                pass  # viernes/sábado: aún en servicio nocturno
+            else:
+                return (None, 0, 0, False)
     if is_sant_agata(now):
         fake_now = datetime.combine(now.date(), after_time) + timedelta(minutes=1)
         fake_now = CATANIA_TZ.localize(fake_now)
