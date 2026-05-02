@@ -410,6 +410,55 @@
         { "origen": "Giovanni XXIII", "destino": "Stesicoro", "tiempo_seg": 130.000 }
       ],
       "trayectos_vuelta": []
+    },
+    {
+      "id": "20260502_sabado_1038_40pct",
+      "fecha": "2026-05-02",
+      "dia_semana": "sabado",
+      "hora": "10:38",
+      "ocupacion": 0.4,
+      "trayectos_ida": [
+        { "origen": "Nesima", "destino": "San Nullo", "tiempo_seg": 125.93 },
+        { "origen": "San Nullo", "destino": "Cibali", "tiempo_seg": 94.88 },
+        { "origen": "Cibali", "destino": "Milo", "tiempo_seg": 114.95 },
+        { "origen": "Milo", "destino": "Borgo", "tiempo_seg": 115.63 },
+        { "origen": "Borgo", "destino": "Giuffrida", "tiempo_seg": 100.85 },
+        { "origen": "Giuffrida", "destino": "Italia", "tiempo_seg": 102.94 },
+        { "origen": "Italia", "destino": "Galatea", "tiempo_seg": 91.32 },
+        { "origen": "Galatea", "destino": "Giovanni XXIII", "tiempo_seg": 146.06 },
+        { "origen": "Giovanni XXIII", "destino": "Stesicoro", "tiempo_seg": 115.90 }
+      ],
+      "trayectos_vuelta": []
+    },
+    {
+      "id": "20260502_sabado_1105_50pct",
+      "fecha": "2026-05-02",
+      "dia_semana": "sabado",
+      "hora": "11:05",
+      "ocupacion": 0.5,
+      "trayectos_vuelta": [
+        { "origen": "Stesicoro", "destino": "Giovanni XXIII", "tiempo_seg": 138.76 },
+        { "origen": "Giovanni XXIII", "destino": "Galatea", "tiempo_seg": 154.73 },
+        { "origen": "Galatea", "destino": "Italia", "tiempo_seg": 89.83 },
+        { "origen": "Italia", "destino": "Giuffrida", "tiempo_seg": 97.05 },
+        { "origen": "Giuffrida", "destino": "Borgo", "tiempo_seg": 101.58 }
+      ],
+      "trayectos_ida": []
+    },
+    {
+      "id": "20260502_sabado_1120_60pct",
+      "fecha": "2026-05-02",
+      "dia_semana": "sabado",
+      "hora": "11:20",
+      "ocupacion": 0.6,
+      "trayectos_ida": [
+        { "origen": "Borgo", "destino": "Giuffrida", "tiempo_seg": 117.94 },
+        { "origen": "Giuffrida", "destino": "Italia", "tiempo_seg": 99.03 },
+        { "origen": "Italia", "destino": "Galatea", "tiempo_seg": 95.35 },
+        { "origen": "Galatea", "destino": "Giovanni XXIII", "tiempo_seg": 139.74 },
+        { "origen": "Giovanni XXIII", "destino": "Stesicoro", "tiempo_seg": 128.15 }
+      ],
+      "trayectos_vuelta": []
     }
   ]
 }
