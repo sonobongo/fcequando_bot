@@ -459,6 +459,36 @@
         { "origen": "Giovanni XXIII", "destino": "Stesicoro", "tiempo_seg": 128.15 }
       ],
       "trayectos_vuelta": []
+    },
+    {
+      "id": "20260503_domingo_1002_10pct",
+      "fecha": "2026-05-03",
+      "dia_semana": "domingo",
+      "hora": "10:02",
+      "ocupacion": 0.1,
+      "observacion": "aforo 10%",
+      "trayectos_ida": [],
+      "trayectos_vuelta": [
+        { "origen": "Stesicoro", "destino": "Giovanni XXIII", "tiempo_seg": 143.60 },
+        { "origen": "Giovanni XXIII", "destino": "Galatea", "tiempo_seg": 153.42 },
+        { "origen": "Galatea", "destino": "Italia", "tiempo_seg": 77.83 },
+        { "origen": "Italia", "destino": "Giuffrida", "tiempo_seg": 94.87 }
+      ]
+    },
+    {
+      "id": "20260503_domingo_1030_30pct",
+      "fecha": "2026-05-03",
+      "dia_semana": "domingo",
+      "hora": "10:30",
+      "ocupacion": 0.3,
+      "observacion": "aforo 30%",
+      "trayectos_ida": [
+        { "origen": "Giuffrida", "destino": "Italia", "tiempo_seg": 111.66 },
+        { "origen": "Italia", "destino": "Galatea", "tiempo_seg": 97.32 },
+        { "origen": "Galatea", "destino": "Giovanni XXIII", "tiempo_seg": 126.00 },
+        { "origen": "Giovanni XXIII", "destino": "Stesicoro", "tiempo_seg": 123.64 }
+      ],
+      "trayectos_vuelta": []
     }
   ]
 }
