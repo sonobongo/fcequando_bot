@@ -813,14 +813,14 @@ def format_time(minutes: int, seconds: int) -> str:
     rounded_minutes = (total_seconds + 30) // 60
     return f"{rounded_minutes} minuti"
 
-def get_last_train_message(now: datetime) -> str:
+def get_last_train_message(now: datetime, station: str = "Montepo") -> str:
     if (now.month == 12 and now.day == 31 and now.hour >= 12) or (now.month == 1 and now.day == 1 and now.hour < 3):
         return "🎉 Oggi orario speciale: ultimo treno alle 03:00. Buon anno! 🎉"
     if now.hour < 20 or (now.hour == 20 and now.minute < 30):
         return ""
     if is_sant_agata(now) or is_closed_all_day(now):
         return ""
-    close_h, close_m = get_closing_time(now, "Montepo")
+    close_h, close_m = get_closing_time(now, station)
     return f"📌 Oggi la metro chiude alle {close_h:02d}:{close_m:02d}."
 
 def is_metro_closed(now: datetime, station: str) -> Tuple[bool, Optional[datetime], str]:
