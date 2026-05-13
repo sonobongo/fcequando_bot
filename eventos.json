@@ -1,0 +1,49 @@
+{
+  "cierres_estaciones": [
+    {
+        "station": "borgo",
+        "start": date(2026, 2, 9),
+        "end": date(2026, 3, 8),
+        "reduction_seconds": 40
+    },
+{
+      "station": "giuffrida",
+      "start": "2026-03-16",
+      "end": "2026-04-26",
+      "reduction_seconds": 40,
+      "descripcion": "Cierre temporal de Giuffrida por obras"
+    },
+    {
+      "station": "italia",
+      "start": "2026-05-18",
+      "end": "2026-06-21",
+      "reduction_seconds": 40,
+      "descripcion": "Cierre temporal de Italia por obras"
+    }
+  ],
+  "extensiones_horario": [
+    {
+      "fecha": "2026-12-31",
+      "horario_extendido": {
+        "Montepo": {"primer_tren": "06:00", "ultimo_tren": "03:00"},
+        "Stesicoro": {"primer_tren": "06:25", "ultimo_tren": "03:30"}
+      },
+      "descripcion": "Nochevieja: servicio extendido"
+    },
+    {
+      "fecha": "2026-01-01",
+      "horario_extendido": {
+        "Montepo": {"primer_tren": "07:00", "ultimo_tren": "22:30"},
+        "Stesicoro": {"primer_tren": "07:25", "ultimo_tren": "23:00"}
+      },
+      "descripcion": "Año Nuevo: horario especial"
+    }
+  ],
+  "notas": [
+    {
+      "fecha_inicio": "2026-06-01",
+      "fecha_fin": "2026-08-31",
+      "descripcion": "Horario de verano: menor frecuencia entre las 12:00 y las 16:00"
+    }
+  ]
+}
