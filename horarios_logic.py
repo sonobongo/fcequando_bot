@@ -71,6 +71,28 @@ def get_measured_travel_time(origen: str, destino: str, direccion: str, now: dat
     return None
 
 # ============================================================================
+# CARGAR EVENTOS PUNTUALES (eventos.json)
+# ============================================================================
+EVENTOS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'eventos.json')
+EVENTOS = {"cierres_estaciones": [], "extensiones_horario": [], "notas": []}
+
+def load_eventos():
+    if not os.path.exists(EVENTOS_FILE):
+        return
+    with open(EVENTOS_FILE, 'r', encoding='utf-8') as f:
+        data = json.load(f)
+        for cierre in data.get('cierres_estaciones', []):
+            EVENTOS['cierres_estaciones'].append({
+                'station': cierre['station'],
+                'start': datetime.strptime(cierre['start'], '%Y-%m-%d').date(),
+                'end': datetime.strptime(cierre['end'], '%Y-%m-%d').date(),
+                'reduction_seconds': cierre['reduction_seconds']
+            })
+        # (Extensiones horarias y notas se cargarán cuando se implementen)
+
+load_eventos()
+
+# ============================================================================
 # AJUSTE DE DÍA OPERATIVO (empieza a las 05:00)
 # ============================================================================
 def get_effective_datetime(now: datetime) -> datetime:
@@ -112,7 +134,6 @@ EXTRA_TRAMOS_REVERSE = [
 # DETECCIÓN DE HORA PUNTA (solo lunes a viernes, sin domingos)
 # ============================================================================
 def is_peak_hour(now: datetime) -> bool:
-    # Días: lunes a viernes laborables, no festivos
     if now.weekday() >= 5:
         return False
     if is_festivo_nazionale(now):
@@ -122,13 +143,10 @@ def is_peak_hour(now: datetime) -> bool:
         return False
     hour = now.hour
     minute = now.minute
-    # Franja mañana: 7:00 a 9:00 (inclusive)
     if 7 <= hour <= 9:
         return True
-        # Franja mediodía: 12:30 a 14:30
     if (hour == 12 and minute >= 30) or (hour == 13) or (hour == 14 and minute <= 30):
         return True
-    # Franja tarde: 17:15 a 19:45
     if (hour == 17 and minute >= 15) or (hour == 18) or (hour == 19 and minute <= 45):
         return True
     return False
@@ -137,13 +155,11 @@ def is_peak_hour(now: datetime) -> bool:
 # EXTRA DE 5 SEGUNDOS PARA GIOVANNI XXIII (incluye domingos tarde si lunes laborable)
 # ============================================================================
 def should_add_giovanni_extra(now: datetime) -> bool:
-    # Caso original: lunes a viernes laborables, de 13:00 a 18:00, sept-jun
     if now.weekday() < 5 and not is_festivo_nazionale(now):
         month = now.month
         if (month >= 9 or month <= 6) and 13 <= now.hour < 18:
             return True
-    # Nuevo caso: domingo por la tarde (17:30 - 19:45) si el lunes siguiente es laborable (sept-jun y no festivo)
-    if now.weekday() == 6:   # domingo
+    if now.weekday() == 6:
         month = now.month
         if (month >= 9 or month <= 6) and ((now.hour == 17 and now.minute >= 30) or (now.hour == 18) or (now.hour == 19 and now.minute <= 45)):
             tomorrow = now + timedelta(days=1)
@@ -152,7 +168,29 @@ def should_add_giovanni_extra(now: datetime) -> bool:
     return False
 
 # ============================================================================
-# TIEMPOS DE VIAJE
+# FUNCIÓN UNIFICADA DE CIERRES ACTIVOS (combina CLOSED_STATIONS fijos + eventos.json)
+# ============================================================================
+# Lista fija para casos que no queramos mover al JSON (puede quedar vacía)
+CLOSED_STATIONS_FIJOS = []  # Los cierres temporales se gestionan en eventos.json
+
+def get_active_closed_stations(now: datetime) -> List[dict]:
+    """Devuelve lista de estaciones cerradas en este momento con su reducción de tiempo."""
+    activos = []
+    # Cierres fijos
+    for closed in CLOSED_STATIONS_FIJOS:
+        if closed["start"] <= now.date() <= closed["end"]:
+            activos.append(closed)
+    # Cierres desde eventos.json
+    for ev in EVENTOS['cierres_estaciones']:
+        if ev['start'] <= now.date() <= ev['end']:
+            activos.append({
+                "station": ev['station'],
+                "reduction_seconds": ev['reduction_seconds']
+            })
+    return activos
+
+# ============================================================================
+# TIEMPOS DE VIAJE (usa cierres activos unificados)
 # ============================================================================
 def get_travel_time_from_montepo(station: str, now: datetime) -> int:
     total_seconds = 0
@@ -169,13 +207,12 @@ def get_travel_time_from_montepo(station: str, now: datetime) -> int:
         if end == station:
             break
     stations_order = ["montepo", "fontana", "nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "giovanni", "stesicoro"]
-    for closed in CLOSED_STATIONS:
+    for closed in get_active_closed_stations(now):
         if closed["station"] == station:
             continue
         if closed["station"] in stations_order and station in stations_order:
             if stations_order.index(closed["station"]) < stations_order.index(station):
-                if is_station_closed(closed["station"], now):
-                    total_seconds -= closed["reduction_seconds"]
+                total_seconds -= closed["reduction_seconds"]
     if should_add_giovanni_extra(now):
         idx_station = stations_order.index(station) if station in stations_order else -1
         idx_giovanni = stations_order.index("giovanni")
@@ -201,13 +238,12 @@ def get_travel_time_from_stesicoro(station: str, now: datetime) -> int:
         if end == station:
             break
     stations_order_rev = ["stesicoro", "giovanni", "galatea", "italia", "giuffrida", "borgo", "milo", "cibali", "sannullo", "nesima", "fontana", "montepo"]
-    for closed in CLOSED_STATIONS:
+    for closed in get_active_closed_stations(now):
         if closed["station"] == station:
             continue
         if closed["station"] in stations_order_rev and station in stations_order_rev:
             if stations_order_rev.index(closed["station"]) < stations_order_rev.index(station):
-                if is_station_closed(closed["station"], now):
-                    total_seconds -= closed["reduction_seconds"]
+                total_seconds -= closed["reduction_seconds"]
     if should_add_giovanni_extra(now):
         idx_station = stations_order_rev.index(station) if station in stations_order_rev else -1
         idx_giovanni = stations_order_rev.index("giovanni")
@@ -219,42 +255,28 @@ def get_travel_time_from_stesicoro(station: str, now: datetime) -> int:
     return max(0, minutes)
 
 # ============================================================================
-# CIERRE TEMPORAL DE ESTACIONES (Giuffrida)
+# FUNCIONES DE CIERRE (mensajes y comprobación)
 # ============================================================================
-CLOSED_STATIONS = [
-     {
-        "station": "borgo",
-        "start": date(2026, 2, 9),
-        "end": date(2026, 3, 8),
-        "reduction_seconds": 40
-    },
-    {
-        "station": "giuffrida",
-        "start": date(2026, 3, 16),
-        "end": date(2026, 4, 26),
-        "reduction_seconds": 40
-    },
-    {
-        "station": "italia",
-        "start": date(2026, 5, 18),
-        "end": date(2026, 6, 21),
-        "reduction_seconds": 40
-    }
-]
-
 def is_station_closed(station: str, now: datetime) -> bool:
-    for closed in CLOSED_STATIONS:
+    for closed in get_active_closed_stations(now):
         if closed["station"] == station:
-            if closed["start"] <= now.date() <= closed["end"]:
-                return True
+            return True
     return False
 
 def get_closing_message(station: str, now: datetime) -> str:
-    if is_station_closed(station, now):
-        for closed in CLOSED_STATIONS:
-            if closed["station"] == station:
-                end_date = closed["end"].strftime('%d/%m/%Y')
-                return f"⚠️ La stazione {NOMBRE_MOSTRAR.get(station, station).capitalize()} è chiusa per lavori fino al {end_date}. I treni non fermano.\n"
+    for closed in get_active_closed_stations(now):
+        if closed["station"] == station:
+            # Buscar fecha de fin en los datos originales para mostrarla
+            # Primero en fijos
+            for c in CLOSED_STATIONS_FIJOS:
+                if c['station'] == station and c['start'] <= now.date() <= c['end']:
+                    end_date = c['end'].strftime('%d/%m/%Y')
+                    return f"⚠️ La stazione {NOMBRE_MOSTRAR.get(station, station).capitalize()} è chiusa per lavori fino al {end_date}. I treni non fermano.\n"
+            # Luego en eventos
+            for ev in EVENTOS['cierres_estaciones']:
+                if ev['station'] == station and ev['start'] <= now.date() <= ev['end']:
+                    end_date = ev['end'].strftime('%d/%m/%Y')
+                    return f"⚠️ La stazione {NOMBRE_MOSTRAR.get(station, station).capitalize()} è chiusa per lavori fino al {end_date}. I treni non fermano.\n"
     return ""
 
 def build_tiempos_estacion(now: datetime) -> Dict[str, Tuple[int, int]]:
@@ -336,19 +358,9 @@ def get_last_train_sant_agata(station: str) -> time:
     return str_to_time(SANT_AGATA["special_hours"][station]["last"])
 
 def get_next_departure_sant_agata(station: str, now: datetime) -> Tuple[Optional[datetime], int, int, bool]:
-    """
-    Durante Sant'Agata no calculamos el próximo tren exacto.
-    Devolvemos (None, 0, 0, False) para que el caller muestre el mensaje especial.
-    """
     return (None, 0, 0, False)
 
-
 def get_sant_agata_message(station: str, now: datetime) -> str:
-    """
-    Messaggio informativo per Sant'Agata.
-    Montepo: 06:00 – 01:30 | Stesicoro: 06:25 – 02:00
-    Frequenza: ogni 5 min in ora di punta, ogni 7 in ora di valle.
-    """
     first = SANT_AGATA["special_hours"][station]["first"]
     last = SANT_AGATA["special_hours"][station]["last"]
     return (
@@ -627,7 +639,7 @@ def get_next_departure(station: str, now: datetime) -> Tuple[Optional[datetime],
         else:
             close_h, close_m = get_closing_time(now, station)
             if 1 <= close_h <= 3 and now.time() < time(close_h, close_m):
-                pass  # viernes/sábado: aún en servicio nocturno
+                pass
             else:
                 return (None, 0, 0, False)
     if is_new_years_eve(now):
@@ -668,7 +680,7 @@ def get_next_departure_after(station: str, now: datetime, after_time: time) -> T
         else:
             close_h, close_m = get_closing_time(now, station)
             if 1 <= close_h <= 3 and now.time() < time(close_h, close_m):
-                pass  # viernes/sábado: aún en servicio nocturno
+                pass
             else:
                 return (None, 0, 0, False)
     if is_sant_agata(now):
@@ -711,18 +723,16 @@ def format_time(minutes: int, seconds: int) -> str:
     total_seconds = minutes * 60 + seconds
 
     if total_seconds <= 90:
-        # ≤ 1:30 → tramos de 10 segundos, redondeado al más cercano
         rounded_seconds = (seconds + 5) // 10 * 10
         if rounded_seconds == 60:
             minutes += 1
             rounded_seconds = 0
         if minutes == 0:
             return "subito" if rounded_seconds == 0 else f"{rounded_seconds} secondi"
-        else:  # minutes == 1
+        else:
             return "1 minuto" if rounded_seconds == 0 else f"1 minuto e {rounded_seconds} secondi"
 
     if total_seconds <= 300:
-        # 1:31 – 5:00 → tramos de 30 segundos, redondeado al más cercano
         rounded_total = (total_seconds + 15) // 30 * 30
         r_min = rounded_total // 60
         r_sec = rounded_total % 60
@@ -731,7 +741,6 @@ def format_time(minutes: int, seconds: int) -> str:
         else:
             return f"{r_min} minuti e {r_sec} secondi" if r_min != 1 else f"1 minuto e {r_sec} secondi"
 
-    # > 5:00 → minuto más cercano
     rounded_minutes = (total_seconds + 30) // 60
     return f"{rounded_minutes} minuti"
 
@@ -767,23 +776,15 @@ def is_metro_closed(now: datetime, station: str) -> Tuple[bool, Optional[datetim
             return (True, next_open, special_msg)
     
     if 1 <= now.hour < 6:
-        # Entre 01:00 y 06:00: verificar si el horario de hoy tiene cierre nocturno
-        # (viernes/sábado cierran a 01:00, otros días a 22:30).
-        # Si el cierre es a las 01:00 y ya son las 01:00 o más → cerrado.
-        # Si el cierre es a las 22:30 (ya fue ayer) → también cerrado.
         close_h_check, close_m_check = get_closing_time(now, station)
         closing_time_check = time(close_h_check, close_m_check)
-        # Es horario nocturno extendido si el cierre es entre 01:00 y 03:00
         is_late_closing = 1 <= close_h_check <= 3
         if is_late_closing and now.time() < closing_time_check:
-            # Aún en servicio (antes del cierre nocturno)
             pass
         else:
-            # Fuera de servicio
             open_h, open_m = get_opening_time(now, station)
             next_open = CATANIA_TZ.localize(datetime.combine(now.date(), time(open_h, open_m)))
             if next_open <= now:
-                # El día siguiente puede tener distinto horario (domingo, festivo...)
                 tomorrow = datetime.combine(now.date() + timedelta(days=1), time(12, 0))
                 tomorrow = CATANIA_TZ.localize(tomorrow)
                 open_h, open_m = get_opening_time(tomorrow, station)
@@ -819,7 +820,7 @@ def is_metro_closed(now: datetime, station: str) -> Tuple[bool, Optional[datetim
         return (False, None, "")
 
 # ============================================================================
-# FUNCIONES PARA ESTACIONES INTERMEDIAS
+# FUNCIONES PARA ESTACIONES INTERMEDIAS (usan get_active_closed_stations)
 # ============================================================================
 def get_total_seconds_from_montepo(station: str, now: datetime) -> int:
     if now.tzinfo is None:
@@ -838,7 +839,7 @@ def get_total_seconds_from_montepo(station: str, now: datetime) -> int:
         if end == station:
             break
     stations_order = ["montepo", "fontana", "nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "giovanni", "stesicoro"]
-    for closed in CLOSED_STATIONS:
+    for closed in get_active_closed_stations(now):
         if is_station_closed(closed["station"], now):
             if stations_order.index(closed["station"]) < stations_order.index(station):
                 total -= closed["reduction_seconds"]
@@ -868,7 +869,7 @@ def get_total_seconds_from_stesicoro(station: str, now: datetime) -> int:
         if end == station:
             break
     stations_order_rev = ["stesicoro", "giovanni", "galatea", "italia", "giuffrida", "borgo", "milo", "cibali", "sannullo", "nesima", "fontana", "montepo"]
-    for closed in CLOSED_STATIONS:
+    for closed in get_active_closed_stations(now):
         if is_station_closed(closed["station"], now):
             if stations_order_rev.index(closed["station"]) < stations_order_rev.index(station):
                 total -= closed["reduction_seconds"]
