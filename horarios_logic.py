@@ -222,6 +222,12 @@ def get_travel_time_from_stesicoro(station: str, now: datetime) -> int:
 # CIERRE TEMPORAL DE ESTACIONES (Giuffrida)
 # ============================================================================
 CLOSED_STATIONS = [
+     {
+        "station": "borgo",
+        "start": date(2026, 2, 9),
+        "end": date(2026, 3, 8),
+        "reduction_seconds": 40
+    },
     {
         "station": "giuffrida",
         "start": date(2026, 3, 16),
