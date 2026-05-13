@@ -1,12 +1,13 @@
 {
   "cierres_estaciones": [
     {
-        "station": "borgo",
-        "start": date(2026, 2, 9),
-        "end": date(2026, 3, 8),
-        "reduction_seconds": 40
+      "station": "borgo",
+      "start": "2026-02-09",
+      "end": "2026-03-08",
+      "reduction_seconds": 40,
+      "descripcion": "Cierre temporal de Borgo por obras"
     },
-{
+    {
       "station": "giuffrida",
       "start": "2026-03-16",
       "end": "2026-04-26",
