@@ -24,18 +24,28 @@
   ],
   "extensiones_horario": [
     {
+      "fecha": "2026-04-19",
+      "horario_extendido": {
+        "Montepo": { "ultimo_tren": "23:00" },
+        "Stesicoro": { "ultimo_tren": "23:30" }
+      },
+      "descripcion": "Prolungamento straordinario per deflusso stadio Massimino",
+      "mantiene_frecuencia": true,
+      "tipo_dia_base": "sunday"
+    },
+    {
       "fecha": "2026-12-31",
       "horario_extendido": {
-        "Montepo": {"primer_tren": "06:00", "ultimo_tren": "03:00"},
-        "Stesicoro": {"primer_tren": "06:25", "ultimo_tren": "03:30"}
+        "Montepo": { "primer_tren": "06:00", "ultimo_tren": "03:00" },
+        "Stesicoro": { "primer_tren": "06:25", "ultimo_tren": "03:30" }
       },
       "descripcion": "Nochevieja: servicio extendido"
     },
     {
       "fecha": "2026-01-01",
       "horario_extendido": {
-        "Montepo": {"primer_tren": "07:00", "ultimo_tren": "22:30"},
-        "Stesicoro": {"primer_tren": "07:25", "ultimo_tren": "23:00"}
+        "Montepo": { "primer_tren": "07:00", "ultimo_tren": "22:30" },
+        "Stesicoro": { "primer_tren": "07:25", "ultimo_tren": "23:00" }
       },
       "descripcion": "Año Nuevo: horario especial"
     }
