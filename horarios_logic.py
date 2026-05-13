@@ -224,8 +224,14 @@ def get_travel_time_from_stesicoro(station: str, now: datetime) -> int:
 CLOSED_STATIONS = [
     {
         "station": "giuffrida",
-        "start": date(2026, 1, 1),
+        "start": date(2026, 3, 16),
         "end": date(2026, 4, 26),
+        "reduction_seconds": 40
+    },
+    {
+        "station": "italia",
+        "start": date(2026, 5, 18),
+        "end": date(2026, 6, 21),
         "reduction_seconds": 40
     }
 ]
