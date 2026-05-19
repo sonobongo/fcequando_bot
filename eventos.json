@@ -34,6 +34,16 @@
       "tipo_dia_base": "sunday"
     },
     {
+      "fecha": "2026-05-20",
+      "horario_extendido": {
+        "Montepo": { "ultimo_tren": "23:00" },
+        "Stesicoro": { "ultimo_tren": "23:30" }
+      },
+      "descripcion": "Prolungamento straordinario del servizio metropolitano",
+      "mantiene_frecuencia": true,
+      "tipo_dia_base": "weekday"
+    },
+    {
       "fecha": "2026-12-31",
       "horario_extendido": {
         "Montepo": { "primer_tren": "06:00", "ultimo_tren": "03:00" },
