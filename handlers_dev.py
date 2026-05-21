@@ -1360,7 +1360,7 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
     
     texto = update.message.text.strip()
     
-    # ========== RESPUESTA A PREGUNTAS SOBRE LA HORA DE CIERRE ==========
+        # ========== RESPUESTA A PREGUNTAS SOBRE LA HORA DE CIERRE ==========
     texto_lower = texto.lower()
     if any(frase in texto_lower for frase in [
         "chiude", "chiusura", "ultimo treno", "ultima corsa",
@@ -1369,12 +1369,50 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
         "ultimo treno oggi", "ultima corsa oggi"
     ]):
         now = get_simulated_now(context)
-        close_mp_h, close_mp_m = get_closing_time(now, "Montepo")
-        close_st_h, close_st_m = get_closing_time(now, "Stesicoro")
+        # Obtener la lista de horarios para el DÍA NATURAL (sin ajuste de madrugada)
+        def get_raw_schedule_list(station, now):
+            # Usamos la misma lógica de get_schedule_list pero sin el ajuste de día efectivo
+            weekday = now.weekday()
+            override = get_override_weekday(now)
+            if override is not None:
+                if override == 4:
+                    key = "friday"
+                elif override == 5:
+                    key = "saturday"
+                elif override == 6:
+                    key = "sunday"
+                else:
+                    key = "weekday"
+            elif is_festivo_nazionale(now):
+                if weekday == 4:
+                    key = "friday_holiday" if "friday_holiday" in SCHEDULES[station] else "sunday"
+                elif weekday == 5:
+                    key = "saturday_holiday" if "saturday_holiday" in SCHEDULES[station] else "sunday"
+                elif weekday == 6:
+                    key = "sunday"
+                else:
+                    key = "weekday_holiday" if "weekday_holiday" in SCHEDULES[station] else "sunday"
+            else:
+                if weekday == 4:
+                    key = "friday"
+                elif weekday == 5:
+                    key = "saturday"
+                elif weekday == 6:
+                    key = "sunday"
+                else:
+                    key = "weekday"
+            return SCHEDULES[station][key]
+
+        mp_schedule = get_raw_schedule_list("Montepo", now)
+        st_schedule = get_raw_schedule_list("Stesicoro", now)
+
+        last_mp = mp_schedule[-1]
+        last_st = st_schedule[-1]
+
         msg = (
             f"🚇 **Ultime partenze di oggi**\n"
-            f"▪️ Da Monte Po verso Stesicoro: **{close_mp_h:02d}:{close_mp_m:02d}**\n"
-            f"▪️ Da Stesicoro verso Monte Po: **{close_st_h:02d}:{close_st_m:02d}**"
+            f"▪️ Da Monte Po verso Stesicoro: **{last_mp.strftime('%H:%M')}**\n"
+            f"▪️ Da Stesicoro verso Monte Po: **{last_st.strftime('%H:%M')}**"
         )
         extension_msg = get_extension_message(now)
         if extension_msg:
