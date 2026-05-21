@@ -1046,7 +1046,6 @@ async def news_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ============================================================================
 # FUNCIONES PARA "SUPER" - Tracking de posición de trenes en tiempo real
-# (se mantienen sin cambios)
 # ============================================================================
 
 def _build_train_positions(now: datetime):
