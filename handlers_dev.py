@@ -1369,17 +1369,15 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
         "ultimo treno oggi", "ultima corsa oggi"
     ]):
         now = get_simulated_now(context)
-        # Obtener la lista de horarios para el DÍA EFECTIVO (corregido para madrugada)
-        mp_schedule = get_schedule_list("Montepo", now)
-        st_schedule = get_schedule_list("Stesicoro", now)
-
-        last_mp = mp_schedule[-1]
-        last_st = st_schedule[-1]
+        # get_closing_time ya maneja todos los casos especiales:
+        # Nochevieja, Sant'Agata, extensiones (fútbol), festivos, viernes/sábado
+        mp_h, mp_m = get_closing_time(now, "Montepo")
+        st_h, st_m = get_closing_time(now, "Stesicoro")
 
         msg = (
             f"🚇 **Ultime partenze di oggi**\n"
-            f"▪️ Da Monte Po verso Stesicoro: **{last_mp.strftime('%H:%M')}**\n"
-            f"▪️ Da Stesicoro verso Monte Po: **{last_st.strftime('%H:%M')}**"
+            f"▪️ Da Monte Po verso Stesicoro: **{mp_h:02d}:{mp_m:02d}**\n"
+            f"▪️ Da Stesicoro verso Monte Po: **{st_h:02d}:{st_m:02d}**"
         )
         extension_msg = get_extension_message(now)
         if extension_msg:
