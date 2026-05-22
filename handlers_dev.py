@@ -1400,17 +1400,44 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
         "ultimo treno oggi", "ultima corsa oggi"
     ]):
         now = get_simulated_now(context)
-        # Obtener la lista de horarios para el DÍA EFECTIVO (corregido para madrugada)
-        mp_schedule = get_schedule_list("Montepo", now)
-        st_schedule = get_schedule_list("Stesicoro", now)
 
-        last_mp = mp_schedule[-1]
-        last_st = st_schedule[-1]
+        # Casi speciali: get_closing_time ha già la risposta corretta
+        is_special = is_new_years_eve(now) or is_sant_agata(now) or get_extension_horario(now) is not None
+        if is_special:
+            mp_h, mp_m = get_closing_time(now, "Montepo")
+            st_h, st_m = get_closing_time(now, "Stesicoro")
+            last_mp_str = f"{mp_h:02d}:{mp_m:02d}"
+            last_st_str = f"{st_h:02d}:{st_m:02d}"
+        else:
+            # I treni di madrugada del venerdì/sabato si trovano all'INIZIO
+            # del schedule del giorno successivo (saturday/sunday).
+            # Bisogna sempre guardare il giorno successivo per trovare i treni
+            # di madrugada, indipendentemente dall'ora attuale.
+            eff = get_effective_datetime(now)
+            # "oggi operativo" = il giorno effettivo (eff). Il giorno successivo
+            # nel calendario è eff + 1 giorno, ma come datetime per get_schedule_list
+            # usiamo una ora diurna per evitare ambiguità di madrugada.
+            tomorrow_noon = CATANIA_TZ.localize(
+                datetime.combine((eff + timedelta(days=1)).date(), time(12, 0))
+            )
+            mp_today = get_schedule_list("Montepo", now)
+            st_today = get_schedule_list("Stesicoro", now)
+            mp_tomorrow = get_schedule_list("Montepo", tomorrow_noon)
+            st_tomorrow = get_schedule_list("Stesicoro", tomorrow_noon)
+
+            # Treni di madrugada del giorno successivo (ora < 5)
+            mp_madru = [t for t in mp_tomorrow if t.hour < 5]
+            st_madru = [t for t in st_tomorrow if t.hour < 5]
+
+            last_mp = mp_madru[-1] if mp_madru else mp_today[-1]
+            last_st = st_madru[-1] if st_madru else st_today[-1]
+            last_mp_str = last_mp.strftime("%H:%M")
+            last_st_str = last_st.strftime("%H:%M")
 
         msg = (
             f"🚇 **Ultime partenze di oggi**\n"
-            f"▪️ Da Monte Po verso Stesicoro: **{last_mp.strftime('%H:%M')}**\n"
-            f"▪️ Da Stesicoro verso Monte Po: **{last_st.strftime('%H:%M')}**"
+            f"▪️ Da Monte Po verso Stesicoro: **{last_mp_str}**\n"
+            f"▪️ Da Stesicoro verso Monte Po: **{last_st_str}**"
         )
         extension_msg = get_extension_message(now)
         if extension_msg:
