@@ -46,8 +46,8 @@
     {
       "fecha": "2026-12-31",
       "horario_extendido": {
-        "Montepo": { "primer_tren": "06:00", "ultimo_tren": "03:00" },
-        "Stesicoro": { "primer_tren": "06:25", "ultimo_tren": "03:30" }
+        "Montepo": { "primer_tren": "06:00", "ultimo_tren": "02:30" },
+        "Stesicoro": { "primer_tren": "06:25", "ultimo_tren": "03:00" }
       },
       "descripcion": "Nochevieja: servicio extendido"
     },
