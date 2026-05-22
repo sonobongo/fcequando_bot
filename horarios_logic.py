@@ -978,13 +978,14 @@ def get_next_train_at_station(now: datetime, estacion_key: str) -> Tuple[Optiona
         return (None, None)
     seg_mp, seg_st = tiempos_seg[estacion_key]
 
-    info_mp = None
-    closed_mp, _, _ = is_metro_closed(now, "Montepo")
-    if not closed_mp:
-        schedule_list = get_schedule_list("Montepo", now)
+    def calc_info(schedule_list, seg, date):
+        """Calcola il prossimo passaggio dato un schedule e un offset in secondi."""
         pasos = []
         for salida in schedule_list:
-            paso_dt = datetime.combine(now.date(), salida) + timedelta(seconds=seg_mp)
+            paso_dt = datetime.combine(date, salida) + timedelta(seconds=seg)
+            # Se il treno di madrugada supera la mezzanotte, aggiungere un giorno
+            if salida.hour < 5 and date == now.date():
+                paso_dt = datetime.combine(date, salida) + timedelta(seconds=seg)
             paso_dt = CATANIA_TZ.localize(paso_dt)
             pasos.append(paso_dt)
         next_paso = None
@@ -994,47 +995,32 @@ def get_next_train_at_station(now: datetime, estacion_key: str) -> Tuple[Optiona
                 next_paso = p
                 next_idx = i
                 break
-        if next_paso:
-            delta = next_paso - now
-            mins_rest = int(delta.total_seconds() // 60)
-            secs_rest = int(delta.total_seconds() % 60)
-            next_info = None
-            if next_idx + 1 < len(pasos):
-                p2 = pasos[next_idx+1]
-                delta2 = p2 - now
-                mins2 = int(delta2.total_seconds() // 60)
-                secs2 = int(delta2.total_seconds() % 60)
-                next_info = (p2, mins2, secs2)
-            info_mp = (next_paso, mins_rest, secs_rest, next_info)
+        if not next_paso:
+            return None
+        delta = next_paso - now
+        mins_rest = int(delta.total_seconds() // 60)
+        secs_rest = int(delta.total_seconds() % 60)
+        next_info = None
+        if next_idx + 1 < len(pasos):
+            p2 = pasos[next_idx+1]
+            delta2 = p2 - now
+            mins2 = int(delta2.total_seconds() // 60)
+            secs2 = int(delta2.total_seconds() % 60)
+            next_info = (p2, mins2, secs2)
+        return (next_paso, mins_rest, secs_rest, next_info)
 
-    info_st = None
-    closed_st, _, _ = is_metro_closed(now, "Stesicoro")
-    if not closed_st:
-        schedule_list = get_schedule_list("Stesicoro", now)
-        pasos = []
-        for salida in schedule_list:
-            paso_dt = datetime.combine(now.date(), salida) + timedelta(seconds=seg_st)
-            paso_dt = CATANIA_TZ.localize(paso_dt)
-            pasos.append(paso_dt)
-        next_paso = None
-        next_idx = -1
-        for i, p in enumerate(pasos):
-            if p > now:
-                next_paso = p
-                next_idx = i
-                break
-        if next_paso:
-            delta = next_paso - now
-            mins_rest = int(delta.total_seconds() // 60)
-            secs_rest = int(delta.total_seconds() % 60)
-            next_info = None
-            if next_idx + 1 < len(pasos):
-                p2 = pasos[next_idx+1]
-                delta2 = p2 - now
-                mins2 = int(delta2.total_seconds() // 60)
-                secs2 = int(delta2.total_seconds() % 60)
-                next_info = (p2, mins2, secs2)
-            info_st = (next_paso, mins_rest, secs_rest, next_info)
+    # Per le stazioni intermedie non usare is_metro_closed come guardia:
+    # il treno potrebbe essere ancora in circolazione anche dopo l'orario di chiusura
+    # di Stesicoro/Montepo (impiega minuti ad arrivare alle stazioni intermedie).
+    # Calcolare sempre i passaggi e filtrare per p > now.
+    if is_closed_all_day(now):
+        return (None, None)
+
+    schedule_mp = get_schedule_list("Montepo", now)
+    info_mp = calc_info(schedule_mp, seg_mp, now.date())
+
+    schedule_st = get_schedule_list("Stesicoro", now)
+    info_st = calc_info(schedule_st, seg_st, now.date())
 
     return (info_mp, info_st)
 
