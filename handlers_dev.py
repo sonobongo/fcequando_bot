@@ -607,8 +607,8 @@ async def send_header_response(chat_id, context, estacion_key, is_update=False):
         mins_to_next = int((next_dep - now).total_seconds() // 60)
         if mins_to_next > 90:
             station_display = "Monte Po" if station == "Montepo" else "Stesicoro"
-            msg = f"🚇 La metropolitana è chiusa.
-Il prossimo treno da {station_display} sarà {'domani ' if next_dep.date() > now.date() else ''}alle **{next_dep.strftime('%H:%M')}**."
+            domani_str = 'domani ' if next_dep.date() > now.date() else ''
+            msg = f"🚇 La metropolitana è chiusa.\nIl prossimo treno da {station_display} sarà {domani_str}alle **{next_dep.strftime('%H:%M')}**."
             if extension_msg:
                 msg = extension_msg + msg
             img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_default.png"
