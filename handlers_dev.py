@@ -1360,7 +1360,7 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
     
     texto = update.message.text.strip()
     
-        # ========== RESPUESTA A PREGUNTAS SOBRE LA HORA DE CIERRE ==========
+            # ========== RESPUESTA A PREGUNTAS SOBRE LA HORA DE CIERRE ==========
     texto_lower = texto.lower()
     if any(frase in texto_lower for frase in [
         "chiude", "chiusura", "ultimo treno", "ultima corsa",
@@ -1369,42 +1369,39 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
         "ultimo treno oggi", "ultima corsa oggi"
     ]):
         now = get_simulated_now(context)
-        # Obtener la lista de horarios para el DÍA NATURAL (sin ajuste de madrugada)
-        def get_raw_schedule_list(station, now):
-            # Usamos la misma lógica de get_schedule_list pero sin el ajuste de día efectivo
-            weekday = now.weekday()
-            override = get_override_weekday(now)
+        # Usar el día EFECTIVO (el que usa todo el bot para la madrugada)
+        effective = get_effective_datetime(now)
+        
+        # Determinar la clave del día basada en el día efectivo
+        weekday = effective.weekday()
+        override = get_override_weekday(now)   # sigue usando now para detectar fechas especiales
+        
+        def get_day_key(station, weekday, override):
             if override is not None:
-                if override == 4:
-                    key = "friday"
-                elif override == 5:
-                    key = "saturday"
-                elif override == 6:
-                    key = "sunday"
-                else:
-                    key = "weekday"
-            elif is_festivo_nazionale(now):
+                if override == 4: return "friday"
+                elif override == 5: return "saturday"
+                elif override == 6: return "sunday"
+                else: return "weekday"
+            elif is_festivo_nazionale(effective):
                 if weekday == 4:
-                    key = "friday_holiday" if "friday_holiday" in SCHEDULES[station] else "sunday"
+                    return "friday_holiday" if "friday_holiday" in SCHEDULES[station] else "sunday"
                 elif weekday == 5:
-                    key = "saturday_holiday" if "saturday_holiday" in SCHEDULES[station] else "sunday"
+                    return "saturday_holiday" if "saturday_holiday" in SCHEDULES[station] else "sunday"
                 elif weekday == 6:
-                    key = "sunday"
+                    return "sunday"
                 else:
-                    key = "weekday_holiday" if "weekday_holiday" in SCHEDULES[station] else "sunday"
+                    return "weekday_holiday" if "weekday_holiday" in SCHEDULES[station] else "sunday"
             else:
-                if weekday == 4:
-                    key = "friday"
-                elif weekday == 5:
-                    key = "saturday"
-                elif weekday == 6:
-                    key = "sunday"
-                else:
-                    key = "weekday"
-            return SCHEDULES[station][key]
-
-        mp_schedule = get_raw_schedule_list("Montepo", now)
-        st_schedule = get_raw_schedule_list("Stesicoro", now)
+                if weekday == 4: return "friday"
+                elif weekday == 5: return "saturday"
+                elif weekday == 6: return "sunday"
+                else: return "weekday"
+        
+        mp_key = get_day_key("Montepo", weekday, override)
+        st_key = get_day_key("Stesicoro", weekday, override)
+        
+        mp_schedule = SCHEDULES["Montepo"][mp_key]
+        st_schedule = SCHEDULES["Stesicoro"][st_key]
 
         last_mp = mp_schedule[-1]
         last_st = st_schedule[-1]
