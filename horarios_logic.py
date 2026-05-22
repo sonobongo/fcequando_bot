@@ -558,18 +558,22 @@ def get_closing_time(now: datetime, station: str) -> Tuple[int, int]:
             h, m = map(int, datos['ultimo_tren'].split(':'))
             return (h, m)
     if is_new_years_eve(now):
-        return (3, 0)
+        if station == "Stesicoro":
+            return (3, 0)
+        else:
+            return (2, 30)
     if is_sant_agata(now):
         last = get_last_train_sant_agata(station)
         return (last.hour, last.minute)
 
+    eff_ct = get_effective_datetime(now)
     if is_festivo_nazionale(now):
-        if now.weekday() in (4, 5, 6):
+        if eff_ct.weekday() in (4, 5, 6):
             return (1, 0)
         else:
             return (22, 30)
     else:
-        if now.weekday() in (4, 5):
+        if eff_ct.weekday() in (4, 5):
             return (1, 0)
         else:
             return (22, 30)
@@ -621,7 +625,7 @@ def get_schedule_list(station: str, now: datetime) -> List[time]:
             else:
                 schedule_list = SCHEDULES[station].get("weekday_holiday", SCHEDULES[station]["sunday"])
         else:
-            weekday_num = now.weekday()
+            weekday_num = eff.weekday()  # usa eff en lugar de now para tratar la madrugada como el día anterior
             if weekday_num == 4:
                 schedule_list = SCHEDULES[station]["friday"]
             elif weekday_num == 5:
