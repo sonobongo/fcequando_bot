@@ -143,18 +143,27 @@ def build_temporary_messages(now: datetime, estacion_key: str, dev_mode: bool = 
     if info_st:
         paso_st, mins, secs, next_info = info_st
         mins_mp = mins
-        if dev_mode:
-            time_str = format_time_precise(mins, secs)
+        # Se il prossimo treno verso Monte Po è lontano più di 90 minuti,
+        # il servizio è operativamente terminato in quella direzione
+        if mins > 90:
+            msg2 = f"🔺 **Per Monte Po**: nessun treno in arrivo al momento.\n"
+            tiempo_restante_mp = 9999
+            msg3 = f"🔻 **Per Stesicoro**: nessun treno in arrivo al momento.\n"
+            tiempo_restante_st = 9999
+            return msg2, msg3, current_station_key_mp, tiempo_restante_mp, current_station_key_st, tiempo_restante_st, mins_mp, mins_st
         else:
-            time_str = format_time(mins, secs)
-        tiempo_restante_mp = mins*60 + secs
-        if mins == 0 and secs < 30:
-            line = f"🔺 **Per Monte Po**: treno in arrivo.\n"
-        else:
-            if mins > SHORT_TIME_THRESHOLD:
-                line = f"🔺 **Per Monte Po**: Passa tra **{time_str}**, alle {paso_st.strftime('%H:%M')}.\n"
+            if dev_mode:
+                time_str = format_time_precise(mins, secs)
             else:
-                line = f"🔺 **Per Monte Po**: Passa tra **{time_str}**.\n"
+                time_str = format_time(mins, secs)
+            tiempo_restante_mp = mins*60 + secs
+            if mins == 0 and secs < 30:
+                line = f"🔺 **Per Monte Po**: treno in arrivo.\n"
+            else:
+                if mins > SHORT_TIME_THRESHOLD:
+                    line = f"🔺 **Per Monte Po**: Passa tra **{time_str}**, alle {paso_st.strftime('%H:%M')}.\n"
+                else:
+                    line = f"🔺 **Per Monte Po**: Passa tra **{time_str}**.\n"
         estaciones_localizacion = ["nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "fontana"]
         if estacion_key in estaciones_localizacion and 1 <= mins <= 10 and (mins*60 + secs) > 104:
             rest_seconds = mins*60 + secs
@@ -207,6 +216,12 @@ def build_temporary_messages(now: datetime, estacion_key: str, dev_mode: bool = 
     if info_mp:
         paso_mp, mins, secs, next_info = info_mp
         mins_st = mins
+        # Se il prossimo treno verso Stesicoro è lontano più di 90 minuti,
+        # il servizio è operativamente terminato in quella direzione
+        if mins > 90:
+            msg3 = f"🔻 **Per Stesicoro**: nessun treno in arrivo al momento.\n"
+            tiempo_restante_st = 9999
+            return msg2, msg3, current_station_key_mp, tiempo_restante_mp, current_station_key_st, tiempo_restante_st, mins_mp, mins_st
         if dev_mode:
             time_str = format_time_precise(mins, secs)
         else:
