@@ -1369,15 +1369,36 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
         "ultimo treno oggi", "ultima corsa oggi"
     ]):
         now = get_simulated_now(context)
-        # get_closing_time ya maneja todos los casos especiales:
-        # Nochevieja, Sant'Agata, extensiones (fútbol), festivos, viernes/sábado
-        mp_h, mp_m = get_closing_time(now, "Montepo")
-        st_h, st_m = get_closing_time(now, "Stesicoro")
+
+        # Casos especiales: get_closing_time ya tiene la respuesta correcta
+        # (Nochevieja, Sant'Agata, extensiones de fútbol, etc.)
+        from horarios_logic import is_new_years_eve, is_sant_agata, get_extension_horario
+        is_special = is_new_years_eve(now) or is_sant_agata(now) or get_extension_horario(now) is not None
+
+        if is_special:
+            mp_h, mp_m = get_closing_time(now, "Montepo")
+            st_h, st_m = get_closing_time(now, "Stesicoro")
+            last_mp_str = f"{mp_h:02d}:{mp_m:02d}"
+            last_st_str = f"{st_h:02d}:{st_m:02d}"
+        else:
+            # Leer el último tren directamente del schedule:
+            # los trenes de madrugada están al inicio del día siguiente (hora < 5)
+            mp_today = get_schedule_list("Montepo", now)
+            st_today = get_schedule_list("Stesicoro", now)
+            tomorrow = now + timedelta(days=1)
+            mp_tomorrow = get_schedule_list("Montepo", tomorrow)
+            st_tomorrow = get_schedule_list("Stesicoro", tomorrow)
+            mp_madru = [t for t in mp_tomorrow if t.hour < 5]
+            st_madru = [t for t in st_tomorrow if t.hour < 5]
+            last_mp = mp_madru[-1] if mp_madru else mp_today[-1]
+            last_st = st_madru[-1] if st_madru else st_today[-1]
+            last_mp_str = last_mp.strftime('%H:%M')
+            last_st_str = last_st.strftime('%H:%M')
 
         msg = (
             f"🚇 **Ultime partenze di oggi**\n"
-            f"▪️ Da Monte Po verso Stesicoro: **{mp_h:02d}:{mp_m:02d}**\n"
-            f"▪️ Da Stesicoro verso Monte Po: **{st_h:02d}:{st_m:02d}**"
+            f"▪️ Da Monte Po verso Stesicoro: **{last_mp_str}**\n"
+            f"▪️ Da Stesicoro verso Monte Po: **{last_st_str}**"
         )
         extension_msg = get_extension_message(now)
         if extension_msg:
