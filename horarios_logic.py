@@ -638,31 +638,30 @@ def get_schedule_list(station: str, now: datetime) -> List[time]:
     if not schedule_list:
         return schedule_list
     current_time = now.time()
-    first_train = schedule_list[0]
-    if current_time < first_train and current_time.hour < 6:
-        yesterday = eff - timedelta(days=1)
-        y_override = get_override_weekday(yesterday)
-        if y_override is not None:
-            if y_override == 4:
-                yesterday_list = SCHEDULES[station]["friday"]
-            elif y_override == 5:
-                yesterday_list = SCHEDULES[station]["saturday"]
-            elif y_override == 6:
-                yesterday_list = SCHEDULES[station]["sunday"]
+
+    # En madrugada (00:00-04:59) los trenes estan en el schedule del dia calendario
+    # actual (ej: sabado 00:53 -> los trenes 00:08..01:00 estan en saturday).
+    # Devolvemos esa lista para que datetime.combine(now.date(), t) funcione correctamente.
+    if current_time.hour < 5:
+        cal_weekday = now.weekday()
+        if is_festivo_nazionale(now):
+            if cal_weekday == 5:
+                cal_list = SCHEDULES[station].get("saturday_holiday", SCHEDULES[station]["sunday"])
+            elif cal_weekday == 6:
+                cal_list = SCHEDULES[station]["sunday"]
             else:
-                yesterday_list = SCHEDULES[station]["weekday"]
+                cal_list = SCHEDULES[station].get("weekday_holiday", SCHEDULES[station]["sunday"])
         else:
-            y_weekday = yesterday.weekday()
-            if y_weekday == 4:
-                yesterday_list = SCHEDULES[station]["friday"]
-            elif y_weekday == 5:
-                yesterday_list = SCHEDULES[station]["saturday"]
-            elif y_weekday == 6:
-                yesterday_list = SCHEDULES[station]["sunday"]
+            if cal_weekday == 5:
+                cal_list = SCHEDULES[station]["saturday"]
+            elif cal_weekday == 6:
+                cal_list = SCHEDULES[station]["sunday"]
             else:
-                yesterday_list = SCHEDULES[station]["weekday"]
-        if any(t.hour >= 22 or t.hour < 6 for t in yesterday_list):
-            return yesterday_list
+                cal_list = SCHEDULES[station]["weekday"]
+        # Usar esta lista solo si aun quedan trenes de madrugada por pasar
+        madru_pendientes = [t for t in cal_list if t.hour < 5 and t > current_time]
+        if madru_pendientes:
+            return cal_list
 
     # ---- Extensión horaria: añadir trenes extra si corresponde ----
     extension = get_extension_horario(now)
