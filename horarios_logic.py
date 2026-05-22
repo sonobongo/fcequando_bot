@@ -849,6 +849,13 @@ def is_metro_closed(now: datetime, station: str) -> Tuple[bool, Optional[datetim
     
     if 1 <= now.hour < 6:
         close_h_check, close_m_check = get_closing_time(now, station)
+        # Aggiungere il tempo di viaggio da Stesicoro alla stazione corrente:
+        # l'ultimo treno parte da Stesicoro alle close_time ma impiega alcuni minuti
+        # ad arrivare alle stazioni intermedie, quindi restano operative fino al suo passaggio.
+        travel_secs = get_total_seconds_from_stesicoro(station, now)
+        close_total_mins = close_h_check * 60 + close_m_check + (travel_secs // 60)
+        close_h_check = (close_total_mins // 60) % 24
+        close_m_check = close_total_mins % 60
         closing_time_check = time(close_h_check, close_m_check)
         is_late_closing = 1 <= close_h_check <= 3
         if is_late_closing and now.time() < closing_time_check:
@@ -867,7 +874,13 @@ def is_metro_closed(now: datetime, station: str) -> Tuple[bool, Optional[datetim
     open_h, open_m = get_opening_time(now, station)
     close_h, close_m = get_closing_time(now, station)
     opening_time = time(open_h, open_m)
-    closing_time = time(close_h, close_m)
+    # Aggiungere il tempo di viaggio da Stesicoro: il treno impiega alcuni minuti
+    # ad arrivare alle stazioni intermedie dopo la partenza da Stesicoro.
+    travel_secs_close = get_total_seconds_from_stesicoro(station, now)
+    close_total = close_h * 60 + close_m + (travel_secs_close // 60)
+    close_h_adj = (close_total // 60) % 24
+    close_m_adj = close_total % 60
+    closing_time = time(close_h_adj, close_m_adj)
     
     if close_h < open_h or (close_h == open_h and close_m < open_m):
         if current_time >= opening_time or current_time < closing_time:
