@@ -658,10 +658,18 @@ def get_schedule_list(station: str, now: datetime) -> List[time]:
                 cal_list = SCHEDULES[station]["sunday"]
             else:
                 cal_list = SCHEDULES[station]["weekday"]
-        # Usar esta lista solo si aun quedan trenes de madrugada por pasar
-        madru_pendientes = [t for t in cal_list if t.hour < 5 and t > current_time]
-        if madru_pendientes:
-            return cal_list
+        # Devolver cal_list si hay trenes de madrugada que aun pueden estar en circulacion:
+        # - los que aun no han salido (t > current_time), o
+        # - los que salieron hace menos de 30 min (podrian estar en estaciones intermedias)
+        from datetime import timedelta as _td
+        madru = [t for t in cal_list if t.hour < 5]
+        if madru:
+            ultimo_madru = madru[-1]
+            from datetime import datetime as _dt
+            ultimo_dt = _dt.combine(now.date(), ultimo_madru)
+            now_naive = now.replace(tzinfo=None)
+            if now_naive <= ultimo_dt + _td(minutes=30):
+                return cal_list
 
     # ---- Extensión horaria: añadir trenes extra si corresponde ----
     extension = get_extension_horario(now)
