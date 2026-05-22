@@ -54,8 +54,8 @@
     {
       "fecha": "2026-01-01",
       "horario_extendido": {
-        "Montepo": { "primer_tren": "07:00", "ultimo_tren": "22:30" },
-        "Stesicoro": { "primer_tren": "07:25", "ultimo_tren": "23:00" }
+        "Montepo": { "primer_tren": "07:00", "ultimo_tren": "21:58" },
+        "Stesicoro": { "primer_tren": "07:25", "ultimo_tren": "22:30" }
       },
       "descripcion": "Año Nuevo: horario especial"
     }
