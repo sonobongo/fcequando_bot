@@ -152,6 +152,7 @@ def main():
     app.add_handler(MessageHandler(filters.Text(button_texts), handle_button_wrapper))
 
     app.add_handler(CallbackQueryHandler(dev_handlers.aggiornare_super_callback, pattern="^aggiornare_super$"))
+    app.add_handler(CallbackQueryHandler(dev_handlers.ritornare_callback, pattern="^ritornare_"))
     app.add_handler(CallbackQueryHandler(aggiornare_callback_wrapper, pattern="^aggiornare_"))
     app.add_handler(CallbackQueryHandler(aggiornare_cabecera_callback_wrapper, pattern="^agg_cabecera_"))
 
