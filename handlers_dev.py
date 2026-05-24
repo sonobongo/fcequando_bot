@@ -1744,12 +1744,12 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
                     for salida in schedule_mp:
                         paso_dt = datetime.combine(now.date(), salida) + timedelta(seconds=seg_mp)
                         paso_dt = CATANIA_TZ.localize(paso_dt)
-                        if paso_dt.hour == hora_int:
+                        if paso_dt.hour == hora_int and paso_dt > now:
                             pasos.append((paso_dt, "Monte Po ➡️ Stesicoro"))
                     for salida in schedule_st:
                         paso_dt = datetime.combine(now.date(), salida) + timedelta(seconds=seg_st)
                         paso_dt = CATANIA_TZ.localize(paso_dt)
-                        if paso_dt.hour == hora_int:
+                        if paso_dt.hour == hora_int and paso_dt > now:
                             pasos.append((paso_dt, "Stesicoro ➡️ Monte Po"))
 
                     pasos.sort(key=lambda x: x[0])
