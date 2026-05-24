@@ -1770,12 +1770,11 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
                     # Messaggio 2: lista formato "Dest - HH:MM"
                     if pasos:
-                        NUM_EMOJIS = ["1️⃣","2️⃣","3️⃣","4️⃣","5️⃣","6️⃣","7️⃣","8️⃣","9️⃣","🔟"]
                         lineas = []
-                        for i, (paso_dt, direction) in enumerate(pasos):
+                        for paso_dt, direction in pasos:
                             is_montepo = "Monte Po" in direction.split("➡️")[0]
-                            num = NUM_EMOJIS[i] if i < len(NUM_EMOJIS) else f"{i+1}."
-                            arrow = "🔼" if is_montepo else "🔽"
+                            num = "1️⃣" if is_montepo else "2️⃣"
+                            arrow = "🔺" if is_montepo else "🔻"
                             dest = "Monte Po" if is_montepo else "Stesicoro"
                             lineas.append(f"{num} {paso_dt.strftime('%H:%M')} {arrow} {dest}")
                         msg2_text = "\n".join(lineas)
