@@ -1741,9 +1741,11 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
                     schedule_st = get_schedule_list("Stesicoro", now)
 
                     # Se l'ora richiesta è già passata interamente, usare domani
+                    # Confronto diretto con now per gestire correttamente la madrugada
                     target_date = now.date()
                     giorno_str = "oggi"
-                    if now.hour > hora_int or (now.hour == hora_int and now.minute >= 59):
+                    hora_fine = CATANIA_TZ.localize(datetime.combine(now.date(), time(hora_int, 59)))
+                    if hora_fine < now:
                         target_date = now.date() + timedelta(days=1)
                         giorno_str = "domani"
                         schedule_mp = get_schedule_list("Montepo", CATANIA_TZ.localize(datetime.combine(target_date, time(12, 0))))
