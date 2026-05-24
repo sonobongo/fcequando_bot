@@ -1352,6 +1352,18 @@ async def send_super_response(update: Update, context: ContextTypes.DEFAULT_TYPE
     task = asyncio.create_task(auto_update_super(context, chat_id, message_id, cycles=40, interval=3))
     context.chat_data['super_task'] = task
 
+async def ritornare_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Ricarica la stazione da zero come se fosse una nuova richiesta."""
+    query = update.callback_query
+    await query.answer()
+    estacion_key = query.data.split("_")[1]
+    fake_update = type("Update", (), {
+        "message": query.message,
+        "effective_chat": query.message.chat,
+        "callback_query": query
+    })()
+    await send_station_response(fake_update, context, estacion_key, return_to_main=True)
+
 async def aggiornare_super_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -1742,23 +1754,35 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
                     pasos.sort(key=lambda x: x[0])
 
-                    msg1_text = f"🕐 **Salidas programadas para {nombre_est} hoy a las {hora_int:02d}:00**"
-                    msg1 = await update.message.reply_text(msg1_text, parse_mode='Markdown')
+                    # Messaggio 1: foto + testo
+                    img_url = get_station_image(mejor_clave, now)
+                    caption1 = f"🕐 **Salidas programadas para {nombre_est} hoy a las {hora_int:02d}:00**"
+                    if img_url:
+                        msg1 = await context.bot.send_photo(
+                            chat_id=update.effective_chat.id,
+                            photo=img_url,
+                            caption=caption1,
+                            parse_mode="Markdown"
+                        )
+                    else:
+                        msg1 = await update.message.reply_text(caption1, parse_mode="Markdown")
                     await store_id(context, msg1)
 
+                    # Messaggio 2: lista formato "Dest - HH:MM"
                     if pasos:
                         lineas = []
                         for paso_dt, direction in pasos:
-                            lineas.append(f"{paso_dt.strftime('%H:%M')} — {direction}")
+                            dest = direction.split("➡️")[0].strip()
+                            lineas.append(f"{dest} - {paso_dt.strftime('%H:%M')}")
                         msg2_text = "\n".join(lineas)
                     else:
                         msg2_text = f"Nessun treno programmato a {nombre_est} alle {hora_int:02d}:00."
 
                     nombre_boton = nombre_est if mejor_clave != "giovanni" else "Giovanni XXIII"
                     keyboard_ritorna = InlineKeyboardMarkup([[
-                        InlineKeyboardButton(f"🔄 Ritornare a {nombre_boton}", callback_data=f"aggiornare_{mejor_clave}")
+                        InlineKeyboardButton(f"🔄 Ritornare a {nombre_boton}", callback_data=f"ritornare_{mejor_clave}")
                     ]])
-                    msg2 = await update.message.reply_text(msg2_text, parse_mode='Markdown', reply_markup=keyboard_ritorna)
+                    msg2 = await update.message.reply_text(msg2_text, parse_mode="Markdown", reply_markup=keyboard_ritorna)
                     await store_id(context, msg2)
                     return
 
