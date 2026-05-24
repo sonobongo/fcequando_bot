@@ -1740,23 +1740,35 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
                     schedule_mp = get_schedule_list("Montepo", now)
                     schedule_st = get_schedule_list("Stesicoro", now)
 
+                    # Se l'ora richiesta è già passata interamente, usare domani
+                    target_date = now.date()
+                    giorno_str = "oggi"
+                    if now.hour > hora_int or (now.hour == hora_int and now.minute >= 59):
+                        target_date = now.date() + timedelta(days=1)
+                        giorno_str = "domani"
+                        schedule_mp = get_schedule_list("Montepo", CATANIA_TZ.localize(datetime.combine(target_date, time(12, 0))))
+                        schedule_st = get_schedule_list("Stesicoro", CATANIA_TZ.localize(datetime.combine(target_date, time(12, 0))))
+
                     pasos = []
                     for salida in schedule_mp:
-                        paso_dt = datetime.combine(now.date(), salida) + timedelta(seconds=seg_mp)
+                        paso_dt = datetime.combine(target_date, salida) + timedelta(seconds=seg_mp)
                         paso_dt = CATANIA_TZ.localize(paso_dt)
-                        if paso_dt.hour == hora_int and paso_dt > now:
+                        if paso_dt.hour == hora_int:
                             pasos.append((paso_dt, "Monte Po ➡️ Stesicoro"))
                     for salida in schedule_st:
-                        paso_dt = datetime.combine(now.date(), salida) + timedelta(seconds=seg_st)
+                        paso_dt = datetime.combine(target_date, salida) + timedelta(seconds=seg_st)
                         paso_dt = CATANIA_TZ.localize(paso_dt)
-                        if paso_dt.hour == hora_int and paso_dt > now:
+                        if paso_dt.hour == hora_int:
                             pasos.append((paso_dt, "Stesicoro ➡️ Monte Po"))
+                    # Se è oggi, filtrare i treni già passati
+                    if giorno_str == "oggi":
+                        pasos = [(p, d) for p, d in pasos if p > now]
 
                     pasos.sort(key=lambda x: x[0])
 
                     # Messaggio 1: foto + testo
                     img_url = get_station_image(mejor_clave, now)
-                    caption1 = f"🕐 **Partenze programmate a {nombre_est} oggi alle {hora_int:02d}:00**"
+                    caption1 = f"🕐 **Partenze programmate a {nombre_est} {giorno_str} alle {hora_int:02d}:00**"
                     if img_url:
                         msg1 = await context.bot.send_photo(
                             chat_id=update.effective_chat.id,
