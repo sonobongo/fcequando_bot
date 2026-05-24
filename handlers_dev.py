@@ -1512,7 +1512,17 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
     
     import unicodedata
     texto_norm = unicodedata.normalize('NFKD', texto.lower()).encode('ASCII', 'ignore').decode('ASCII')
-    texto_limpio = ' '.join(texto_norm.split())
+    texto_limpio_orig = ' '.join(texto_norm.split())
+    # Estrarre l'ora dal testo PRIMA del matching, per non confondere il Levenshtein
+    hora_schedule = None
+    hora_match_pre = re.search(r'\b(\d{1,2})(?:[:\.]?(\d{2}))?\b', texto_limpio_orig)
+    if hora_match_pre:
+        hora_int_pre = int(hora_match_pre.group(1))
+        if 0 <= hora_int_pre <= 23:
+            hora_schedule = hora_int_pre
+    # Rimuovere tutti i numeri dal testo per il matching della stazione
+    texto_limpio = re.sub(r'\b\d{1,4}\b', '', texto_limpio_orig).strip()
+    texto_limpio = ' '.join(texto_limpio.split())
     palabras = texto_limpio.split()
 
     KEYWORDS = {
@@ -1701,9 +1711,57 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if not matches and texto_limpio == "monte":
         matches.append((0, "montepo"))
 
+    # ---- Rilevare pattern "[stazione] [ora]" per orari programmati ----
     if matches:
         matches.sort(key=lambda x: x[0])
         mejor_clave = matches[0][1]
+        # Stazioni intermedie: cercare un'ora nel testo
+        INTERMEDIATE = {"fontana","nesima","sannullo","cibali","milo","borgo","giuffrida","italia","galatea","giovanni"}
+        if mejor_clave in INTERMEDIATE:
+            if hora_schedule is not None:
+                hora_int = hora_schedule
+                if True:
+                    now = get_simulated_now(context)
+                    nombre_est = NOMBRE_MOSTRAR[mejor_clave]
+                    seg_mp = get_total_seconds_from_montepo(mejor_clave, now)
+                    seg_st = get_total_seconds_from_stesicoro(mejor_clave, now)
+                    schedule_mp = get_schedule_list("Montepo", now)
+                    schedule_st = get_schedule_list("Stesicoro", now)
+
+                    pasos = []
+                    for salida in schedule_mp:
+                        paso_dt = datetime.combine(now.date(), salida) + timedelta(seconds=seg_mp)
+                        paso_dt = CATANIA_TZ.localize(paso_dt)
+                        if paso_dt.hour == hora_int:
+                            pasos.append((paso_dt, "Monte Po ➡️ Stesicoro"))
+                    for salida in schedule_st:
+                        paso_dt = datetime.combine(now.date(), salida) + timedelta(seconds=seg_st)
+                        paso_dt = CATANIA_TZ.localize(paso_dt)
+                        if paso_dt.hour == hora_int:
+                            pasos.append((paso_dt, "Stesicoro ➡️ Monte Po"))
+
+                    pasos.sort(key=lambda x: x[0])
+
+                    msg1_text = f"🕐 **Salidas programadas para {nombre_est} hoy a las {hora_int:02d}:00**"
+                    msg1 = await update.message.reply_text(msg1_text, parse_mode='Markdown')
+                    await store_id(context, msg1)
+
+                    if pasos:
+                        lineas = []
+                        for paso_dt, direction in pasos:
+                            lineas.append(f"{paso_dt.strftime('%H:%M')} — {direction}")
+                        msg2_text = "\n".join(lineas)
+                    else:
+                        msg2_text = f"Nessun treno programmato a {nombre_est} alle {hora_int:02d}:00."
+
+                    nombre_boton = nombre_est if mejor_clave != "giovanni" else "Giovanni XXIII"
+                    keyboard_ritorna = InlineKeyboardMarkup([[
+                        InlineKeyboardButton(f"🔄 Ritornare a {nombre_boton}", callback_data=f"aggiornare_{mejor_clave}")
+                    ]])
+                    msg2 = await update.message.reply_text(msg2_text, parse_mode='Markdown', reply_markup=keyboard_ritorna)
+                    await store_id(context, msg2)
+                    return
+
         await send_station_response(update, context, mejor_clave, return_to_main=True)
         return
 
