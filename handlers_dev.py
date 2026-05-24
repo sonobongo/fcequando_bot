@@ -1756,7 +1756,7 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
                     # Messaggio 1: foto + testo
                     img_url = get_station_image(mejor_clave, now)
-                    caption1 = f"🕐 **Salidas programadas para {nombre_est} hoy a las {hora_int:02d}:00**"
+                    caption1 = f"🕐 **Partenze programmate a {nombre_est} oggi alle {hora_int:02d}:00**"
                     if img_url:
                         msg1 = await context.bot.send_photo(
                             chat_id=update.effective_chat.id,
@@ -1770,10 +1770,14 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
                     # Messaggio 2: lista formato "Dest - HH:MM"
                     if pasos:
+                        NUM_EMOJIS = ["1️⃣","2️⃣","3️⃣","4️⃣","5️⃣","6️⃣","7️⃣","8️⃣","9️⃣","🔟"]
                         lineas = []
-                        for paso_dt, direction in pasos:
-                            dest = direction.split("➡️")[0].strip()
-                            lineas.append(f"{dest} - {paso_dt.strftime('%H:%M')}")
+                        for i, (paso_dt, direction) in enumerate(pasos):
+                            is_montepo = "Monte Po" in direction.split("➡️")[0]
+                            num = NUM_EMOJIS[i] if i < len(NUM_EMOJIS) else f"{i+1}."
+                            arrow = "🔼" if is_montepo else "🔽"
+                            dest = "Monte Po" if is_montepo else "Stesicoro"
+                            lineas.append(f"{num} {paso_dt.strftime('%H:%M')} {arrow} {dest}")
                         msg2_text = "\n".join(lineas)
                     else:
                         msg2_text = f"Nessun treno programmato a {nombre_est} alle {hora_int:02d}:00."
