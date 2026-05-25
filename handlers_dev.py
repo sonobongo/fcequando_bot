@@ -1727,6 +1727,52 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if matches:
         matches.sort(key=lambda x: x[0])
         mejor_clave = matches[0][1]
+        # Stazioni terminali con ora: mostrare partenze programmate (una sola direzione)
+        TERMINAL_DIR = {"montepo": ("1️⃣", "🔻", "Stesicoro"), "stesicoro": ("2️⃣", "🔺", "Monte Po")}
+        if mejor_clave in TERMINAL_DIR and hora_schedule is not None:
+            hora_int = hora_schedule
+            now = get_simulated_now(context)
+            nombre_est = NOMBRE_MOSTRAR[mejor_clave]
+            num_emoji, arrow, dest_name = TERMINAL_DIR[mejor_clave]
+            # Determina se oggi o domani
+            target_date = now.date()
+            giorno_str = "oggi"
+            hora_fine = CATANIA_TZ.localize(datetime.combine(now.date(), time(hora_int, 59)))
+            if hora_fine < now:
+                target_date = now.date() + timedelta(days=1)
+                giorno_str = "domani"
+            schedule_list = get_schedule_list(mejor_clave.capitalize() if mejor_clave == "montepo" else "Stesicoro",
+                CATANIA_TZ.localize(datetime.combine(target_date, time(12, 0))))
+            pasos = []
+            for salida in schedule_list:
+                paso_dt = CATANIA_TZ.localize(datetime.combine(target_date, salida))
+                if paso_dt.hour == hora_int:
+                    if giorno_str == "oggi" and paso_dt <= now:
+                        continue
+                    pasos.append(paso_dt)
+            # Messaggio 1: foto + testo
+            img_url = get_station_image(mejor_clave, now)
+            caption1 = f"🕐 **Partenze programmate a {nombre_est} {giorno_str} alle {hora_int:02d}:00**"
+            if img_url:
+                msg1 = await context.bot.send_photo(chat_id=update.effective_chat.id, photo=img_url,
+                    caption=caption1, parse_mode="Markdown")
+            else:
+                msg1 = await update.message.reply_text(caption1, parse_mode="Markdown")
+            await store_id(context, msg1)
+            # Messaggio 2
+            if pasos:
+                lineas = [f"{num_emoji} {p.strftime('%H:%M')} {arrow} {dest_name}" for p in pasos]
+                msg2_text = "\n".join(lineas)
+            else:
+                msg2_text = f"Nessun treno programmato a {nombre_est} alle {hora_int:02d}:00."
+            nombre_boton = "Monte Po" if mejor_clave == "montepo" else "Stesicoro"
+            keyboard_ritorna = InlineKeyboardMarkup([[
+                InlineKeyboardButton(f"🔄 Ritornare a {nombre_boton}", callback_data=f"ritornare_{mejor_clave}")
+            ]])
+            msg2 = await update.message.reply_text(msg2_text, parse_mode="Markdown", reply_markup=keyboard_ritorna)
+            await store_id(context, msg2)
+            return
+
         # Stazioni intermedie: cercare un'ora nel testo
         INTERMEDIATE = {"fontana","nesima","sannullo","cibali","milo","borgo","giuffrida","italia","galatea","giovanni"}
         if mejor_clave in INTERMEDIATE:
