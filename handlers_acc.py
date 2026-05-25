@@ -754,6 +754,7 @@ async def process_station_request(update: Update, context: ContextTypes.DEFAULT_
             plain_ext = extension_msg.replace("🕐 ", "").replace("**", "")
             msg = plain_ext.rstrip() + "\n\n" + msg
         await update.message.reply_text(msg)
+        await update.message.reply_text("Scegli la stazione che vuoi controllare o scrive la stessa stazione per aggiornarla: Monte Po, Fontana, Nesima, San Nullo, Cibali, Milo, Borgo, Giuffrida, Italia, Galatea, Giovanni XXIII, Stesicoro. Per uscire dalla modalità accessibilità scrivi USCIRE", reply_markup=ReplyKeyboardRemove())
         return
 
     texto_norm = unicodedata.normalize('NFKD', texto.lower()).encode('ASCII', 'ignore').decode('ASCII')
@@ -958,12 +959,8 @@ async def process_station_request(update: Update, context: ContextTypes.DEFAULT_
                 msg2_text = "\n".join(lineas)
             else:
                 msg2_text = f"Nessun treno programmato a {nombre_est} alle {hora_int:02d}:00."
-            nombre_boton = nombre_est if mejor_clave != "giovanni" else "Giovanni XXIII"
-            keyboard_ritorna = InlineKeyboardMarkup([[
-                InlineKeyboardButton(f"🔄 Ritornare a {nombre_boton}", callback_data=f"ritornare_{mejor_clave}")
-            ]])
-            msg2 = await update.message.reply_text(msg2_text, parse_mode="Markdown", reply_markup=keyboard_ritorna)
-            await store_id(context, msg2)
+            await update.message.reply_text(msg2_text)
+            await update.message.reply_text("Scegli la stazione che vuoi controllare o scrive la stessa stazione per aggiornarla: Monte Po, Fontana, Nesima, San Nullo, Cibali, Milo, Borgo, Giuffrida, Italia, Galatea, Giovanni XXIII, Stesicoro. Per uscire dalla modalità accessibilità scrivi USCIRE", reply_markup=ReplyKeyboardRemove())
             return
         await send_station_response(update, context, mejor_clave, return_to_main=True)
         return
