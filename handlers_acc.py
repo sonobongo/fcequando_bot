@@ -3,11 +3,23 @@ import time as time_module
 import unicodedata
 import logging
 import re
-from datetime import datetime, timedelta
-from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove
+from datetime import datetime, timedelta, time
+from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ContextTypes
 from horarios_logic import *
 from horarios_logic import CATANIA_TZ
+
+def get_simulated_now(context) -> datetime:
+    if 'test_time' in context.chat_data:
+        return context.chat_data['test_time']
+    return datetime.now(CATANIA_TZ)
+
+async def store_id(context, message):
+    if not hasattr(message, 'message_id'):
+        return
+    ids = context.chat_data.get('last_message_ids', [])
+    ids.append(message.message_id)
+    context.chat_data['last_message_ids'] = ids[-10:]
 
 logger = logging.getLogger(__name__)
 
