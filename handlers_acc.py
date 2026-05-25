@@ -702,8 +702,60 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
 # PROCESAMIENTO DE SOLICITUD DE ESTACIÓN (modo nonna simplificado)
 # ============================================================================
 async def process_station_request(update: Update, context: ContextTypes.DEFAULT_TYPE, texto: str):
+    # ===== CHIUDE / ULTIMO TRENO =====
+    texto_lower_acc = texto.lower()
+    if any(frase in texto_lower_acc for frase in [
+        "chiude", "chiusura", "ultimo treno", "ultima corsa",
+        "fino a che ora", "fino a quando", "orario chiusura",
+        "quando chiude", "a che ora chiude", "ultimi treni",
+        "ultimo treno oggi", "ultima corsa oggi"
+    ]):
+        now = get_simulated_now(context)
+        is_special = is_new_years_eve(now) or is_sant_agata(now) or get_extension_horario(now) is not None
+        if is_special:
+            mp_h, mp_m = get_closing_time(now, "Montepo")
+            st_h, st_m = get_closing_time(now, "Stesicoro")
+            last_mp_str = f"{mp_h:02d}:{mp_m:02d}"
+            last_st_str = f"{st_h:02d}:{st_m:02d}"
+        else:
+            eff = get_effective_datetime(now)
+            tomorrow_noon = CATANIA_TZ.localize(
+                datetime.combine((eff + timedelta(days=1)).date(), time(12, 0))
+            )
+            mp_today = get_schedule_list("Montepo", now)
+            st_today = get_schedule_list("Stesicoro", now)
+            mp_tomorrow = get_schedule_list("Montepo", tomorrow_noon)
+            st_tomorrow = get_schedule_list("Stesicoro", tomorrow_noon)
+            mp_madru = [t for t in mp_tomorrow if t.hour < 5]
+            st_madru = [t for t in st_tomorrow if t.hour < 5]
+            last_mp = mp_madru[-1] if mp_madru else mp_today[-1]
+            last_st = st_madru[-1] if st_madru else st_today[-1]
+            last_mp_str = last_mp.strftime("%H:%M")
+            last_st_str = last_st.strftime("%H:%M")
+        msg = (
+            f"Ultime partenze di oggi\n"
+            f"Da Monte Po verso Stesicoro: {last_mp_str}\n"
+            f"Da Stesicoro verso Monte Po: {last_st_str}"
+        )
+        extension_msg = get_extension_message(now)
+        if extension_msg:
+            plain_ext = extension_msg.replace("🕐 ", "").replace("**", "")
+            msg = plain_ext.rstrip() + "\n\n" + msg
+        await update.message.reply_text(msg)
+        return
+
     texto_norm = unicodedata.normalize('NFKD', texto.lower()).encode('ASCII', 'ignore').decode('ASCII')
-    texto_limpio = ' '.join(texto_norm.split())
+    texto_limpio_orig = ' '.join(texto_norm.split())
+    # Estrarre l'ora dal testo PRIMA del matching
+    hora_schedule = None
+    hora_match_pre = re.search(r'\b(\d{1,2})(?:[:\.]?(\d{2}))?\b', texto_limpio_orig)
+    if hora_match_pre:
+        hora_int_pre = int(hora_match_pre.group(1))
+        if 0 <= hora_int_pre <= 23:
+            hora_schedule = hora_int_pre
+    # Rimuovere tutti i numeri dal testo per il matching della stazione
+    texto_limpio = re.sub(r'\b\d{1,4}\b', '', texto_limpio_orig).strip()
+    texto_limpio = ' '.join(texto_limpio.split())
     palabras = texto_limpio.split()
     
     def levenshtein_distance(a: str, b: str) -> int:
@@ -848,6 +900,59 @@ async def process_station_request(update: Update, context: ContextTypes.DEFAULT_
     if matches:
         matches.sort(key=lambda x: x[0])
         mejor_clave = matches[0][1]
+        # Stazioni intermedie con ora: mostrare orario programmato
+        INTERMEDIATE = {"fontana","nesima","sannullo","cibali","milo","borgo","giuffrida","italia","galatea","giovanni"}
+        if mejor_clave in INTERMEDIATE and hora_schedule is not None:
+            hora_int = hora_schedule
+            now = get_simulated_now(context)
+            nombre_est = NOMBRE_MOSTRAR[mejor_clave]
+            seg_mp = get_total_seconds_from_montepo(mejor_clave, now)
+            seg_st = get_total_seconds_from_stesicoro(mejor_clave, now)
+            schedule_mp = get_schedule_list("Montepo", now)
+            schedule_st = get_schedule_list("Stesicoro", now)
+            # Se l'ora richiesta è già passata interamente, usare domani
+            target_date = now.date()
+            giorno_str = "oggi"
+            hora_fine = CATANIA_TZ.localize(datetime.combine(now.date(), time(hora_int, 59)))
+            if hora_fine < now:
+                target_date = now.date() + timedelta(days=1)
+                giorno_str = "domani"
+                schedule_mp = get_schedule_list("Montepo", CATANIA_TZ.localize(datetime.combine(target_date, time(12, 0))))
+                schedule_st = get_schedule_list("Stesicoro", CATANIA_TZ.localize(datetime.combine(target_date, time(12, 0))))
+
+            pasos = []
+            for salida in schedule_mp:
+                paso_dt = datetime.combine(target_date, salida) + timedelta(seconds=seg_mp)
+                paso_dt = CATANIA_TZ.localize(paso_dt)
+                if paso_dt.hour == hora_int:
+                    pasos.append((paso_dt, "Monte Po ➡️ Stesicoro"))
+            for salida in schedule_st:
+                paso_dt = datetime.combine(target_date, salida) + timedelta(seconds=seg_st)
+                paso_dt = CATANIA_TZ.localize(paso_dt)
+                if paso_dt.hour == hora_int:
+                    pasos.append((paso_dt, "Stesicoro ➡️ Monte Po"))
+            if giorno_str == "oggi":
+                pasos = [(p, d) for p, d in pasos if p > now]
+            pasos.sort(key=lambda x: x[0])
+            msg1_text = f"🕐 **Partenze programmate a {nombre_est} {giorno_str} alle {hora_int:02d}:00**"
+            msg1 = await update.message.reply_text(msg1_text, parse_mode="Markdown")
+            await store_id(context, msg1)
+            if pasos:
+                lineas = []
+                for paso_dt, direction in pasos:
+                    is_montepo = "Monte Po" in direction.split("➡️")[0]
+                    dest = "Monte Po" if is_montepo else "Stesicoro"
+                    lineas.append(f"{paso_dt.strftime('%H:%M')} {dest}")
+                msg2_text = "\n".join(lineas)
+            else:
+                msg2_text = f"Nessun treno programmato a {nombre_est} alle {hora_int:02d}:00."
+            nombre_boton = nombre_est if mejor_clave != "giovanni" else "Giovanni XXIII"
+            keyboard_ritorna = InlineKeyboardMarkup([[
+                InlineKeyboardButton(f"🔄 Ritornare a {nombre_boton}", callback_data=f"ritornare_{mejor_clave}")
+            ]])
+            msg2 = await update.message.reply_text(msg2_text, parse_mode="Markdown", reply_markup=keyboard_ritorna)
+            await store_id(context, msg2)
+            return
         await send_station_response(update, context, mejor_clave, return_to_main=True)
         return
     
