@@ -44,25 +44,45 @@
       "tipo_dia_base": "weekday"
     },
     {
+      "fecha": "2026-05-27",
+      "horario_extendido": {
+        "Montepo": { "ultimo_tren": "00:34" },
+        "Stesicoro": { "ultimo_tren": "01:00" }
+      },
+      "descripcion": "Orario tipo venerdì (chiusura alle 01:00)",
+      "mantiene_frecuencia": true,
+      "tipo_dia_base": "friday"
+    },
+    {
       "fecha": "2026-12-31",
       "horario_extendido": {
-        "Montepo": { "primer_tren": "06:00", "ultimo_tren": "02:30" },
-        "Stesicoro": { "primer_tren": "06:25", "ultimo_tren": "03:00" }
+        "Montepo": { "primer_tren": "06:00", "ultimo_tren": "03:00" },
+        "Stesicoro": { "primer_tren": "06:25", "ultimo_tren": "03:30" }
       },
-      "descripcion": "Capodanno: orario prolungato"
+      "descripcion": "Nochevieja: servicio extendido"
     },
     {
       "fecha": "2026-01-01",
       "horario_extendido": {
-        "Montepo": { "primer_tren": "07:00", "ultimo_tren": "21:58" },
-        "Stesicoro": { "primer_tren": "07:25", "ultimo_tren": "22:30" }
+        "Montepo": { "primer_tren": "07:00", "ultimo_tren": "22:30" },
+        "Stesicoro": { "primer_tren": "07:25", "ultimo_tren": "23:00" }
       },
-      "descripcion": "Capodanno: Orario speciale"
+      "descripcion": "Año Nuevo: horario especial"
+    }
+  ],
+  "horas_punta_eventos": [
+    {
+      "fecha": "2026-05-20",
+      "intervalo": {
+        "inicio": "19:30",
+        "fin": "22:30"
+      },
+      "descripcion": "Hora punta extendida por evento especial"
     }
   ],
   "notas": [
     {
-      "fecha_inicio": "2026-06-15",
+      "fecha_inicio": "2026-06-01",
       "fecha_fin": "2026-08-31",
       "descripcion": "Horario de verano: menor frecuencia entre las 12:00 y las 16:00"
     }
