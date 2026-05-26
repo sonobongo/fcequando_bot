@@ -1848,16 +1848,18 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
                         schedule_st = get_schedule_list("Stesicoro", CATANIA_TZ.localize(datetime.combine(target_date, time(12, 0))))
 
                     pasos = []
+                    # schedule_mp = treni che partono da Montepo → vanno verso Stesicoro (Marciapiede 2)
                     for salida in schedule_mp:
                         paso_dt = datetime.combine(target_date, salida) + timedelta(seconds=seg_mp)
                         paso_dt = CATANIA_TZ.localize(paso_dt)
                         if paso_dt.hour == hora_int:
-                            pasos.append((paso_dt, "Monte Po ➡️ Stesicoro"))
+                            pasos.append((paso_dt, "➡️ Stesicoro"))
+                    # schedule_st = treni che partono da Stesicoro → vanno verso Monte Po (Marciapiede 1)
                     for salida in schedule_st:
                         paso_dt = datetime.combine(target_date, salida) + timedelta(seconds=seg_st)
                         paso_dt = CATANIA_TZ.localize(paso_dt)
                         if paso_dt.hour == hora_int:
-                            pasos.append((paso_dt, "Stesicoro ➡️ Monte Po"))
+                            pasos.append((paso_dt, "➡️ Monte Po"))
                     # Se è oggi, filtrare i treni già passati
                     if giorno_str == "oggi":
                         pasos = [(p, d) for p, d in pasos if p > now]
@@ -1882,10 +1884,10 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
                     if pasos:
                         lineas = []
                         for paso_dt, direction in pasos:
-                            is_montepo = "Monte Po" in direction.split("➡️")[0]
-                            num = "1️⃣" if is_montepo else "2️⃣"
-                            arrow = "🔺" if is_montepo else "🔻"
-                            dest = "Monte Po" if is_montepo else "Stesicoro"
+                            to_montepo = "Monte Po" in direction
+                            num = "1️⃣" if to_montepo else "2️⃣"
+                            arrow = "🔺" if to_montepo else "🔻"
+                            dest = "Monte Po" if to_montepo else "Stesicoro"
                             lineas.append(f"{num} {paso_dt.strftime('%H:%M')} {arrow} {dest}")
                         msg2_text = "\n".join(lineas)
                     else:
