@@ -1880,13 +1880,20 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
                     # Messaggio 2: lista formato "Dest - HH:MM"
                     if pasos:
+                        # Separare le due direzioni per chiarezza
+                        mp_pasos = [(p, d) for p, d in pasos if "Monte Po" in d.split("➡️")[0]]
+                        st_pasos = [(p, d) for p, d in pasos if "Stesicoro" in d.split("➡️")[0]]
                         lineas = []
-                        for paso_dt, direction in pasos:
-                            is_montepo = "Monte Po" in direction.split("➡️")[0]
-                            num = "1️⃣" if is_montepo else "2️⃣"
-                            arrow = "🔺" if is_montepo else "🔻"
-                            dest = "Monte Po" if is_montepo else "Stesicoro"
-                            lineas.append(f"{num} {paso_dt.strftime('%H:%M')} {arrow} {dest}")
+                        if mp_pasos:
+                            lineas.append("🔺 *Verso Monte Po (Marciapiede 1):*")
+                            for paso_dt, _ in mp_pasos:
+                                lineas.append(f"1️⃣ {paso_dt.strftime('%H:%M')}")
+                        if st_pasos:
+                            if lineas:
+                                lineas.append("")
+                            lineas.append("🔻 *Verso Stesicoro (Marciapiede 2):*")
+                            for paso_dt, _ in st_pasos:
+                                lineas.append(f"2️⃣ {paso_dt.strftime('%H:%M')}")
                         msg2_text = "\n".join(lineas)
                     else:
                         msg2_text = f"Nessun treno programmato a {nombre_est} alle {hora_int:02d}:00."
