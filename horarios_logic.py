@@ -880,21 +880,25 @@ def is_metro_closed(now: datetime, station: str) -> Tuple[bool, Optional[datetim
     opening_time = time(open_h, open_m)
     closing_time = time(close_h, close_m)
     
-    # Si hay una extensión con horario personalizado, se respeta ese horario
+        # Si hay una extensión con horario personalizado, se respeta ese horario
     ext = get_extension_horario(now)
     if ext and station in ext.get('horario_extendido', {}):
-        # La extensión ya define la hora de cierre; confiamos en get_closing_time
-        if current_time >= opening_time and current_time < closing_time:
-            return (False, None, "")
+        # Usamos la misma lógica que para los fines de semana normales
+        if close_h < open_h or (close_h == open_h and close_m < open_m):
+            # El horario cruza la medianoche (ej. 06:00-01:00)
+            if current_time >= opening_time or current_time < closing_time:
+                return (False, None, "")
         else:
-            if current_time < opening_time:
-                next_open = CATANIA_TZ.localize(datetime.combine(now.date(), opening_time))
-            else:
-                tomorrow = datetime.combine(now.date() + timedelta(days=1), time(12, 0))
-                tomorrow = CATANIA_TZ.localize(tomorrow)
-                oh, om = get_opening_time(tomorrow, station)
-                next_open = CATANIA_TZ.localize(datetime.combine(now.date() + timedelta(days=1), time(oh, om)))
-            return (True, next_open, "")
+            if current_time >= opening_time and current_time < closing_time:
+                return (False, None, "")
+        # Si no está en horario, calcular reapertura
+        if current_time < opening_time:
+            next_open = CATANIA_TZ.localize(datetime.combine(now.date(), opening_time))
+        else:
+            tomorrow = CATANIA_TZ.localize(datetime.combine(now.date() + timedelta(days=1), time(12, 0)))
+            oh, om = get_opening_time(tomorrow, station)
+            next_open = CATANIA_TZ.localize(datetime.combine(now.date() + timedelta(days=1), time(oh, om)))
+        return (True, next_open, "")
     
     # Lógica normal
     if close_h < open_h or (close_h == open_h and close_m < open_m):
