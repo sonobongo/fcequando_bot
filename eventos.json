@@ -49,7 +49,7 @@
         "Montepo": { "ultimo_tren": "00:34" },
         "Stesicoro": { "ultimo_tren": "01:00" }
       },
-      "descripcion": "Orario tipo venerdì (chiusura alle 01:00)",
+      "descripcion": "Orario prolungato (chiusura alle 01:00)",
       "mantiene_frecuencia": true,
       "tipo_dia_base": "friday"
     },
