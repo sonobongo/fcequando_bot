@@ -74,7 +74,12 @@ def get_measured_travel_time(origen: str, destino: str, direccion: str, now: dat
 # CARGAR EVENTOS PUNTUALES (eventos.json)
 # ============================================================================
 EVENTOS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'eventos.json')
-EVENTOS = {"cierres_estaciones": [], "extensiones_horario": [], "notas": []}
+EVENTOS = {
+    "cierres_estaciones": [],
+    "extensiones_horario": [],
+    "horas_punta_eventos": [],
+    "notas": []
+}
 
 def load_eventos():
     if not os.path.exists(EVENTOS_FILE):
@@ -95,6 +100,12 @@ def load_eventos():
                 'descripcion': ext.get('descripcion', ''),
                 'mantiene_frecuencia': ext.get('mantiene_frecuencia', False),
                 'tipo_dia_base': ext.get('tipo_dia_base', None)
+            })
+        for hp in data.get('horas_punta_eventos', []):
+            EVENTOS['horas_punta_eventos'].append({
+                'fecha': datetime.strptime(hp['fecha'], '%Y-%m-%d').date(),
+                'intervalo': hp['intervalo'],
+                'descripcion': hp.get('descripcion', '')
             })
         for nota in data.get('notas', []):
             EVENTOS['notas'].append(nota)
@@ -140,9 +151,23 @@ EXTRA_TRAMOS_REVERSE = [
 ]
 
 # ============================================================================
-# DETECCIÓN DE HORA PUNTA (solo lunes a viernes, sin domingos)
+# DETECCIÓN DE HORA PUNTA (con soporte para eventos especiales)
 # ============================================================================
 def is_peak_hour(now: datetime) -> bool:
+    # 1. Eventos especiales de hora punta (eventos.json)
+    hoy = now.date()
+    for hp_evento in EVENTOS.get('horas_punta_eventos', []):
+        if hp_evento['fecha'] == hoy:
+            inicio_str = hp_evento['intervalo']['inicio']
+            fin_str = hp_evento['intervalo']['fin']
+            h_i, m_i = map(int, inicio_str.split(':'))
+            h_f, m_f = map(int, fin_str.split(':'))
+            hora_actual = now.time()
+            if time(h_i, m_i) <= hora_actual <= time(h_f, m_f):
+                return True
+            break   # solo puede haber un evento por día
+
+    # 2. Lógica normal de hora punta (lunes a viernes laborables, sept-jun)
     if now.weekday() >= 5:
         return False
     if is_festivo_nazionale(now):
@@ -538,7 +563,6 @@ def get_opening_time(now: datetime, station: str = None) -> Tuple[int, int]:
     if is_sant_agata(now):
         first = get_first_train_sant_agata(station if station else "Montepo")
         return (first.hour, first.minute)
-    # Verificar extensión (solo si define primer_tren)
     ext = get_extension_horario(now)
     if ext and station:
         datos = ext['horario_extendido'].get(station, {})
@@ -550,7 +574,6 @@ def get_opening_time(now: datetime, station: str = None) -> Tuple[int, int]:
     return (6, 0)
 
 def get_closing_time(now: datetime, station: str) -> Tuple[int, int]:
-    # Verificar extensión horaria
     ext = get_extension_horario(now)
     if ext and station in ext['horario_extendido']:
         datos = ext['horario_extendido'][station]
@@ -558,22 +581,18 @@ def get_closing_time(now: datetime, station: str) -> Tuple[int, int]:
             h, m = map(int, datos['ultimo_tren'].split(':'))
             return (h, m)
     if is_new_years_eve(now):
-        if station == "Stesicoro":
-            return (3, 0)
-        else:
-            return (2, 30)
+        return (3, 0)
     if is_sant_agata(now):
         last = get_last_train_sant_agata(station)
         return (last.hour, last.minute)
 
-    eff_ct = get_effective_datetime(now)
     if is_festivo_nazionale(now):
-        if eff_ct.weekday() in (4, 5, 6):
+        if now.weekday() in (4, 5, 6):
             return (1, 0)
         else:
             return (22, 30)
     else:
-        if eff_ct.weekday() in (4, 5):
+        if now.weekday() in (4, 5):
             return (1, 0)
         else:
             return (22, 30)
@@ -599,77 +618,76 @@ def get_override_weekday(now: datetime) -> Optional[int]:
     return None
 
 # ============================================================================
-# OBTENER LISTA DE HORARIOS (con extensión de trenes extra)
+# OBTENER LISTA DE HORARIOS (con extensión de trenes extra y tipo_dia_base)
 # ============================================================================
 def get_schedule_list(station: str, now: datetime) -> List[time]:
     eff = get_effective_datetime(now)
-    override = get_override_weekday(now)
-    if override is not None:
-        if override == 4:
-            schedule_list = SCHEDULES[station]["friday"]
-        elif override == 5:
-            schedule_list = SCHEDULES[station]["saturday"]
-        elif override == 6:
-            schedule_list = SCHEDULES[station]["sunday"]
-        else:
-            schedule_list = SCHEDULES[station]["weekday"]
+    
+    # Comprobar si hay una extensión horaria con tipo de día base forzado
+    ext = get_extension_horario(now)
+    if ext and ext.get('tipo_dia_base') and ext['tipo_dia_base'] in SCHEDULES[station]:
+        schedule_list = SCHEDULES[station][ext['tipo_dia_base']]
     else:
-        if is_festivo_nazionale(now):
-            weekday_eff = eff.weekday()
-            if weekday_eff == 4:
-                schedule_list = SCHEDULES[station].get("friday_holiday", SCHEDULES[station]["sunday"])
-            elif weekday_eff == 5:
-                schedule_list = SCHEDULES[station].get("saturday_holiday", SCHEDULES[station]["sunday"])
-            elif weekday_eff == 6:
-                schedule_list = SCHEDULES[station]["sunday"]
-            else:
-                schedule_list = SCHEDULES[station].get("weekday_holiday", SCHEDULES[station]["sunday"])
-        else:
-            weekday_num = eff.weekday()  # usa eff en lugar de now para tratar la madrugada como el día anterior
-            if weekday_num == 4:
+        override = get_override_weekday(now)
+        if override is not None:
+            if override == 4:
                 schedule_list = SCHEDULES[station]["friday"]
-            elif weekday_num == 5:
+            elif override == 5:
                 schedule_list = SCHEDULES[station]["saturday"]
-            elif weekday_num == 6:
+            elif override == 6:
                 schedule_list = SCHEDULES[station]["sunday"]
             else:
                 schedule_list = SCHEDULES[station]["weekday"]
+        else:
+            if is_festivo_nazionale(now):
+                weekday_eff = eff.weekday()
+                if weekday_eff == 4:
+                    schedule_list = SCHEDULES[station].get("friday_holiday", SCHEDULES[station]["sunday"])
+                elif weekday_eff == 5:
+                    schedule_list = SCHEDULES[station].get("saturday_holiday", SCHEDULES[station]["sunday"])
+                elif weekday_eff == 6:
+                    schedule_list = SCHEDULES[station]["sunday"]
+                else:
+                    schedule_list = SCHEDULES[station].get("weekday_holiday", SCHEDULES[station]["sunday"])
+            else:
+                weekday_num = now.weekday()
+                if weekday_num == 4:
+                    schedule_list = SCHEDULES[station]["friday"]
+                elif weekday_num == 5:
+                    schedule_list = SCHEDULES[station]["saturday"]
+                elif weekday_num == 6:
+                    schedule_list = SCHEDULES[station]["sunday"]
+                else:
+                    schedule_list = SCHEDULES[station]["weekday"]
     
     if not schedule_list:
         return schedule_list
     current_time = now.time()
-
-    # En madrugada (00:00-04:59) los trenes estan en el schedule del dia calendario
-    # actual (ej: sabado 00:53 -> los trenes 00:08..01:00 estan en saturday).
-    # Devolvemos esa lista para que datetime.combine(now.date(), t) funcione correctamente.
-    if current_time.hour < 5:
-        cal_weekday = now.weekday()
-        if is_festivo_nazionale(now):
-            if cal_weekday == 5:
-                cal_list = SCHEDULES[station].get("saturday_holiday", SCHEDULES[station]["sunday"])
-            elif cal_weekday == 6:
-                cal_list = SCHEDULES[station]["sunday"]
+    first_train = schedule_list[0]
+    if current_time < first_train and current_time.hour < 6:
+        yesterday = eff - timedelta(days=1)
+        y_override = get_override_weekday(yesterday)
+        if y_override is not None:
+            if y_override == 4:
+                yesterday_list = SCHEDULES[station]["friday"]
+            elif y_override == 5:
+                yesterday_list = SCHEDULES[station]["saturday"]
+            elif y_override == 6:
+                yesterday_list = SCHEDULES[station]["sunday"]
             else:
-                cal_list = SCHEDULES[station].get("weekday_holiday", SCHEDULES[station]["sunday"])
+                yesterday_list = SCHEDULES[station]["weekday"]
         else:
-            if cal_weekday == 5:
-                cal_list = SCHEDULES[station]["saturday"]
-            elif cal_weekday == 6:
-                cal_list = SCHEDULES[station]["sunday"]
+            y_weekday = yesterday.weekday()
+            if y_weekday == 4:
+                yesterday_list = SCHEDULES[station]["friday"]
+            elif y_weekday == 5:
+                yesterday_list = SCHEDULES[station]["saturday"]
+            elif y_weekday == 6:
+                yesterday_list = SCHEDULES[station]["sunday"]
             else:
-                cal_list = SCHEDULES[station]["weekday"]
-        # Devolver cal_list si hay trenes de madrugada que aun pueden estar en circulacion:
-        # - los que aun no han salido (t > current_time), o
-        # - los que salieron hace menos de 30 min (podrian estar en estaciones intermedias)
-        from datetime import timedelta as _td
-        madru = [t for t in cal_list if t.hour < 5]
-        if madru:
-            ultimo_madru = madru[-1]
-            from datetime import datetime as _dt
-            ultimo_dt = _dt.combine(now.date(), ultimo_madru)
-            now_naive = now.replace(tzinfo=None)
-            if now_naive <= ultimo_dt + _td(minutes=30):
-                return cal_list
+                yesterday_list = SCHEDULES[station]["weekday"]
+        if any(t.hour >= 22 or t.hour < 6 for t in yesterday_list):
+            return yesterday_list
 
     # ---- Extensión horaria: añadir trenes extra si corresponde ----
     extension = get_extension_horario(now)
@@ -709,7 +727,7 @@ def get_schedule_list(station: str, now: datetime) -> List[time]:
     return schedule_list
 
 # ============================================================================
-# PRÓXIMO TREN (versión corregida con now.date())
+# PRÓXIMO TREN
 # ============================================================================
 def get_next_departure(station: str, now: datetime) -> Tuple[Optional[datetime], int, int, bool]:
     if 1 <= now.hour < 6:
@@ -797,7 +815,7 @@ def get_next_departure_after(station: str, now: datetime, after_time: time) -> T
     return (candidate, delta // 60, delta % 60, True)
 
 # ============================================================================
-# FORMATO DE TIEMPO (con fracciones de 10 segundos cuando ≤ 90 segundos)
+# FORMATO DE TIEMPO
 # ============================================================================
 def format_time(minutes: int, seconds: int) -> str:
     total_seconds = minutes * 60 + seconds
@@ -855,41 +873,30 @@ def is_metro_closed(now: datetime, station: str) -> Tuple[bool, Optional[datetim
             special_msg = "🚇 Non ci sono informazioni disponibili. Ricorda che oggi l'ultima metropolitana è partita alle 03:00."
             return (True, next_open, special_msg)
     
-    if 1 <= now.hour < 6:
-        close_h_check, close_m_check = get_closing_time(now, station)
-        # Aggiungere il tempo di viaggio da Stesicoro alla stazione corrente:
-        # l'ultimo treno parte da Stesicoro alle close_time ma impiega alcuni minuti
-        # ad arrivare alle stazioni intermedie, quindi restano operative fino al suo passaggio.
-        travel_secs = get_total_seconds_from_stesicoro(station.lower(), now)
-        close_total_mins = close_h_check * 60 + close_m_check + (travel_secs // 60)
-        close_h_check = (close_total_mins // 60) % 24
-        close_m_check = close_total_mins % 60
-        closing_time_check = time(close_h_check, close_m_check)
-        is_late_closing = 1 <= close_h_check <= 3
-        if is_late_closing and now.time() < closing_time_check:
-            pass
-        else:
-            open_h, open_m = get_opening_time(now, station)
-            next_open = CATANIA_TZ.localize(datetime.combine(now.date(), time(open_h, open_m)))
-            if next_open <= now:
-                tomorrow = datetime.combine(now.date() + timedelta(days=1), time(12, 0))
-                tomorrow = CATANIA_TZ.localize(tomorrow)
-                open_h, open_m = get_opening_time(tomorrow, station)
-                next_open = CATANIA_TZ.localize(datetime.combine(now.date() + timedelta(days=1), time(open_h, open_m)))
-            return (True, next_open, "🚇 La metropolitana è chiusa in questo momento.")
-    
+    # Comprobación principal de cierre
     current_time = now.time()
     open_h, open_m = get_opening_time(now, station)
     close_h, close_m = get_closing_time(now, station)
     opening_time = time(open_h, open_m)
-    # Aggiungere il tempo di viaggio da Stesicoro: il treno impiega alcuni minuti
-    # ad arrivare alle stazioni intermedie dopo la partenza da Stesicoro.
-    travel_secs_close = get_total_seconds_from_stesicoro(station.lower(), now)
-    close_total = close_h * 60 + close_m + (travel_secs_close // 60)
-    close_h_adj = (close_total // 60) % 24
-    close_m_adj = close_total % 60
-    closing_time = time(close_h_adj, close_m_adj)
+    closing_time = time(close_h, close_m)
     
+    # Si hay una extensión con horario personalizado, se respeta ese horario
+    ext = get_extension_horario(now)
+    if ext and station in ext.get('horario_extendido', {}):
+        # La extensión ya define la hora de cierre; confiamos en get_closing_time
+        if current_time >= opening_time and current_time < closing_time:
+            return (False, None, "")
+        else:
+            if current_time < opening_time:
+                next_open = CATANIA_TZ.localize(datetime.combine(now.date(), opening_time))
+            else:
+                tomorrow = datetime.combine(now.date() + timedelta(days=1), time(12, 0))
+                tomorrow = CATANIA_TZ.localize(tomorrow)
+                oh, om = get_opening_time(tomorrow, station)
+                next_open = CATANIA_TZ.localize(datetime.combine(now.date() + timedelta(days=1), time(oh, om)))
+            return (True, next_open, "")
+    
+    # Lógica normal
     if close_h < open_h or (close_h == open_h and close_m < open_m):
         if current_time >= opening_time or current_time < closing_time:
             return (False, None, "")
@@ -986,14 +993,13 @@ def get_next_train_at_station(now: datetime, estacion_key: str) -> Tuple[Optiona
         return (None, None)
     seg_mp, seg_st = tiempos_seg[estacion_key]
 
-    def calc_info(schedule_list, seg, date):
-        """Calcola il prossimo passaggio dato un schedule e un offset in secondi."""
+    info_mp = None
+    closed_mp, _, _ = is_metro_closed(now, "Montepo")
+    if not closed_mp:
+        schedule_list = get_schedule_list("Montepo", now)
         pasos = []
         for salida in schedule_list:
-            paso_dt = datetime.combine(date, salida) + timedelta(seconds=seg)
-            # Se il treno di madrugada supera la mezzanotte, aggiungere un giorno
-            if salida.hour < 5 and date == now.date():
-                paso_dt = datetime.combine(date, salida) + timedelta(seconds=seg)
+            paso_dt = datetime.combine(now.date(), salida) + timedelta(seconds=seg_mp)
             paso_dt = CATANIA_TZ.localize(paso_dt)
             pasos.append(paso_dt)
         next_paso = None
@@ -1003,32 +1009,47 @@ def get_next_train_at_station(now: datetime, estacion_key: str) -> Tuple[Optiona
                 next_paso = p
                 next_idx = i
                 break
-        if not next_paso:
-            return None
-        delta = next_paso - now
-        mins_rest = int(delta.total_seconds() // 60)
-        secs_rest = int(delta.total_seconds() % 60)
-        next_info = None
-        if next_idx + 1 < len(pasos):
-            p2 = pasos[next_idx+1]
-            delta2 = p2 - now
-            mins2 = int(delta2.total_seconds() // 60)
-            secs2 = int(delta2.total_seconds() % 60)
-            next_info = (p2, mins2, secs2)
-        return (next_paso, mins_rest, secs_rest, next_info)
+        if next_paso:
+            delta = next_paso - now
+            mins_rest = int(delta.total_seconds() // 60)
+            secs_rest = int(delta.total_seconds() % 60)
+            next_info = None
+            if next_idx + 1 < len(pasos):
+                p2 = pasos[next_idx+1]
+                delta2 = p2 - now
+                mins2 = int(delta2.total_seconds() // 60)
+                secs2 = int(delta2.total_seconds() % 60)
+                next_info = (p2, mins2, secs2)
+            info_mp = (next_paso, mins_rest, secs_rest, next_info)
 
-    # Per le stazioni intermedie non usare is_metro_closed come guardia:
-    # il treno potrebbe essere ancora in circolazione anche dopo l'orario di chiusura
-    # di Stesicoro/Montepo (impiega minuti ad arrivare alle stazioni intermedie).
-    # Calcolare sempre i passaggi e filtrare per p > now.
-    if is_closed_all_day(now):
-        return (None, None)
-
-    schedule_mp = get_schedule_list("Montepo", now)
-    info_mp = calc_info(schedule_mp, seg_mp, now.date())
-
-    schedule_st = get_schedule_list("Stesicoro", now)
-    info_st = calc_info(schedule_st, seg_st, now.date())
+    info_st = None
+    closed_st, _, _ = is_metro_closed(now, "Stesicoro")
+    if not closed_st:
+        schedule_list = get_schedule_list("Stesicoro", now)
+        pasos = []
+        for salida in schedule_list:
+            paso_dt = datetime.combine(now.date(), salida) + timedelta(seconds=seg_st)
+            paso_dt = CATANIA_TZ.localize(paso_dt)
+            pasos.append(paso_dt)
+        next_paso = None
+        next_idx = -1
+        for i, p in enumerate(pasos):
+            if p > now:
+                next_paso = p
+                next_idx = i
+                break
+        if next_paso:
+            delta = next_paso - now
+            mins_rest = int(delta.total_seconds() // 60)
+            secs_rest = int(delta.total_seconds() % 60)
+            next_info = None
+            if next_idx + 1 < len(pasos):
+                p2 = pasos[next_idx+1]
+                delta2 = p2 - now
+                mins2 = int(delta2.total_seconds() // 60)
+                secs2 = int(delta2.total_seconds() % 60)
+                next_info = (p2, mins2, secs2)
+            info_st = (next_paso, mins_rest, secs_rest, next_info)
 
     return (info_mp, info_st)
 
