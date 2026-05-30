@@ -44,40 +44,30 @@
       "tipo_dia_base": "weekday"
     },
     {
-      "fecha": "2026-05-27",
-      "horario_extendido": {
-        "Montepo": { "ultimo_tren": "00:34" },
-        "Stesicoro": { "ultimo_tren": "01:00" }
-      },
-      "descripcion": "Orario prolungato (chiusura alle 01:00)",
-      "mantiene_frecuencia": true,
-      "tipo_dia_base": "friday"
-    },
-    {
       "fecha": "2026-12-31",
       "horario_extendido": {
-        "Montepo": { "primer_tren": "06:00", "ultimo_tren": "03:00" },
-        "Stesicoro": { "primer_tren": "06:25", "ultimo_tren": "03:30" }
+        "Montepo": { "primer_tren": "06:00", "ultimo_tren": "02:30" },
+        "Stesicoro": { "primer_tren": "06:25", "ultimo_tren": "03:00" }
       },
       "descripcion": "Nochevieja: servicio extendido"
     },
     {
       "fecha": "2026-01-01",
       "horario_extendido": {
-        "Montepo": { "primer_tren": "07:00", "ultimo_tren": "22:30" },
-        "Stesicoro": { "primer_tren": "07:25", "ultimo_tren": "23:00" }
+        "Montepo": { "primer_tren": "07:00", "ultimo_tren": "21:58" },
+        "Stesicoro": { "primer_tren": "07:25", "ultimo_tren": "22:30" }
       },
       "descripcion": "Año Nuevo: horario especial"
     }
   ],
-  "horas_punta_eventos": [
+  "extra_tiempo_estacion": [
     {
-      "fecha": "2026-05-20",
-      "intervalo": {
-        "inicio": "19:30",
-        "fin": "22:30"
-      },
-      "descripcion": "Hora punta extendida por evento especial"
+      "station": "giovanni",
+      "fechas": ["2026-05-30", "2026-05-31", "2026-06-01", "2026-06-02"],
+      "hora_inicio": "09:00",
+      "hora_fin": "21:00",
+      "extra_seconds": 10,
+      "descripcion": "Etna Comics 2026: tempo aggiuntivo per salita/discesa passeggeri a Giovanni XXIII"
     }
   ],
   "notas": [
