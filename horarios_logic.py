@@ -1092,3 +1092,38 @@ def get_current_station_from_stesicoro(now: datetime, seconds_passed: int) -> st
 
 def format_time_precise(minutes: int, seconds: int) -> str:
     return format_time(minutes, seconds)
+# ============================================================================
+# METRO SHUTTLE (servicio de autobús)
+# ============================================================================
+SHUTTLE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'shuttle_horarios.json')
+SHUTTLE_SCHEDULES = {}
+
+def load_shuttle_schedules():
+    global SHUTTLE_SCHEDULES
+    if not os.path.exists(SHUTTLE_FILE):
+        return
+    with open(SHUTTLE_FILE, 'r', encoding='utf-8') as f:
+        data = json.load(f)
+        for stop, days in data.get('schedule', {}).items():
+            SHUTTLE_SCHEDULES[stop] = {}
+            for day, str_list in days.items():
+                SHUTTLE_SCHEDULES[stop][day] = [str_to_time(t) for t in str_list]
+
+load_shuttle_schedules()
+
+def get_shuttle_stops() -> List[str]:
+    """Devuelve las paradas en el orden en que aparecen en el JSON."""
+    return list(SHUTTLE_SCHEDULES.keys())
+
+def get_next_shuttle_departure(stop: str, now: datetime) -> Optional[time]:
+    """Devuelve la próxima salida desde una parada, o None si no hay más hoy."""
+    if now.weekday() >= 5:   # Solo laborables
+        return None
+    if stop not in SHUTTLE_SCHEDULES:
+        return None
+    schedule = SHUTTLE_SCHEDULES[stop].get('weekday', [])
+    current_time = now.time()
+    for t in schedule:
+        if t > current_time:
+            return t
+    return None
