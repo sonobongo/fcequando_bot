@@ -11,7 +11,7 @@ from datetime import datetime, timedelta, time
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove
 from telegram.ext import ContextTypes
 from horarios_logic import *
-from horarios_logic import CATANIA_TZ, get_extension_message
+from horarios_logic import CATANIA_TZ, get_extension_message, get_shuttle_stops, get_next_shuttle_departure
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +28,7 @@ keyboard_altri = ReplyKeyboardMarkup(
         ["Fontana", "Nesima", "San Nullo"],
         ["Cibali", "Milo", "Borgo"],
         ["Giuffrida", "Italia", "Galatea"],
-        ["Giovanni XXIII", "← Menu"]
+        ["Giovanni XXIII", "Shuttle", "← Menu"]
     ],
     resize_keyboard=True, one_time_keyboard=False
 )
@@ -37,7 +37,8 @@ BOTON_TO_KEY = {
     "Monte Po": "montepo", "Stesicoro": "stesicoro", "Fontana": "fontana",
     "Nesima": "nesima", "San Nullo": "sannullo", "Cibali": "cibali",
     "Milo": "milo", "Borgo": "borgo", "Giuffrida": "giuffrida",
-    "Italia": "italia", "Galatea": "galatea", "Giovanni XXIII": "giovanni"
+    "Italia": "italia", "Galatea": "galatea", "Giovanni XXIII": "giovanni",
+    "Shuttle": "shuttle"
 }
 
 # ============================================================================
@@ -124,7 +125,7 @@ def get_bus_message_montepo_advanced(now: datetime) -> str:
              ("14:00", 14*60), ("14:15", 14*60+15), ("14:30", 14*60+30)]
     for hora_str, hora_min in manana + tarde:
         if hora_min > ahora_min and (hora_min - ahora_min) <= 15:
-            return f"🚌 **Navetta gratuita Comune Misterbianco** alle {hora_str}"
+            return f"🚌 **Autobus gratuito per Misterbianco** alle {hora_str}"
     return ""
 
 # ============================================================================
@@ -143,27 +144,18 @@ def build_temporary_messages(now: datetime, estacion_key: str, dev_mode: bool = 
     if info_st:
         paso_st, mins, secs, next_info = info_st
         mins_mp = mins
-        # Se il prossimo treno verso Monte Po è lontano più di 90 minuti,
-        # il servizio è operativamente terminato in quella direzione
-        if mins > 90:
-            msg2 = f"🔺 **Per Monte Po**: nessun treno in arrivo al momento.\n"
-            tiempo_restante_mp = 9999
-            msg3 = f"🔻 **Per Stesicoro**: nessun treno in arrivo al momento.\n"
-            tiempo_restante_st = 9999
-            return msg2, msg3, current_station_key_mp, tiempo_restante_mp, current_station_key_st, tiempo_restante_st, mins_mp, mins_st
+        if dev_mode:
+            time_str = format_time_precise(mins, secs)
         else:
-            if dev_mode:
-                time_str = format_time_precise(mins, secs)
+            time_str = format_time(mins, secs)
+        tiempo_restante_mp = mins*60 + secs
+        if mins == 0 and secs < 30:
+            line = f"🔺 **Per Monte Po**: treno in arrivo.\n"
+        else:
+            if mins > SHORT_TIME_THRESHOLD:
+                line = f"🔺 **Per Monte Po**: Passa tra **{time_str}**, alle {paso_st.strftime('%H:%M')}.\n"
             else:
-                time_str = format_time(mins, secs)
-            tiempo_restante_mp = mins*60 + secs
-            if mins == 0 and secs < 30:
-                line = f"🔺 **Per Monte Po**: treno in arrivo.\n"
-            else:
-                if mins > SHORT_TIME_THRESHOLD:
-                    line = f"🔺 **Per Monte Po**: Passa tra **{time_str}**, alle {paso_st.strftime('%H:%M')}.\n"
-                else:
-                    line = f"🔺 **Per Monte Po**: Passa tra **{time_str}**.\n"
+                line = f"🔺 **Per Monte Po**: Passa tra **{time_str}**.\n"
         estaciones_localizacion = ["nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "fontana"]
         if estacion_key in estaciones_localizacion and 1 <= mins <= 10 and (mins*60 + secs) > 104:
             rest_seconds = mins*60 + secs
@@ -216,12 +208,6 @@ def build_temporary_messages(now: datetime, estacion_key: str, dev_mode: bool = 
     if info_mp:
         paso_mp, mins, secs, next_info = info_mp
         mins_st = mins
-        # Se il prossimo treno verso Stesicoro è lontano più di 90 minuti,
-        # il servizio è operativamente terminato in quella direzione
-        if mins > 90:
-            msg3 = f"🔻 **Per Stesicoro**: nessun treno in arrivo al momento.\n"
-            tiempo_restante_st = 9999
-            return msg2, msg3, current_station_key_mp, tiempo_restante_mp, current_station_key_st, tiempo_restante_st, mins_mp, mins_st
         if dev_mode:
             time_str = format_time_precise(mins, secs)
         else:
@@ -616,22 +602,6 @@ async def send_header_response(chat_id, context, estacion_key, is_update=False):
             msg2 = await context.bot.send_photo(chat_id=chat_id, photo=img_url, caption=msg, parse_mode='Markdown', reply_markup=keyboard_inline)
             await store_id(context, msg2)
             return
-
-        # Se il prossimo treno è lontano più di 90 minuti, il metro è operativamente chiuso
-        # (es. dopo l'ultimo treno di madrugada, prima della riapertura mattutina)
-        mins_to_next = int((next_dep - now).total_seconds() // 60)
-        if mins_to_next > 90:
-            station_display = "Monte Po" if station == "Montepo" else "Stesicoro"
-            domani_str = 'domani ' if next_dep.date() > now.date() else ''
-            msg = f"🚇 La metropolitana è chiusa.\nIl prossimo treno da {station_display} sarà {domani_str}alle **{next_dep.strftime('%H:%M')}**."
-            if extension_msg:
-                msg = extension_msg + msg
-            img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/ruta_default.png"
-            cache_buster = int(time_module.time())
-            img_url = f"{img_url}?v={cache_buster}"
-            msg2 = await context.bot.send_photo(chat_id=chat_id, photo=img_url, caption=msg, parse_mode='Markdown', reply_markup=keyboard_inline)
-            await store_id(context, msg2)
-            return
         
         dest = "Stesicoro" if station == "Montepo" else "Monte Po"
         remaining = next_dep - now
@@ -919,6 +889,7 @@ async def help_command(update, context):
         "/about - Info sul bot\n"
         "/grazie - Info sul bot\n"
         "super - Mostra treni in arrivo in ≤59 secondi\n"
+        "Shuttle - Orari del Metro Shuttle (bus)\n"
         "Oppure premi i pulsanti.",
         reply_markup=keyboard_main
     )
@@ -932,6 +903,8 @@ async def handle_button(update, context):
         await cmd_altri(update, context)
     elif text == "← Menu":
         await update.message.reply_text("🔙 Ritorno al menu principale.", reply_markup=keyboard_main)
+    elif text == "Shuttle":
+        await send_shuttle_response(update, context)
     elif text in BOTON_TO_KEY:
         est_key = BOTON_TO_KEY[text]
         context.chat_data['last_station'] = est_key
@@ -1074,6 +1047,31 @@ async def news_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     mensaje = f"📰 <b>{titulo}</b>\n\n<a href='{url}'>Leggi la notizia completa</a>"
     await update.message.reply_text(mensaje, parse_mode='HTML', disable_web_page_preview=False)
+
+# ============================================================================
+# METRO SHUTTLE
+# ============================================================================
+async def send_shuttle_response(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    now = get_simulated_now(context)
+    stops = get_shuttle_stops()
+    if not stops:
+        await update.message.reply_text("🚌 Servizio Shuttle non disponibile.")
+        return
+
+    if now.weekday() >= 5:
+        await update.message.reply_text("🚌 Il Metro Shuttle è attivo solo dal lunedì al venerdì.")
+        return
+
+    lines = ["🚌 **Metro Shuttle – Prossime partenze**\n"]
+    for stop in stops:
+        next_dep = get_next_shuttle_departure(stop, now)
+        if next_dep:
+            lines.append(f"▪️ {stop}: **{next_dep.strftime('%H:%M')}**")
+        else:
+            lines.append(f"▪️ {stop}: nessuna corsa")
+    
+    msg = "\n".join(lines)
+    await update.message.reply_text(msg, parse_mode='Markdown')
 
 # ============================================================================
 # FUNCIONES PARA "SUPER" - Tracking de posición de trenes en tiempo real
@@ -1352,18 +1350,6 @@ async def send_super_response(update: Update, context: ContextTypes.DEFAULT_TYPE
     task = asyncio.create_task(auto_update_super(context, chat_id, message_id, cycles=40, interval=3))
     context.chat_data['super_task'] = task
 
-async def ritornare_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Ricarica la stazione da zero come se fosse una nuova richiesta."""
-    query = update.callback_query
-    await query.answer()
-    estacion_key = query.data.split("_")[1]
-    fake_update = type("Update", (), {
-        "message": query.message,
-        "effective_chat": query.message.chat,
-        "callback_query": query
-    })()
-    await send_station_response(fake_update, context, estacion_key, return_to_main=True)
-
 async def aggiornare_super_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -1403,7 +1389,7 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
     
     texto = update.message.text.strip()
     
-                # ========== RESPUESTA A PREGUNTAS SOBRE LA HORA DE CIERRE ==========
+    # ========== RESPUESTA A PREGUNTAS SOBRE LA HORA DE CIERRE ==========
     texto_lower = texto.lower()
     if any(frase in texto_lower for frase in [
         "chiude", "chiusura", "ultimo treno", "ultima corsa",
@@ -1412,49 +1398,26 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
         "ultimo treno oggi", "ultima corsa oggi"
     ]):
         now = get_simulated_now(context)
+        mp_schedule = get_schedule_list("Montepo", now)
+        st_schedule = get_schedule_list("Stesicoro", now)
 
-        # Casi speciali: get_closing_time ha già la risposta corretta
-        is_special = is_new_years_eve(now) or is_sant_agata(now) or get_extension_horario(now) is not None
-        if is_special:
-            mp_h, mp_m = get_closing_time(now, "Montepo")
-            st_h, st_m = get_closing_time(now, "Stesicoro")
-            last_mp_str = f"{mp_h:02d}:{mp_m:02d}"
-            last_st_str = f"{st_h:02d}:{st_m:02d}"
-        else:
-            # I treni di madrugada del venerdì/sabato si trovano all'INIZIO
-            # del schedule del giorno successivo (saturday/sunday).
-            # Bisogna sempre guardare il giorno successivo per trovare i treni
-            # di madrugada, indipendentemente dall'ora attuale.
-            eff = get_effective_datetime(now)
-            # "oggi operativo" = il giorno effettivo (eff). Il giorno successivo
-            # nel calendario è eff + 1 giorno, ma come datetime per get_schedule_list
-            # usiamo una ora diurna per evitare ambiguità di madrugada.
-            tomorrow_noon = CATANIA_TZ.localize(
-                datetime.combine((eff + timedelta(days=1)).date(), time(12, 0))
-            )
-            mp_today = get_schedule_list("Montepo", now)
-            st_today = get_schedule_list("Stesicoro", now)
-            mp_tomorrow = get_schedule_list("Montepo", tomorrow_noon)
-            st_tomorrow = get_schedule_list("Stesicoro", tomorrow_noon)
-
-            # Treni di madrugada del giorno successivo (ora < 5)
-            mp_madru = [t for t in mp_tomorrow if t.hour < 5]
-            st_madru = [t for t in st_tomorrow if t.hour < 5]
-
-            last_mp = mp_madru[-1] if mp_madru else mp_today[-1]
-            last_st = st_madru[-1] if st_madru else st_today[-1]
-            last_mp_str = last_mp.strftime("%H:%M")
-            last_st_str = last_st.strftime("%H:%M")
+        last_mp = mp_schedule[-1]
+        last_st = st_schedule[-1]
 
         msg = (
             f"🚇 **Ultime partenze di oggi**\n"
-            f"▪️ Da Monte Po verso Stesicoro: **{last_mp_str}**\n"
-            f"▪️ Da Stesicoro verso Monte Po: **{last_st_str}**"
+            f"▪️ Da Monte Po verso Stesicoro: **{last_mp.strftime('%H:%M')}**\n"
+            f"▪️ Da Stesicoro verso Monte Po: **{last_st.strftime('%H:%M')}**"
         )
         extension_msg = get_extension_message(now)
         if extension_msg:
             msg = extension_msg.rstrip() + "\n\n" + msg
         await update.message.reply_text(msg, parse_mode='Markdown')
+        return
+    
+    # ========== RESPUESTA A "shuttle" (palabra exacta) ==========
+    if texto_lower == "shuttle":
+        await send_shuttle_response(update, context)
         return
     
     # ========== RESPUESTA A PALABRAS CLAVE (about, grazie) ==========
@@ -1524,67 +1487,7 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
     
     import unicodedata
     texto_norm = unicodedata.normalize('NFKD', texto.lower()).encode('ASCII', 'ignore').decode('ASCII')
-    texto_limpio_orig = ' '.join(texto_norm.split())
-    # Estrarre l'ora dal testo PRIMA del matching, per non confondere il Levenshtein
-    hora_schedule = None
-    hora_match_pre = re.search(r'\b(\d{1,2})(?:[:\.]?(\d{2}))?\b', texto_limpio_orig)
-    if hora_match_pre:
-        hora_int_pre = int(hora_match_pre.group(1))
-        if 0 <= hora_int_pre <= 23:
-            hora_schedule = hora_int_pre
-    # Rilevazione anticipata stazioni terminali + ora (prima del Levenshtein)
-    # per evitare che l'alta tolleranza le apra normalmente ignorando l'ora
-    if hora_schedule is not None:
-        texto_sin_num = re.sub(r'\b\d{1,4}\b', '', texto_limpio_orig).strip()
-        texto_sin_num = ' '.join(texto_sin_num.split())
-        TERMINAL_ALIASES = {
-            "montepo": ["montepo","monte po","monte","misterbianco","monterosso"],
-            "stesicoro": ["stesicoro","stesi","stesic"],
-        }
-        for t_key, aliases in TERMINAL_ALIASES.items():
-            if any(texto_sin_num == a or texto_sin_num.startswith(a) for a in aliases):
-                now = get_simulated_now(context)
-                nombre_est = NOMBRE_MOSTRAR[t_key]
-                hora_int = hora_schedule
-                TERMINAL_DIR = {"montepo": ("1️⃣", "🔻", "Stesicoro"), "stesicoro": ("2️⃣", "🔺", "Monte Po")}
-                num_emoji, arrow, dest_name = TERMINAL_DIR[t_key]
-                target_date = now.date()
-                giorno_str = "oggi"
-                hora_fine = CATANIA_TZ.localize(datetime.combine(now.date(), time(hora_int, 59)))
-                if hora_fine < now:
-                    target_date = now.date() + timedelta(days=1)
-                    giorno_str = "domani"
-                sched_key = "Montepo" if t_key == "montepo" else "Stesicoro"
-                schedule_list = get_schedule_list(sched_key, CATANIA_TZ.localize(datetime.combine(target_date, time(12, 0))))
-                pasos = []
-                for salida in schedule_list:
-                    paso_dt = CATANIA_TZ.localize(datetime.combine(target_date, salida))
-                    if paso_dt.hour == hora_int:
-                        if giorno_str == "oggi" and paso_dt <= now:
-                            continue
-                        pasos.append(paso_dt)
-                img_url = get_station_image(t_key, now)
-                caption1 = f"🕐 **Partenze programmate a {nombre_est} {giorno_str} alle {hora_int:02d}:00**"
-                if img_url:
-                    msg1 = await context.bot.send_photo(chat_id=update.effective_chat.id, photo=img_url, caption=caption1, parse_mode="Markdown")
-                else:
-                    msg1 = await update.message.reply_text(caption1, parse_mode="Markdown")
-                await store_id(context, msg1)
-                if pasos:
-                    lineas = [f"{num_emoji} {p.strftime('%H:%M')} {arrow} {dest_name}" for p in pasos]
-                    msg2_text = "\n".join(lineas)
-                else:
-                    msg2_text = f"Nessun treno programmato a {nombre_est} alle {hora_int:02d}:00."
-                nombre_boton = "Monte Po" if t_key == "montepo" else "Stesicoro"
-                keyboard_ritorna = InlineKeyboardMarkup([[
-                    InlineKeyboardButton(f"🔄 Ritornare a {nombre_boton}", callback_data=f"ritornare_{t_key}")
-                ]])
-                msg2 = await update.message.reply_text(msg2_text, parse_mode="Markdown", reply_markup=keyboard_ritorna)
-                await store_id(context, msg2)
-                return
-    # Rimuovere tutti i numeri dal testo per il matching della stazione
-    texto_limpio = re.sub(r'\b\d{1,4}\b', '', texto_limpio_orig).strip()
-    texto_limpio = ' '.join(texto_limpio.split())
+    texto_limpio = ' '.join(texto_norm.split())
     palabras = texto_limpio.split()
 
     KEYWORDS = {
@@ -1773,134 +1676,9 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if not matches and texto_limpio == "monte":
         matches.append((0, "montepo"))
 
-    # ---- Rilevare pattern "[stazione] [ora]" per orari programmati ----
     if matches:
         matches.sort(key=lambda x: x[0])
         mejor_clave = matches[0][1]
-        # Stazioni terminali con ora: mostrare partenze programmate (una sola direzione)
-        TERMINAL_DIR = {"montepo": ("1️⃣", "🔻", "Stesicoro"), "stesicoro": ("2️⃣", "🔺", "Monte Po")}
-        if mejor_clave in TERMINAL_DIR and hora_schedule is not None:
-            hora_int = hora_schedule
-            now = get_simulated_now(context)
-            nombre_est = NOMBRE_MOSTRAR[mejor_clave]
-            num_emoji, arrow, dest_name = TERMINAL_DIR[mejor_clave]
-            # Determina se oggi o domani
-            target_date = now.date()
-            giorno_str = "oggi"
-            hora_fine = CATANIA_TZ.localize(datetime.combine(now.date(), time(hora_int, 59)))
-            if hora_fine < now:
-                target_date = now.date() + timedelta(days=1)
-                giorno_str = "domani"
-            schedule_list = get_schedule_list(mejor_clave.capitalize() if mejor_clave == "montepo" else "Stesicoro",
-                CATANIA_TZ.localize(datetime.combine(target_date, time(12, 0))))
-            pasos = []
-            for salida in schedule_list:
-                paso_dt = CATANIA_TZ.localize(datetime.combine(target_date, salida))
-                if paso_dt.hour == hora_int:
-                    if giorno_str == "oggi" and paso_dt <= now:
-                        continue
-                    pasos.append(paso_dt)
-            # Messaggio 1: foto + testo
-            img_url = get_station_image(mejor_clave, now)
-            caption1 = f"🕐 **Partenze programmate a {nombre_est} {giorno_str} alle {hora_int:02d}:00**"
-            if img_url:
-                msg1 = await context.bot.send_photo(chat_id=update.effective_chat.id, photo=img_url,
-                    caption=caption1, parse_mode="Markdown")
-            else:
-                msg1 = await update.message.reply_text(caption1, parse_mode="Markdown")
-            await store_id(context, msg1)
-            # Messaggio 2
-            if pasos:
-                lineas = [f"{num_emoji} {p.strftime('%H:%M')} {arrow} {dest_name}" for p in pasos]
-                msg2_text = "\n".join(lineas)
-            else:
-                msg2_text = f"Nessun treno programmato a {nombre_est} alle {hora_int:02d}:00."
-            nombre_boton = "Monte Po" if mejor_clave == "montepo" else "Stesicoro"
-            keyboard_ritorna = InlineKeyboardMarkup([[
-                InlineKeyboardButton(f"🔄 Ritornare a {nombre_boton}", callback_data=f"ritornare_{mejor_clave}")
-            ]])
-            msg2 = await update.message.reply_text(msg2_text, parse_mode="Markdown", reply_markup=keyboard_ritorna)
-            await store_id(context, msg2)
-            return
-
-        # Stazioni intermedie: cercare un'ora nel testo
-        INTERMEDIATE = {"fontana","nesima","sannullo","cibali","milo","borgo","giuffrida","italia","galatea","giovanni"}
-        if mejor_clave in INTERMEDIATE:
-            if hora_schedule is not None:
-                hora_int = hora_schedule
-                if True:
-                    now = get_simulated_now(context)
-                    nombre_est = NOMBRE_MOSTRAR[mejor_clave]
-                    seg_mp = get_total_seconds_from_montepo(mejor_clave, now)
-                    seg_st = get_total_seconds_from_stesicoro(mejor_clave, now)
-                    schedule_mp = get_schedule_list("Montepo", now)
-                    schedule_st = get_schedule_list("Stesicoro", now)
-
-                    # Se l'ora richiesta è già passata interamente, usare domani
-                    # Confronto diretto con now per gestire correttamente la madrugada
-                    target_date = now.date()
-                    giorno_str = "oggi"
-                    hora_fine = CATANIA_TZ.localize(datetime.combine(now.date(), time(hora_int, 59)))
-                    if hora_fine < now:
-                        target_date = now.date() + timedelta(days=1)
-                        giorno_str = "domani"
-                        schedule_mp = get_schedule_list("Montepo", CATANIA_TZ.localize(datetime.combine(target_date, time(12, 0))))
-                        schedule_st = get_schedule_list("Stesicoro", CATANIA_TZ.localize(datetime.combine(target_date, time(12, 0))))
-
-                    pasos = []
-                    # schedule_mp = treni che partono da Montepo → vanno verso Stesicoro (Marciapiede 2)
-                    for salida in schedule_mp:
-                        paso_dt = datetime.combine(target_date, salida) + timedelta(seconds=seg_mp)
-                        paso_dt = CATANIA_TZ.localize(paso_dt)
-                        if paso_dt.hour == hora_int:
-                            pasos.append((paso_dt, "➡️ Stesicoro"))
-                    # schedule_st = treni che partono da Stesicoro → vanno verso Monte Po (Marciapiede 1)
-                    for salida in schedule_st:
-                        paso_dt = datetime.combine(target_date, salida) + timedelta(seconds=seg_st)
-                        paso_dt = CATANIA_TZ.localize(paso_dt)
-                        if paso_dt.hour == hora_int:
-                            pasos.append((paso_dt, "➡️ Monte Po"))
-                    # Se è oggi, filtrare i treni già passati
-                    if giorno_str == "oggi":
-                        pasos = [(p, d) for p, d in pasos if p > now]
-
-                    pasos.sort(key=lambda x: x[0])
-
-                    # Messaggio 1: foto + testo
-                    img_url = get_station_image(mejor_clave, now)
-                    caption1 = f"🕐 **Passaggi a {nombre_est} {giorno_str} alle {hora_int:02d}:00**\n1️⃣ Marciapiede 1 → Monte Po  |  2️⃣ Marciapiede 2 → Stesicoro"
-                    if img_url:
-                        msg1 = await context.bot.send_photo(
-                            chat_id=update.effective_chat.id,
-                            photo=img_url,
-                            caption=caption1,
-                            parse_mode="Markdown"
-                        )
-                    else:
-                        msg1 = await update.message.reply_text(caption1, parse_mode="Markdown")
-                    await store_id(context, msg1)
-
-                    # Messaggio 2: lista formato "Dest - HH:MM"
-                    if pasos:
-                        lineas = []
-                        for paso_dt, direction in pasos:
-                            to_montepo = "Monte Po" in direction
-                            num = "1️⃣" if to_montepo else "2️⃣"
-                            arrow = "🔺" if to_montepo else "🔻"
-                            dest = "Monte Po" if to_montepo else "Stesicoro"
-                            lineas.append(f"{num} {paso_dt.strftime('%H:%M')} {arrow} {dest}")
-                        msg2_text = "\n".join(lineas)
-                    else:
-                        msg2_text = f"Nessun treno programmato a {nombre_est} alle {hora_int:02d}:00."
-
-                    nombre_boton = nombre_est if mejor_clave != "giovanni" else "Giovanni XXIII"
-                    keyboard_ritorna = InlineKeyboardMarkup([[
-                        InlineKeyboardButton(f"🔄 Ritornare a {nombre_boton}", callback_data=f"ritornare_{mejor_clave}")
-                    ]])
-                    msg2 = await update.message.reply_text(msg2_text, parse_mode="Markdown", reply_markup=keyboard_ritorna)
-                    await store_id(context, msg2)
-                    return
-
         await send_station_response(update, context, mejor_clave, return_to_main=True)
         return
 
