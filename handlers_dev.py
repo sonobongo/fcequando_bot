@@ -1065,59 +1065,68 @@ async def news_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # METRO SHUTTLE
 # ============================================================================
 def get_shuttle_status(now: datetime) -> str:
+    from horarios_logic import SHUTTLE_SCHEDULES
     stops = get_shuttle_stops()
     if not stops:
         return "🚌 Servizio Shuttle non disponibile."
     if now.weekday() >= 5:
         return "🚌 Il Metro Shuttle è attivo solo dal lunedì al venerdì."
 
-    # Calcola secondi mancanti per ogni fermata
+    current_time = now.time()
+
+    # Per ogni fermata, trovare il prossimo orario schedulato e i secondi mancanti
     stop_data = []
     for stop in stops:
-        next_dep = get_next_shuttle_departure(stop, now)
-        if next_dep:
-            dep_dt = CATANIA_TZ.localize(datetime.combine(now.date(), next_dep))
+        schedule = SHUTTLE_SCHEDULES.get(stop, {}).get('weekday', [])
+        next_t = None
+        prev_t = None
+        for t in schedule:
+            if t > current_time:
+                next_t = t
+                break
+            prev_t = t
+        # Secondi alla prossima fermata
+        if next_t:
+            dep_dt = CATANIA_TZ.localize(datetime.combine(now.date(), next_t))
             secs = (dep_dt - now).total_seconds()
         else:
             secs = None
-        stop_data.append((stop, next_dep, secs))
+        stop_data.append((stop, next_t, secs, prev_t))
 
     lines = ["🚌 **Metro Shuttle – Monitoraggio in tempo reale**\n"]
-    for i, (stop, next_dep, secs) in enumerate(stop_data):
-        if secs is None:
-            tag = "—"
-        elif secs <= 0:
-            tag = "🚌 In fermata"
-        elif secs <= 90:
-            tag = f"🚌 {int(secs//60):02d}:{int(secs%60):02d}"
-        elif secs <= 600:
-            tag = f"🕐 {int(secs//60):02d}:{int(secs%60):02d}"
-        else:
-            mins = int(secs // 60)
-            if next_dep:
-                tag = f"alle {next_dep.strftime('%H:%M')} ({mins} min)"
-            else:
-                tag = "—"
-
-        if secs is not None and secs <= 0:
+    N = len(stop_data)
+    for i, (stop, next_t, secs, prev_t) in enumerate(stop_data):
+        # Etichetta della fermata
+        if secs is not None and secs <= 30:
+            # Bus in arrivo entro 30 secondi: countdown
+            tag = f"🔻 {int(secs//60):02d}:{int(secs%60):02d}"
             lines.append(f"⚪️ **{stop}**  {tag}")
-        elif secs is not None and secs <= 90:
-            lines.append(f"⚪️ **{stop}**  {tag}")
+        elif secs is None:
+            lines.append(f"⚪️ {stop}  —")
         else:
-            lines.append(f"⚪️ {stop}  {tag}")
+            # Orario normale
+            lines.append(f"⚪️ {stop}  {next_t.strftime('%H:%M')}")
 
-        if i < len(stop_data) - 1:
-            # Mostra bus nel tratto se è tra questa e la prossima fermata
+        # Tratto verso la prossima fermata
+        if i < N - 1:
             curr_secs = secs if secs is not None else 99999
             next_secs = stop_data[i+1][2] if stop_data[i+1][2] is not None else 99999
-            if curr_secs <= 0 < next_secs:
-                lines.append("▫️  🚌")
+            # Bus nel tratto: ha già passato questa fermata (secs < 0 o prev_t recente)
+            # e non è ancora alla prossima (next_secs > 30)
+            bus_in_tratto = (curr_secs is not None and curr_secs < 0) or (
+                prev_t is not None and secs is not None and secs > 30 and
+                stop_data[i+1][2] is not None and stop_data[i+1][2] <= 30
+            )
+            # Più semplice: bus nel tratto se prossima fermata arriva tra 0 e 30s
+            # e questa fermata ha già secs > 30 (bus tra le due)
+            if next_secs is not None and 0 < next_secs <= 30 and curr_secs > 30:
+                lines.append("▫️  🔻")
             else:
                 lines.append("▫️")
 
     return "\n".join(lines)
 
-async def auto_update_shuttle(context, chat_id, message_id, cycles=60, interval=3):
+async def auto_update_shuttle(context, chat_id, message_id, cycles=40, interval=3):
     last_sent_msg = None
     for ciclo in range(1, cycles + 1):
         for _ in range(interval):
