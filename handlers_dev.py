@@ -1074,52 +1074,59 @@ def get_shuttle_status(now: datetime) -> str:
 
     current_time = now.time()
 
-    # Per ogni fermata, trovare il prossimo orario schedulato e i secondi mancanti
+    # Per ogni fermata: orario schedulato precedente e prossimo
     stop_data = []
     for stop in stops:
         schedule = SHUTTLE_SCHEDULES.get(stop, {}).get('weekday', [])
-        next_t = None
         prev_t = None
+        next_t = None
         for t in schedule:
-            if t > current_time:
+            if t <= current_time:
+                prev_t = t
+            else:
                 next_t = t
                 break
-            prev_t = t
-        # Secondi alla prossima fermata
+        # Secondi alla prossima fermata (positivi = futuro)
         if next_t:
             dep_dt = CATANIA_TZ.localize(datetime.combine(now.date(), next_t))
-            secs = (dep_dt - now).total_seconds()
+            secs_to_next = (dep_dt - now).total_seconds()
         else:
-            secs = None
-        stop_data.append((stop, next_t, secs, prev_t))
+            secs_to_next = None
+        # Secondi dall'ultima fermata (positivi = già passata)
+        if prev_t:
+            prev_dt = CATANIA_TZ.localize(datetime.combine(now.date(), prev_t))
+            secs_since_prev = (now - prev_dt).total_seconds()
+        else:
+            secs_since_prev = None
+        stop_data.append((stop, next_t, secs_to_next, prev_t, secs_since_prev))
 
     lines = ["🚌 **Metro Shuttle – Monitoraggio in tempo reale**\n"]
     N = len(stop_data)
-    for i, (stop, next_t, secs, prev_t) in enumerate(stop_data):
-        # Etichetta della fermata
-        if secs is not None and secs <= 30:
-            # Bus in arrivo entro 30 secondi: countdown
-            tag = f"🔻 {int(secs//60):02d}:{int(secs%60):02d}"
-            lines.append(f"⚪️ **{stop}**  {tag}")
-        elif secs is None:
-            lines.append(f"⚪️ {stop}  —")
-        else:
-            # Orario normale
-            lines.append(f"⚪️ {stop}  {next_t.strftime('%H:%M')}")
 
-        # Tratto verso la prossima fermata
+    for i, (stop, next_t, secs_to_next, prev_t, secs_since_prev) in enumerate(stop_data):
+        # --- Riga della fermata ---
+        if secs_to_next is not None and secs_to_next <= 30:
+            # Bus in arrivo entro 30s: countdown
+            s = int(secs_to_next)
+            tag = f"🔻 {s//60:02d}:{s%60:02d}"
+            lines.append(f"⚪️ **{stop}**  {tag}")
+        elif next_t is not None:
+            lines.append(f"⚪️ {stop}  {next_t.strftime('%H:%M')}")
+        else:
+            lines.append(f"⚪️ {stop}  —")
+
+        # --- Tratto verso la prossima fermata ---
         if i < N - 1:
-            curr_secs = secs if secs is not None else 99999
-            next_secs = stop_data[i+1][2] if stop_data[i+1][2] is not None else 99999
-            # Bus nel tratto: ha già passato questa fermata (secs < 0 o prev_t recente)
-            # e non è ancora alla prossima (next_secs > 30)
-            bus_in_tratto = (curr_secs is not None and curr_secs < 0) or (
-                prev_t is not None and secs is not None and secs > 30 and
-                stop_data[i+1][2] is not None and stop_data[i+1][2] <= 30
+            next_stop_secs = stop_data[i+1][2]  # secs_to_next della fermata successiva
+
+            # Il bus è nel tratto se:
+            # - ha già passato questa fermata (secs_since_prev <= 30, ovvero prev_t recente)
+            # - e non è ancora alla prossima (next_stop_secs > 30 o None)
+            bus_in_tratto = (
+                secs_since_prev is not None and secs_since_prev <= 30 and
+                (next_stop_secs is None or next_stop_secs > 30)
             )
-            # Più semplice: bus nel tratto se prossima fermata arriva tra 0 e 30s
-            # e questa fermata ha già secs > 30 (bus tra le due)
-            if next_secs is not None and 0 < next_secs <= 30 and curr_secs > 30:
+            if bus_in_tratto:
                 lines.append("▫️  🔻")
             else:
                 lines.append("▫️")
