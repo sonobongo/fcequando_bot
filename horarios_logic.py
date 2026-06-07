@@ -154,7 +154,6 @@ EXTRA_TRAMOS_REVERSE = [
 # DETECCIÓN DE HORA PUNTA (con soporte para eventos especiales)
 # ============================================================================
 def is_peak_hour(now: datetime) -> bool:
-    # 1. Eventos especiales de hora punta (eventos.json)
     hoy = now.date()
     for hp_evento in EVENTOS.get('horas_punta_eventos', []):
         if hp_evento['fecha'] == hoy:
@@ -165,9 +164,8 @@ def is_peak_hour(now: datetime) -> bool:
             hora_actual = now.time()
             if time(h_i, m_i) <= hora_actual <= time(h_f, m_f):
                 return True
-            break   # solo puede haber un evento por día
+            break
 
-    # 2. Lógica normal de hora punta (lunes a viernes laborables, sept-jun)
     if now.weekday() >= 5:
         return False
     if is_festivo_nazionale(now):
@@ -185,9 +183,6 @@ def is_peak_hour(now: datetime) -> bool:
         return True
     return False
 
-# ============================================================================
-# EXTRA DE 5 SEGUNDOS PARA GIOVANNI XXIII (incluye domingos tarde si lunes laborable)
-# ============================================================================
 def should_add_giovanni_extra(now: datetime) -> bool:
     if now.weekday() < 5 and not is_festivo_nazionale(now):
         month = now.month
@@ -201,10 +196,7 @@ def should_add_giovanni_extra(now: datetime) -> bool:
                 return True
     return False
 
-# ============================================================================
-# FUNCIÓN UNIFICADA DE CIERRES ACTIVOS (combina CLOSED_STATIONS fijos + eventos.json)
-# ============================================================================
-CLOSED_STATIONS_FIJOS = []  # Los cierres temporales se gestionan en eventos.json
+CLOSED_STATIONS_FIJOS = []
 
 def get_active_closed_stations(now: datetime) -> List[dict]:
     activos = []
@@ -219,11 +211,8 @@ def get_active_closed_stations(now: datetime) -> List[dict]:
             })
     return activos
 
-# ============================================================================
-# FUNCIONES DE EXTENSIÓN HORARIA
-# ============================================================================
 def get_extension_horario(now: datetime) -> Optional[dict]:
-    hoy = now.date()
+    hoy = get_effective_datetime(now).date()
     for ext in EVENTOS['extensiones_horario']:
         if ext['fecha'] == hoy:
             return ext
@@ -236,9 +225,6 @@ def get_extension_message(now: datetime) -> str:
     desc = ext.get('descripcion', 'Estensione di orario')
     return f"🕐 Oggi orario prolungato: {desc}.\n"
 
-# ============================================================================
-# TIEMPOS DE VIAJE
-# ============================================================================
 def get_travel_time_from_montepo(station: str, now: datetime) -> int:
     total_seconds = 0
     peak = is_peak_hour(now)
@@ -301,9 +287,6 @@ def get_travel_time_from_stesicoro(station: str, now: datetime) -> int:
     minutes = (total_seconds + 59) // 60
     return max(0, minutes)
 
-# ============================================================================
-# FUNCIONES DE CIERRE (mensajes y comprobación)
-# ============================================================================
 def is_station_closed(station: str, now: datetime) -> bool:
     for closed in get_active_closed_stations(now):
         if closed["station"] == station:
@@ -323,15 +306,6 @@ def get_closing_message(station: str, now: datetime) -> str:
                     return f"⚠️ La stazione {NOMBRE_MOSTRAR.get(station, station).capitalize()} è chiusa per lavori fino al {end_date}. I treni non fermano.\n"
     return ""
 
-def build_tiempos_estacion(now: datetime) -> Dict[str, Tuple[int, int]]:
-    result = {}
-    stations_order = ["montepo", "fontana", "nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "giovanni", "stesicoro"]
-    for station in stations_order:
-        t_mp = get_travel_time_from_montepo(station, now)
-        t_st = get_travel_time_from_stesicoro(station, now)
-        result[station] = (t_mp, t_st)
-    return result
-
 NOMBRE_MOSTRAR = {
     "montepo": "Monte Po",
     "fontana": "Fontana",
@@ -347,9 +321,6 @@ NOMBRE_MOSTRAR = {
     "stesicoro": "Stesicoro"
 }
 
-# ============================================================================
-# IMÁGENES
-# ============================================================================
 STATION_IMAGE = {
     "montepo": "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/st_montepo.jpg",
     "fontana": "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/st_fontana.jpg",
@@ -386,9 +357,6 @@ def convert_schedule(sched_dict: Dict[str, List[str]]) -> Dict[str, Dict[str, Li
 
 SCHEDULES = convert_schedule(SCHEDULE_DATA)
 
-# ============================================================================
-# FUNCIONES PARA SANT'AGATA
-# ============================================================================
 def is_sant_agata(now: datetime) -> bool:
     eff = get_effective_datetime(now)
     return (eff.month == SANT_AGATA["month"] and 
@@ -413,9 +381,6 @@ def get_sant_agata_message(station: str, now: datetime) -> str:
         f"Frequenza: ogni **5 minuti** in ora di punta, ogni **7 minuti** in ora di valle."
     )
 
-# ============================================================================
-# DÍAS FESTIVOS NACIONALES Y NOCHEVIEJA
-# ============================================================================
 FESTIVI_NAZIONALI = [
     (1, 1), (1, 6), (4, 25), (5, 1), (6, 2), (8, 15), (11, 1), (12, 8), (12, 26)
 ]
@@ -476,9 +441,6 @@ def get_next_departure_new_years_eve(station: str, now: datetime) -> Tuple[Optio
     sec = int((next_dt - now).total_seconds())
     return (next_dt, sec // 60, sec % 60, True)
 
-# ============================================================================
-# CIERRES TOTALES (NAVIDAD, PASCUA)
-# ============================================================================
 def is_christmas(now: datetime) -> bool:
     eff = get_effective_datetime(now)
     return (eff.month == CLOSED_ALL_DAY["christmas"]["month"] and 
@@ -554,9 +516,6 @@ def is_festivo_nazionale(now: datetime) -> bool:
         return True
     return (eff.month, eff.day) in FESTIVI_NAZIONALI
 
-# ============================================================================
-# HORARIOS DE APERTURA Y CIERRE (con soporte para extensiones)
-# ============================================================================
 def get_opening_time(now: datetime, station: str = None) -> Tuple[int, int]:
     if is_new_years_eve(now):
         return (12, 0)
@@ -597,9 +556,6 @@ def get_closing_time(now: datetime, station: str) -> Tuple[int, int]:
         else:
             return (22, 30)
 
-# ============================================================================
-# FECHAS ESPECIALES (sobrescribir día de la semana)
-# ============================================================================
 def get_override_weekday(now: datetime) -> Optional[int]:
     eff = get_effective_datetime(now)
     month, day = eff.month, eff.day
@@ -617,13 +573,9 @@ def get_override_weekday(now: datetime) -> Optional[int]:
             return 5
     return None
 
-# ============================================================================
-# OBTENER LISTA DE HORARIOS (con extensión de trenes extra y tipo_dia_base)
-# ============================================================================
 def get_schedule_list(station: str, now: datetime) -> List[time]:
     eff = get_effective_datetime(now)
     
-    # Comprobar si hay una extensión horaria con tipo de día base forzado
     ext = get_extension_horario(now)
     if ext and ext.get('tipo_dia_base') and ext['tipo_dia_base'] in SCHEDULES[station]:
         schedule_list = SCHEDULES[station][ext['tipo_dia_base']]
@@ -689,12 +641,10 @@ def get_schedule_list(station: str, now: datetime) -> List[time]:
         if any(t.hour >= 22 or t.hour < 6 for t in yesterday_list):
             return yesterday_list
 
-    # ---- Extensión horaria: añadir trenes extra si corresponde ----
     extension = get_extension_horario(now)
     if extension and extension.get('mantiene_frecuencia') and station in extension['horario_extendido']:
         datos = extension['horario_extendido'][station]
         if 'ultimo_tren' in datos:
-            # Calcular frecuencia media a partir de la lista base
             if len(schedule_list) >= 2:
                 diffs = []
                 for i in range(1, min(10, len(schedule_list))):
@@ -711,7 +661,6 @@ def get_schedule_list(station: str, now: datetime) -> List[time]:
             h_ult, m_ult = map(int, datos['ultimo_tren'].split(':'))
             ultimo_extendido = time(h_ult, m_ult)
             
-            # Generar trenes adicionales
             actual = ultimo_base
             while True:
                 next_min = (actual.hour * 60 + actual.minute) + freq
@@ -720,15 +669,11 @@ def get_schedule_list(station: str, now: datetime) -> List[time]:
                 actual = time(next_min // 60, next_min % 60)
                 if actual > ultimo_extendido:
                     break
-                # Evitar duplicados exactos
                 if actual not in schedule_list:
                     schedule_list.append(actual)
     
     return schedule_list
 
-# ============================================================================
-# PRÓXIMO TREN
-# ============================================================================
 def get_next_departure(station: str, now: datetime) -> Tuple[Optional[datetime], int, int, bool]:
     if 1 <= now.hour < 6:
         if (now.month == 1 and now.day == 1 and 1 <= now.hour < 3) or \
@@ -814,9 +759,6 @@ def get_next_departure_after(station: str, now: datetime, after_time: time) -> T
     delta = int((candidate - now).total_seconds())
     return (candidate, delta // 60, delta % 60, True)
 
-# ============================================================================
-# FORMATO DE TIEMPO
-# ============================================================================
 def format_time(minutes: int, seconds: int) -> str:
     total_seconds = minutes * 60 + seconds
 
@@ -873,25 +815,20 @@ def is_metro_closed(now: datetime, station: str) -> Tuple[bool, Optional[datetim
             special_msg = "🚇 Non ci sono informazioni disponibili. Ricorda che oggi l'ultima metropolitana è partita alle 03:00."
             return (True, next_open, special_msg)
     
-    # Comprobación principal de cierre
     current_time = now.time()
     open_h, open_m = get_opening_time(now, station)
     close_h, close_m = get_closing_time(now, station)
     opening_time = time(open_h, open_m)
     closing_time = time(close_h, close_m)
     
-        # Si hay una extensión con horario personalizado, se respeta ese horario
     ext = get_extension_horario(now)
     if ext and station in ext.get('horario_extendido', {}):
-        # Usamos la misma lógica que para los fines de semana normales
         if close_h < open_h or (close_h == open_h and close_m < open_m):
-            # El horario cruza la medianoche (ej. 06:00-01:00)
             if current_time >= opening_time or current_time < closing_time:
                 return (False, None, "")
         else:
             if current_time >= opening_time and current_time < closing_time:
                 return (False, None, "")
-        # Si no está en horario, calcular reapertura
         if current_time < opening_time:
             next_open = CATANIA_TZ.localize(datetime.combine(now.date(), opening_time))
         else:
@@ -900,7 +837,6 @@ def is_metro_closed(now: datetime, station: str) -> Tuple[bool, Optional[datetim
             next_open = CATANIA_TZ.localize(datetime.combine(now.date() + timedelta(days=1), time(oh, om)))
         return (True, next_open, "")
     
-    # Lógica normal
     if close_h < open_h or (close_h == open_h and close_m < open_m):
         if current_time >= opening_time or current_time < closing_time:
             return (False, None, "")
@@ -923,9 +859,6 @@ def is_metro_closed(now: datetime, station: str) -> Tuple[bool, Optional[datetim
             return (True, next_open, "")
         return (False, None, "")
 
-# ============================================================================
-# FUNCIONES PARA ESTACIONES INTERMEDIAS
-# ============================================================================
 def get_total_seconds_from_montepo(station: str, now: datetime) -> int:
     if now.tzinfo is None:
         now = CATANIA_TZ.localize(now)
@@ -1057,9 +990,6 @@ def get_next_train_at_station(now: datetime, estacion_key: str) -> Tuple[Optiona
 
     return (info_mp, info_st)
 
-# ============================================================================
-# FUNCIONES DE LOCALIZACIÓN
-# ============================================================================
 def get_current_station_from_montepo(now: datetime, seconds_passed: int) -> str:
     stations = ["montepo", "fontana", "nesima", "sannullo", "cibali", "milo", "borgo", "giuffrida", "italia", "galatea", "giovanni", "stesicoro"]
     tiempos = {st: get_total_seconds_from_montepo(st, now) for st in stations}
@@ -1092,6 +1022,7 @@ def get_current_station_from_stesicoro(now: datetime, seconds_passed: int) -> st
 
 def format_time_precise(minutes: int, seconds: int) -> str:
     return format_time(minutes, seconds)
+
 # ============================================================================
 # METRO SHUTTLE (servicio de autobús)
 # ============================================================================
