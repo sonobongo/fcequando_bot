@@ -96,6 +96,15 @@ def stop_super_update(context):
             pass
         context.chat_data.pop('super_task', None)
 
+def stop_shuttle_update(context):
+    if 'shuttle_task' in context.chat_data:
+        context.chat_data['shuttle_active'] = False
+        try:
+            context.chat_data['shuttle_task'].cancel()
+        except Exception:
+            pass
+        context.chat_data.pop('shuttle_task', None)
+
 # ============================================================================
 # BUS NESIMA → HUMANITAS
 # ============================================================================
@@ -697,6 +706,7 @@ async def send_header_response(chat_id, context, estacion_key, is_update=False):
 # ============================================================================
 async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str, return_to_main: bool = True):
     stop_super_update(context)
+    stop_shuttle_update(context)
     context.chat_data['last_return_to_main'] = return_to_main
     now = get_simulated_now(context)
     demo_mode = context.chat_data.get('demo_mode', False)
@@ -897,6 +907,7 @@ async def help_command(update, context):
 
 async def handle_button(update, context):
     stop_super_update(context)
+    stop_shuttle_update(context)
     
     text = update.message.text
     if text == "Altri":
@@ -917,6 +928,7 @@ async def handle_button(update, context):
 # ============================================================================
 async def test_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     stop_super_update(context)
+    stop_shuttle_update(context)
     
     args = context.args
     if not args:
@@ -962,6 +974,7 @@ async def test_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def testfin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     stop_super_update(context)
+    stop_shuttle_update(context)
     
     if context.chat_data and 'test_time' in context.chat_data:
         del context.chat_data['test_time']
@@ -1051,27 +1064,121 @@ async def news_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ============================================================================
 # METRO SHUTTLE
 # ============================================================================
-async def send_shuttle_response(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    now = get_simulated_now(context)
+def get_shuttle_status(now: datetime) -> str:
     stops = get_shuttle_stops()
     if not stops:
-        await update.message.reply_text("🚌 Servizio Shuttle non disponibile.")
-        return
-
+        return "🚌 Servizio Shuttle non disponibile."
     if now.weekday() >= 5:
-        await update.message.reply_text("🚌 Il Metro Shuttle è attivo solo dal lunedì al venerdì.")
-        return
+        return "🚌 Il Metro Shuttle è attivo solo dal lunedì al venerdì."
 
     lines = ["🚌 **Metro Shuttle – Prossime partenze**\n"]
     for stop in stops:
         next_dep = get_next_shuttle_departure(stop, now)
         if next_dep:
-            lines.append(f"▪️ {stop}: **{next_dep.strftime('%H:%M')}**")
+            # Calcola minuti mancanti
+            from datetime import datetime as _dt
+            dep_dt = CATANIA_TZ.localize(_dt.combine(now.date(), next_dep))
+            secs = (dep_dt - now).total_seconds()
+            if secs < 0:
+                label = f"**{next_dep.strftime('%H:%M')}**"
+            elif secs <= 60:
+                label = f"**{next_dep.strftime('%H:%M')}** ⏱ {int(secs)}s"
+            else:
+                mins = int(secs // 60)
+                label = f"**{next_dep.strftime('%H:%M')}** ({mins} min)"
+            lines.append(f"🚏 {stop}: {label}")
         else:
-            lines.append(f"▪️ {stop}: nessuna corsa")
-    
-    msg = "\n".join(lines)
-    await update.message.reply_text(msg, parse_mode='Markdown')
+            lines.append(f"🚏 {stop}: nessuna corsa")
+    return "\n".join(lines)
+
+async def auto_update_shuttle(context, chat_id, message_id, cycles=40, interval=5):
+    last_sent_msg = None
+    for ciclo in range(1, cycles + 1):
+        for _ in range(interval):
+            await asyncio.sleep(1)
+            if not context.chat_data.get('shuttle_active', False):
+                return
+        if not context.chat_data.get('shuttle_active', False):
+            return
+        now = get_simulated_now(context)
+        new_msg = get_shuttle_status(now)
+        if new_msg != last_sent_msg:
+            try:
+                await context.bot.edit_message_text(
+                    text=new_msg, chat_id=chat_id,
+                    message_id=message_id, parse_mode='Markdown'
+                )
+                last_sent_msg = new_msg
+            except Exception as e:
+                logger.error(f"Error aggiornamento shuttle: {e}")
+                break
+    if context.chat_data.get('shuttle_active', False):
+        keyboard = InlineKeyboardMarkup([[
+            InlineKeyboardButton("🔄 Aggiornare", callback_data="aggiornare_shuttle")
+        ]])
+        try:
+            await context.bot.edit_message_text(
+                text=new_msg, chat_id=chat_id,
+                message_id=message_id, parse_mode='Markdown',
+                reply_markup=keyboard
+            )
+        except Exception:
+            await context.bot.send_message(
+                chat_id=chat_id, text=new_msg,
+                parse_mode='Markdown', reply_markup=keyboard
+            )
+        context.chat_data['shuttle_active'] = False
+        context.chat_data.pop('shuttle_task', None)
+
+async def send_shuttle_response(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Cancella eventuale task shuttle precedente
+    if 'shuttle_task' in context.chat_data:
+        context.chat_data['shuttle_active'] = False
+        try:
+            context.chat_data['shuttle_task'].cancel()
+        except Exception:
+            pass
+        context.chat_data.pop('shuttle_task', None)
+
+    now = get_simulated_now(context)
+    msg = get_shuttle_status(now)
+    result = await update.message.reply_text(msg, parse_mode='Markdown')
+    message_id = result.message_id
+    chat_id = update.effective_chat.id
+    context.chat_data['shuttle_msg_id'] = message_id
+    context.chat_data['shuttle_chat_id'] = chat_id
+    context.chat_data['shuttle_active'] = True
+    task = asyncio.create_task(
+        auto_update_shuttle(context, chat_id, message_id, cycles=40, interval=5)
+    )
+    context.chat_data['shuttle_task'] = task
+
+async def aggiornare_shuttle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    if 'shuttle_task' in context.chat_data:
+        context.chat_data['shuttle_active'] = False
+        try:
+            context.chat_data['shuttle_task'].cancel()
+        except Exception:
+            pass
+        context.chat_data.pop('shuttle_task', None)
+    now = get_simulated_now(context)
+    msg = get_shuttle_status(now)
+    chat_id = query.message.chat_id
+    message_id = query.message.message_id
+    context.chat_data['shuttle_active'] = True
+    task = asyncio.create_task(
+        auto_update_shuttle(context, chat_id, message_id, cycles=40, interval=5)
+    )
+    context.chat_data['shuttle_task'] = task
+    try:
+        await context.bot.edit_message_text(
+            text=msg, chat_id=chat_id,
+            message_id=message_id, parse_mode='Markdown'
+        )
+    except Exception:
+        pass
 
 # ============================================================================
 # FUNCIONES PARA "SUPER" - Tracking de posición de trenes en tiempo real
@@ -1386,6 +1493,7 @@ async def aggiornare_super_callback(update: Update, context: ContextTypes.DEFAUL
 # ============================================================================
 async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     stop_super_update(context)
+    stop_shuttle_update(context)
     
     texto = update.message.text.strip()
     
