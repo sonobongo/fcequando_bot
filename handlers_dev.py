@@ -1115,8 +1115,8 @@ def get_shuttle_status(now: datetime) -> str:
             next_stop_secs = stop_data[i+1][2]   # segundos hasta la próxima parada
 
             bus_in_tratto = (
-                secs_since_prev is not None and secs_since_prev <= 120 and   # ← antes era 30
-                (next_stop_secs is None or next_stop_secs > 120)             # ← antes era 30
+                secs_since_prev is not None and secs_since_prev <= 300 and   # ← antes era 30
+                (next_stop_secs is None or next_stop_secs > 300)             # ← antes era 30
             )
             if bus_in_tratto:
                 lines.append("▫️  🚌🔻")
