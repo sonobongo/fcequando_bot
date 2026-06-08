@@ -1073,8 +1073,6 @@ def get_shuttle_status(now: datetime) -> str:
         return "🚌 Il Metro Shuttle è attivo solo dal lunedì al venerdì."
 
     current_time = now.time()
-
-    # Per ogni fermata: orario schedulato precedente e prossimo
     stop_data = []
     for stop in stops:
         schedule = SHUTTLE_SCHEDULES.get(stop, {}).get('weekday', [])
@@ -1086,13 +1084,11 @@ def get_shuttle_status(now: datetime) -> str:
             else:
                 next_t = t
                 break
-        # Secondi alla prossima fermata (positivi = futuro)
         if next_t:
             dep_dt = CATANIA_TZ.localize(datetime.combine(now.date(), next_t))
             secs_to_next = (dep_dt - now).total_seconds()
         else:
             secs_to_next = None
-        # Secondi dall'ultima fermata (positivi = già passata)
         if prev_t:
             prev_dt = CATANIA_TZ.localize(datetime.combine(now.date(), prev_t))
             secs_since_prev = (now - prev_dt).total_seconds()
@@ -1104,9 +1100,8 @@ def get_shuttle_status(now: datetime) -> str:
     N = len(stop_data)
 
     for i, (stop, next_t, secs_to_next, prev_t, secs_since_prev) in enumerate(stop_data):
-        # --- Riga della fermata ---
-        if secs_to_next is not None and secs_to_next <= 30:
-            # Bus in arrivo entro 30s: countdown
+        # --- Parada ---
+        if secs_to_next is not None and secs_to_next <= 120:   # ← antes era 30
             s = int(secs_to_next)
             tag = f"🔻 {s//60:02d}:{s%60:02d}"
             lines.append(f"⚪️ **{stop}**  {tag}")
@@ -1115,16 +1110,13 @@ def get_shuttle_status(now: datetime) -> str:
         else:
             lines.append(f"⚪️ {stop}  —")
 
-        # --- Tratto verso la prossima fermata ---
+        # --- Tramo entre esta parada y la siguiente ---
         if i < N - 1:
-            next_stop_secs = stop_data[i+1][2]  # secs_to_next della fermata successiva
+            next_stop_secs = stop_data[i+1][2]   # segundos hasta la próxima parada
 
-            # Il bus è nel tratto se:
-            # - ha già passato questa fermata (secs_since_prev <= 30, ovvero prev_t recente)
-            # - e non è ancora alla prossima (next_stop_secs > 30 o None)
             bus_in_tratto = (
-                secs_since_prev is not None and secs_since_prev <= 30 and
-                (next_stop_secs is None or next_stop_secs > 30)
+                secs_since_prev is not None and secs_since_prev <= 120 and   # ← antes era 30
+                (next_stop_secs is None or next_stop_secs > 120)             # ← antes era 30
             )
             if bus_in_tratto:
                 lines.append("▫️  🚌🔻")
@@ -1132,72 +1124,6 @@ def get_shuttle_status(now: datetime) -> str:
                 lines.append("▫️")
 
     return "\n".join(lines)
-
-async def auto_update_shuttle(context, chat_id, message_id, cycles=40, interval=3):
-    last_sent_msg = None
-    for ciclo in range(1, cycles + 1):
-        for _ in range(interval):
-            await asyncio.sleep(1)
-            if not context.chat_data.get('shuttle_active', False):
-                return
-        if not context.chat_data.get('shuttle_active', False):
-            return
-        now = get_simulated_now(context)
-        new_msg = get_shuttle_status(now)
-        if new_msg != last_sent_msg:
-            try:
-                await context.bot.edit_message_text(
-                    text=new_msg, chat_id=chat_id,
-                    message_id=message_id, parse_mode='Markdown'
-                )
-                last_sent_msg = new_msg
-            except Exception as e:
-                logger.error(f"Errore aggiornamento shuttle: {e}")
-                break
-    if context.chat_data.get('shuttle_active', False):
-        keyboard = InlineKeyboardMarkup([[
-            InlineKeyboardButton("🔄 Aggiornare", callback_data="aggiornare_shuttle")
-        ]])
-        try:
-            await context.bot.edit_message_text(
-                text=new_msg, chat_id=chat_id,
-                message_id=message_id, parse_mode='Markdown',
-                reply_markup=keyboard
-            )
-        except Exception:
-            pass
-        context.chat_data['shuttle_active'] = False
-        context.chat_data.pop('shuttle_task', None)
-
-async def aggiornare_shuttle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    stop_shuttle_update(context)
-    now = get_simulated_now(context)
-    msg = get_shuttle_status(now)
-    chat_id = query.message.chat_id
-    message_id = query.message.message_id
-    context.chat_data['shuttle_active'] = True
-    task = asyncio.create_task(auto_update_shuttle(context, chat_id, message_id))
-    context.chat_data['shuttle_task'] = task
-    try:
-        await context.bot.edit_message_text(
-            text=msg, chat_id=chat_id,
-            message_id=message_id, parse_mode='Markdown'
-        )
-    except Exception:
-        pass
-
-async def send_shuttle_response(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    stop_shuttle_update(context)
-    now = get_simulated_now(context)
-    msg = get_shuttle_status(now)
-    result = await update.message.reply_text(msg, parse_mode='Markdown')
-    message_id = result.message_id
-    chat_id = update.effective_chat.id
-    context.chat_data['shuttle_active'] = True
-    task = asyncio.create_task(auto_update_shuttle(context, chat_id, message_id))
-    context.chat_data['shuttle_task'] = task
 
 # ============================================================================
 # FUNCIONES PARA "SUPER" - Tracking de posición de trenes en tiempo real
