@@ -1064,7 +1064,7 @@ async def news_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ============================================================================
 # METRO SHUTTLE
 # ============================================================================
-def get_shuttle_status(now: datetime) -> str:
+def get_shuttle_status(now: datetime, frame: int = 0) -> str:
     from horarios_logic import SHUTTLE_SCHEDULES
     stops = get_shuttle_stops()
     if not stops:
@@ -1096,12 +1096,14 @@ def get_shuttle_status(now: datetime) -> str:
             secs_since_prev = None
         stop_data.append((stop, next_t, secs_to_next, prev_t, secs_since_prev))
 
+    dots = SHUTTLE_ANIMATION_FRAMES[frame % len(SHUTTLE_ANIMATION_FRAMES)]
+
     lines = ["🚌 **Metro Shuttle – Monitoraggio in tempo reale**\n"]
     N = len(stop_data)
 
     for i, (stop, next_t, secs_to_next, prev_t, secs_since_prev) in enumerate(stop_data):
         # --- Parada ---
-        if secs_to_next is not None and secs_to_next <= 120:   # ← antes era 30
+        if secs_to_next is not None and secs_to_next <= 300:
             s = int(secs_to_next)
             tag = f"🔻 {s//60:02d}:{s%60:02d}"
             lines.append(f"⚪️ **{stop}**  {tag}")
@@ -1112,14 +1114,16 @@ def get_shuttle_status(now: datetime) -> str:
 
         # --- Tramo entre esta parada y la siguiente ---
         if i < N - 1:
-            next_stop_secs = stop_data[i+1][2]   # segundos hasta la próxima parada
+            next_stop_secs = stop_data[i+1][2]
 
+            # El bus está en el tramo si ya ha salido (secs_since_prev > 0)
+            # y la próxima parada aún no está en cuenta atrás (>300 s o no existe).
             bus_in_tratto = (
-                secs_since_prev is not None and secs_since_prev <= 300 and   # ← antes era 30
-                (next_stop_secs is None or next_stop_secs > 300)             # ← antes era 30
+                secs_since_prev is not None and secs_since_prev > 0 and
+                (next_stop_secs is None or next_stop_secs > 300)
             )
             if bus_in_tratto:
-                lines.append("▫️  🚌🔻")
+                lines.append(f"▫️  🚌🔻{dots}")
             else:
                 lines.append("▫️")
 
