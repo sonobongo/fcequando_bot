@@ -1,8 +1,7 @@
 import os
 import logging
 import threading
-import pytz
-from datetime import time
+import unicodedata
 from flask import Flask
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, Defaults, CallbackQueryHandler
@@ -144,7 +143,7 @@ def main():
     app.add_handler(CommandHandler("devfin", dev_fin_wrapper))
 
     button_texts = ["Monte Po", "Stesicoro", "Altri", "Menu", "← Menu", "Fontana", "Nesima", "San Nullo",
-                    "Cibali", "Milo", "Borgo", "Giuffrida", "Italia", "Galatea", "Giovanni XXIII", "Shuttle"]
+                    "Cibali", "Milo", "Borgo", "Giuffrida", "Italia", "Galatea", "Giovanni XXIII"]
     async def handle_button_wrapper(update, context):
         if context.chat_data.get('acces_mode', False):
             await acc_handlers.normal_handle_text(update, context)
@@ -152,11 +151,11 @@ def main():
             await dev_handlers.handle_button_wrapper(update, context)
     app.add_handler(MessageHandler(filters.Text(button_texts), handle_button_wrapper))
 
-    # Callbacks para SUPER y shuttle
     app.add_handler(CallbackQueryHandler(dev_handlers.aggiornare_super_callback, pattern="^aggiornare_super$"))
+    app.add_handler(CallbackQueryHandler(dev_handlers.aggiornare_shuttle_callback, pattern="^aggiornare_shuttle$"))
+    app.add_handler(CallbackQueryHandler(dev_handlers.ritornare_callback, pattern="^ritornare_"))
     app.add_handler(CallbackQueryHandler(aggiornare_callback_wrapper, pattern="^aggiornare_"))
     app.add_handler(CallbackQueryHandler(aggiornare_cabecera_callback_wrapper, pattern="^agg_cabecera_"))
-    app.add_handler(CallbackQueryHandler(dev_handlers.aggiornare_shuttle_callback, pattern="^aggiornare_shuttle$"))
 
     async def text_handler(update: Update, context):
         text = update.message.text.strip()
@@ -177,14 +176,6 @@ def main():
             else:
                 await dev_handlers.normal_handle_text(update, context)
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
-
-    # Programar la tarea diaria de la newsletter (05:30 hora de Roma)
-    app.job_queue.run_daily(
-        dev_handlers.enviar_noticia_diaria,
-        time=time(hour=5, minute=30, tzinfo=pytz.timezone('Europe/Rome')),
-        name="newsletter_fce"
-    )
-    logger.info("Tarea diaria de newsletter programada a las 05:30 Europe/Rome")
 
     logger.info("Bot avviato.")
     print("Bot funzionante... In attesa di messaggi.")
