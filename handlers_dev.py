@@ -1065,59 +1065,75 @@ async def news_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # METRO SHUTTLE
 # ============================================================================
 def get_shuttle_status(now: datetime) -> str:
+    from horarios_logic import SHUTTLE_SCHEDULES
     stops = get_shuttle_stops()
     if not stops:
         return "🚌 Servizio Shuttle non disponibile."
     if now.weekday() >= 5:
         return "🚌 Il Metro Shuttle è attivo solo dal lunedì al venerdì."
 
-    # Calcola secondi mancanti per ogni fermata
+    current_time = now.time()
+
+    # Per ogni fermata: orario schedulato precedente e prossimo
     stop_data = []
     for stop in stops:
-        next_dep = get_next_shuttle_departure(stop, now)
-        if next_dep:
-            dep_dt = CATANIA_TZ.localize(datetime.combine(now.date(), next_dep))
-            secs = (dep_dt - now).total_seconds()
+        schedule = SHUTTLE_SCHEDULES.get(stop, {}).get('weekday', [])
+        prev_t = None
+        next_t = None
+        for t in schedule:
+            if t <= current_time:
+                prev_t = t
+            else:
+                next_t = t
+                break
+        # Secondi alla prossima fermata (positivi = futuro)
+        if next_t:
+            dep_dt = CATANIA_TZ.localize(datetime.combine(now.date(), next_t))
+            secs_to_next = (dep_dt - now).total_seconds()
         else:
-            secs = None
-        stop_data.append((stop, next_dep, secs))
+            secs_to_next = None
+        # Secondi dall'ultima fermata (positivi = già passata)
+        if prev_t:
+            prev_dt = CATANIA_TZ.localize(datetime.combine(now.date(), prev_t))
+            secs_since_prev = (now - prev_dt).total_seconds()
+        else:
+            secs_since_prev = None
+        stop_data.append((stop, next_t, secs_to_next, prev_t, secs_since_prev))
 
     lines = ["🚌 **Metro Shuttle – Monitoraggio in tempo reale**\n"]
-    for i, (stop, next_dep, secs) in enumerate(stop_data):
-        if secs is None:
-            tag = "—"
-        elif secs <= 0:
-            tag = "🚌 In fermata"
-        elif secs <= 90:
-            tag = f"🚌 {int(secs//60):02d}:{int(secs%60):02d}"
-        elif secs <= 600:
-            tag = f"🕐 {int(secs//60):02d}:{int(secs%60):02d}"
-        else:
-            mins = int(secs // 60)
-            if next_dep:
-                tag = f"alle {next_dep.strftime('%H:%M')} ({mins} min)"
-            else:
-                tag = "—"
+    N = len(stop_data)
 
-        if secs is not None and secs <= 0:
+    for i, (stop, next_t, secs_to_next, prev_t, secs_since_prev) in enumerate(stop_data):
+        # --- Riga della fermata ---
+        if secs_to_next is not None and secs_to_next <= 30:
+            # Bus in arrivo entro 30s: countdown
+            s = int(secs_to_next)
+            tag = f"🔻 {s//60:02d}:{s%60:02d}"
             lines.append(f"⚪️ **{stop}**  {tag}")
-        elif secs is not None and secs <= 90:
-            lines.append(f"⚪️ **{stop}**  {tag}")
+        elif next_t is not None:
+            lines.append(f"⚪️ {stop}  {next_t.strftime('%H:%M')}")
         else:
-            lines.append(f"⚪️ {stop}  {tag}")
+            lines.append(f"⚪️ {stop}  —")
 
-        if i < len(stop_data) - 1:
-            # Mostra bus nel tratto se è tra questa e la prossima fermata
-            curr_secs = secs if secs is not None else 99999
-            next_secs = stop_data[i+1][2] if stop_data[i+1][2] is not None else 99999
-            if curr_secs <= 0 < next_secs:
-                lines.append("▫️  🚌")
+        # --- Tratto verso la prossima fermata ---
+        if i < N - 1:
+            next_stop_secs = stop_data[i+1][2]  # secs_to_next della fermata successiva
+
+            # Il bus è nel tratto se:
+            # - ha già passato questa fermata (secs_since_prev <= 30, ovvero prev_t recente)
+            # - e non è ancora alla prossima (next_stop_secs > 30 o None)
+            bus_in_tratto = (
+                secs_since_prev is not None and secs_since_prev <= 30 and
+                (next_stop_secs is None or next_stop_secs > 30)
+            )
+            if bus_in_tratto:
+                lines.append("▫️  🔻")
             else:
                 lines.append("▫️")
 
     return "\n".join(lines)
 
-async def auto_update_shuttle(context, chat_id, message_id, cycles=60, interval=3):
+async def auto_update_shuttle(context, chat_id, message_id, cycles=40, interval=3):
     last_sent_msg = None
     for ciclo in range(1, cycles + 1):
         for _ in range(interval):
