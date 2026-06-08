@@ -1100,15 +1100,18 @@ def get_shuttle_status(now: datetime) -> str:
             secs_since_prev = None
         stop_data.append((stop, next_t, secs_to_next, prev_t, secs_since_prev))
 
+    # Parpadeo: alterna 🔻 y ⬇️ según segundos actuales (par/impar)
+    blink = now.second % 2 == 0
+    bus_icon = "🔻" if blink else "⬇️"
+
     lines = ["🚌 **Metro Shuttle – Monitoraggio in tempo reale**\n"]
     N = len(stop_data)
 
     for i, (stop, next_t, secs_to_next, prev_t, secs_since_prev) in enumerate(stop_data):
         # --- Riga della fermata ---
         if secs_to_next is not None and secs_to_next <= 30:
-            # Bus in arrivo entro 30s: countdown
             s = int(secs_to_next)
-            tag = f"🔻 {s//60:02d}:{s%60:02d}"
+            tag = f"{bus_icon} {s//60:02d}:{s%60:02d}"
             lines.append(f"⚪️ **{stop}**  {tag}")
         elif next_t is not None:
             lines.append(f"⚪️ {stop}  {next_t.strftime('%H:%M')}")
@@ -1117,17 +1120,14 @@ def get_shuttle_status(now: datetime) -> str:
 
         # --- Tratto verso la prossima fermata ---
         if i < N - 1:
-            next_stop_secs = stop_data[i+1][2]  # secs_to_next della fermata successiva
-
-            # Il bus è nel tratto se:
-            # - ha già passato questa fermata (secs_since_prev <= 30, ovvero prev_t recente)
-            # - e non è ancora alla prossima (next_stop_secs > 30 o None)
+            next_stop_secs = stop_data[i+1][2]
+            # Bus nel tratto: prev_t già passata E next_t ancora da venire
             bus_in_tratto = (
-                secs_since_prev is not None and secs_since_prev <= 30 and
-                (next_stop_secs is None or next_stop_secs > 30)
+                secs_since_prev is not None and secs_since_prev > 0 and
+                next_stop_secs is not None and next_stop_secs > 0
             )
             if bus_in_tratto:
-                lines.append("▫️  🔻")
+                lines.append(f"▫️  {bus_icon}")
             else:
                 lines.append("▫️")
 
