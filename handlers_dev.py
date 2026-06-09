@@ -1103,16 +1103,26 @@ def get_shuttle_status(now: datetime) -> str:
     # Parpadeo: alterna 🔻 y ⬇️ ogni secondo
     bus_icon = "🔻" if now.second % 2 == 0 else "⬇️"
 
-    # Trovare l'UNICO tratto dove si trova il bus ora:
-    # confronto per-corsa: la corsa j ha passato fermata i se sched_i[j] <= now
-    # e non è ancora alla fermata i+1 se sched_i1[j] > now
+    # Trovare l'UNICO tratto dove si trova il bus:
+    # corsa j è nel tratto i→i+1 se:
+    #   sched_i[j] <= now  (ha già passato la fermata i)
+    #   sched_i1[j] > now  (non è ancora alla fermata i+1)
+    #   sched_i1[j] - now > 30s  (non è in arrivo imminente → quello va sulla fermata)
     bus_tratto = -1
     for i in range(len(stop_data) - 1):
         sched_i  = SHUTTLE_SCHEDULES.get(stop_data[i][0],   {}).get('weekday', [])
         sched_i1 = SHUTTLE_SCHEDULES.get(stop_data[i+1][0], {}).get('weekday', [])
         for j in range(min(len(sched_i), len(sched_i1))):
-            if sched_i[j] <= current_time < sched_i1[j]:
-                bus_tratto = i
+            t_i  = sched_i[j]
+            t_i1 = sched_i1[j]
+            if t_i <= current_time < t_i1:
+                from datetime import datetime as _dt
+                dt_i1 = CATANIA_TZ.localize(_dt.combine(now.date(), t_i1))
+                secs_to_i1 = (dt_i1 - now).total_seconds()
+                # Se mancano >30s alla prossima fermata: bus nel tratto
+                # Se mancano ≤30s: bus già in arrivo alla fermata, non nel tratto
+                if secs_to_i1 > 30:
+                    bus_tratto = i
                 break
         if bus_tratto >= 0:
             break
