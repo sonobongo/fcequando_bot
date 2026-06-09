@@ -1100,9 +1100,22 @@ def get_shuttle_status(now: datetime) -> str:
             secs_since_prev = None
         stop_data.append((stop, next_t, secs_to_next, prev_t, secs_since_prev))
 
-    # Parpadeo: alterna 🔻 y ⬇️ según segundos actuales (par/impar)
-    blink = now.second % 2 == 0
-    bus_icon = "🔻" if blink else "⬇️"
+    # Parpadeo: alterna 🔻 y ⬇️ ogni secondo
+    bus_icon = "🔻" if now.second % 2 == 0 else "⬇️"
+
+    # Trovare l'UNICO tratto dove si trova il bus ora:
+    # confronto per-corsa: la corsa j ha passato fermata i se sched_i[j] <= now
+    # e non è ancora alla fermata i+1 se sched_i1[j] > now
+    bus_tratto = -1
+    for i in range(len(stop_data) - 1):
+        sched_i  = SHUTTLE_SCHEDULES.get(stop_data[i][0],   {}).get('weekday', [])
+        sched_i1 = SHUTTLE_SCHEDULES.get(stop_data[i+1][0], {}).get('weekday', [])
+        for j in range(min(len(sched_i), len(sched_i1))):
+            if sched_i[j] <= current_time < sched_i1[j]:
+                bus_tratto = i
+                break
+        if bus_tratto >= 0:
+            break
 
     lines = ["🚌 **Metro Shuttle – Monitoraggio in tempo reale**\n"]
     N = len(stop_data)
@@ -1118,15 +1131,9 @@ def get_shuttle_status(now: datetime) -> str:
         else:
             lines.append(f"⚪️ {stop}  —")
 
-        # --- Tratto verso la prossima fermata ---
+        # --- Tratto: solo dove si trova il bus ---
         if i < N - 1:
-            next_stop_secs = stop_data[i+1][2]
-            # Bus nel tratto: prev_t già passata E next_t ancora da venire
-            bus_in_tratto = (
-                secs_since_prev is not None and secs_since_prev > 0 and
-                next_stop_secs is not None and next_stop_secs > 0
-            )
-            if bus_in_tratto:
+            if i == bus_tratto:
                 lines.append(f"▫️  {bus_icon}")
             else:
                 lines.append("▫️")
