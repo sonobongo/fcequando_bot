@@ -1103,28 +1103,34 @@ def get_shuttle_status(now: datetime) -> str:
     # Parpadeo: alterna 🔻 y ⬇️ ogni secondo
     bus_icon = "🔻" if now.second % 2 == 0 else "⬇️"
 
-    # Trovare l'UNICO tratto dove si trova il bus:
-    # corsa j è nel tratto i→i+1 se:
-    #   sched_i[j] <= now  (ha già passato la fermata i)
-    #   sched_i1[j] > now  (non è ancora alla fermata i+1)
-    #   sched_i1[j] - now > 30s  (non è in arrivo imminente → quello va sulla fermata)
-    bus_tratto = -1
+    # Prima fermata = punto di partenza (Stazione Milo)
+    # Ultima fermata = punto di arrivo (Arrivo Milo)
+    # Trovare il tratto dove si trova il bus confrontando gli orari per corsa.
+    # Se il bus è in arrivo imminente (≤30s) alla fermata i+1, il triangolo
+    # va sulla fermata i+1, non nel tratto.
+    # Se non c'è nessuna corsa attiva (bus fermo/tra corse), mostrare il
+    # triangolo nel tratto 0 (prima del primo stop) per indicare prossima partenza.
+
+    bus_tratto = None   # None = bus fermo/in attesa alla prima fermata
+    from datetime import datetime as _dt
+
     for i in range(len(stop_data) - 1):
         sched_i  = SHUTTLE_SCHEDULES.get(stop_data[i][0],   {}).get('weekday', [])
         sched_i1 = SHUTTLE_SCHEDULES.get(stop_data[i+1][0], {}).get('weekday', [])
+        found = False
         for j in range(min(len(sched_i), len(sched_i1))):
             t_i  = sched_i[j]
             t_i1 = sched_i1[j]
             if t_i <= current_time < t_i1:
-                from datetime import datetime as _dt
                 dt_i1 = CATANIA_TZ.localize(_dt.combine(now.date(), t_i1))
                 secs_to_i1 = (dt_i1 - now).total_seconds()
-                # Se mancano >30s alla prossima fermata: bus nel tratto
-                # Se mancano ≤30s: bus già in arrivo alla fermata, non nel tratto
                 if secs_to_i1 > 30:
-                    bus_tratto = i
+                    bus_tratto = i   # bus nel tratto
+                # se ≤30s: bus in arrivo alla fermata, bus_tratto resta None
+                # e la fermata mostrerà il countdown
+                found = True
                 break
-        if bus_tratto >= 0:
+        if found:
             break
 
     lines = ["🚌 **Metro Shuttle – Monitoraggio in tempo reale**\n"]
@@ -1141,9 +1147,13 @@ def get_shuttle_status(now: datetime) -> str:
         else:
             lines.append(f"⚪️ {stop}  —")
 
-        # --- Tratto: solo dove si trova il bus ---
+        # --- Tratto ---
         if i < N - 1:
-            if i == bus_tratto:
+            if bus_tratto == i:
+                # Bus attivamente in questo tratto
+                lines.append(f"▫️  {bus_icon}")
+            elif bus_tratto is None and i == 0:
+                # Nessuna corsa attiva: bus in attesa/tra corse, mostra alla prima partenza
                 lines.append(f"▫️  {bus_icon}")
             else:
                 lines.append("▫️")
