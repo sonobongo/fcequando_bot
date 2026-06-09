@@ -1105,14 +1105,14 @@ def get_shuttle_status(now: datetime) -> str:
 
     from datetime import datetime as _dt
 
-    # Trovare il tratto esatto dove si trova il bus (corsa j nel tratto i→i+1):
-    # sched_i[j] <= now < sched_i1[j]
-    # Se faltan ≤30s alla prossima fermata → triangolo sulla fermata, non nel tratto.
-    # Se nessuna corsa attiva → usare il tratto prima della prossima partenza.
-    # Il triangolo NON sparisce MAI.
+    # Trovare TUTTI i tratti dove ci sono bus attivi (più veicoli contemporaneamente).
+    # Per ogni tratto i→i+1, cercare una corsa j tale che:
+    #   sched_i[j] <= now < sched_i1[j]
+    # Se secs_to_i1 <= 30: il triangolo va sulla fermata i+1 (arrivo imminente).
+    # Se secs_to_i1 > 30: il triangolo va nel tratto.
 
-    bus_tratto = -1       # tratto dove sta il bus
-    bus_fermata = -1      # fermata dove sta arrivando (≤30s)
+    bus_tratti = set()    # tratti con bus in transito
+    bus_fermate = set()   # fermate con bus in arrivo (≤30s)
 
     for i in range(len(stop_data) - 1):
         sched_i  = SHUTTLE_SCHEDULES.get(stop_data[i][0],   {}).get('weekday', [])
@@ -1122,29 +1122,26 @@ def get_shuttle_status(now: datetime) -> str:
                 dt_i1 = CATANIA_TZ.localize(_dt.combine(now.date(), sched_i1[j]))
                 secs = (dt_i1 - now).total_seconds()
                 if secs <= 30:
-                    bus_fermata = i + 1   # arrivando alla fermata successiva
+                    bus_fermate.add(i + 1)
                 else:
-                    bus_tratto = i        # nel tratto
-                break
-        if bus_tratto >= 0 or bus_fermata >= 0:
-            break
+                    bus_tratti.add(i)
 
-    # Se non trovato (tra corse): trovare il tratto prima della prossima partenza
-    if bus_tratto < 0 and bus_fermata < 0:
+    # Se nessun bus trovato (tra corse): mostrare al primo tratto
+    if not bus_tratti and not bus_fermate:
         sched_0 = SHUTTLE_SCHEDULES.get(stop_data[0][0], {}).get('weekday', [])
         for t in sched_0:
             if t > current_time:
-                bus_tratto = 0   # bus in attesa, mostrare al primo tratto
+                bus_tratti.add(0)
                 break
-        if bus_tratto < 0:
-            bus_tratto = len(stop_data) - 2   # ultima corsa finita, ultimo tratto
+        if not bus_tratti:
+            bus_tratti.add(len(stop_data) - 2)
 
     lines = ["🚌 **Metro Shuttle – Monitoraggio in tempo reale**\n"]
     N = len(stop_data)
 
     for i, (stop, next_t, secs_to_next, prev_t, secs_since_prev) in enumerate(stop_data):
         # --- Riga della fermata ---
-        if i == bus_fermata:
+        if i in bus_fermate:
             s = max(0, int(secs_to_next)) if secs_to_next is not None else 0
             tag = f"{bus_icon} {s//60:02d}:{s%60:02d}"
             lines.append(f"⚪️ **{stop}**  {tag}")
@@ -1153,9 +1150,9 @@ def get_shuttle_status(now: datetime) -> str:
         else:
             lines.append(f"⚪️ {stop}  —")
 
-        # --- Tratto ---
+        # --- Tratto: triangolo solo nei tratti con bus ---
         if i < N - 1:
-            if i == bus_tratto:
+            if i in bus_tratti:
                 lines.append(f"▫️  {bus_icon}")
             else:
                 lines.append("▫️")
