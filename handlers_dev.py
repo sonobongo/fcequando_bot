@@ -23,15 +23,34 @@ keyboard_main = ReplyKeyboardMarkup(
     resize_keyboard=True, one_time_keyboard=False
 )
 
-keyboard_altri = ReplyKeyboardMarkup(
-    [
-        ["Fontana", "Nesima", "San Nullo"],
-        ["Cibali", "Milo", "Borgo"],
-        ["Giuffrida", "Italia", "Galatea"],
-        ["Giovanni XXIII", "Shuttle", "← Menu"]
-    ],
-    resize_keyboard=True, one_time_keyboard=False
-)
+def get_keyboard_altri(now=None):
+    """Shuttle visibile solo lun-ven, o dom sera dalle 22:30 (ultima riga senza shuttle il weekend)."""
+    show_shuttle = False
+    if now is not None:
+        wd = now.weekday()  # 0=lun, 4=ven, 5=sab, 6=dom
+        h, m = now.hour, now.minute
+        time_mins = h * 60 + m
+        # Attivo lun(0)-ven(4) prima delle 22:30
+        if 0 <= wd <= 3:
+            show_shuttle = True
+        elif wd == 4:  # venerdì
+            show_shuttle = time_mins < 22 * 60 + 30
+        elif wd == 6:  # domenica
+            show_shuttle = time_mins >= 22 * 60 + 30
+        # sabato: mai
+    last_row = ["Giovanni XXIII", "Shuttle", "← Menu"] if show_shuttle else ["Giovanni XXIII", "← Menu"]
+    return ReplyKeyboardMarkup(
+        [
+            ["Fontana", "Nesima", "San Nullo"],
+            ["Cibali", "Milo", "Borgo"],
+            ["Giuffrida", "Italia", "Galatea"],
+            last_row
+        ],
+        resize_keyboard=True, one_time_keyboard=False
+    )
+
+# Compatibilità: keyboard_altri statico (usato in posti senza contesto ora)
+keyboard_altri = get_keyboard_altri()
 
 BOTON_TO_KEY = {
     "Monte Po": "montepo", "Stesicoro": "stesicoro", "Fontana": "fontana",
@@ -724,9 +743,9 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
         msg_agata = get_sant_agata_message("Montepo", now)
         img_station = get_station_image(estacion_key, now)
         if img_station:
-            msg1 = await update.message.reply_photo(photo=img_station, caption=f"🚇 {nombre}\n\n{msg_agata}", parse_mode='Markdown', reply_markup=keyboard_main if return_to_main else keyboard_altri)
+            msg1 = await update.message.reply_photo(photo=img_station, caption=f"🚇 {nombre}\n\n{msg_agata}", parse_mode='Markdown', reply_markup=keyboard_main if return_to_main else get_keyboard_altri(now))
         else:
-            msg1 = await update.message.reply_text(f"🚇 {nombre}\n\n{msg_agata}", parse_mode='Markdown', reply_markup=keyboard_main if return_to_main else keyboard_altri)
+            msg1 = await update.message.reply_text(f"🚇 {nombre}\n\n{msg_agata}", parse_mode='Markdown', reply_markup=keyboard_main if return_to_main else get_keyboard_altri(now))
         context.chat_data['main_msg_id'] = msg1.message_id
         await store_id(context, msg1)
         return
@@ -755,9 +774,9 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
         try:
             img = get_station_image(estacion_key, now)
             if img:
-                msg1 = await update.message.reply_photo(photo=img, caption=msg, parse_mode='Markdown', reply_markup=keyboard_main if return_to_main else keyboard_altri)
+                msg1 = await update.message.reply_photo(photo=img, caption=msg, parse_mode='Markdown', reply_markup=keyboard_main if return_to_main else get_keyboard_altri(now))
             else:
-                msg1 = await update.message.reply_text(msg, parse_mode='Markdown', reply_markup=keyboard_main if return_to_main else keyboard_altri)
+                msg1 = await update.message.reply_text(msg, parse_mode='Markdown', reply_markup=keyboard_main if return_to_main else get_keyboard_altri(now))
             context.chat_data['main_msg_id'] = msg1.message_id
             await store_id(context, msg1)
         except Exception as e:
@@ -794,9 +813,9 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
     img_station = get_station_image(estacion_key, now)
     
     if img_station:
-        msg1 = await update.message.reply_photo(photo=img_station, caption=permanent_caption, reply_markup=keyboard_main if return_to_main else keyboard_altri)
+        msg1 = await update.message.reply_photo(photo=img_station, caption=permanent_caption, reply_markup=keyboard_main if return_to_main else get_keyboard_altri(now))
     else:
-        msg1 = await update.message.reply_text(permanent_caption, reply_markup=keyboard_main if return_to_main else keyboard_altri)
+        msg1 = await update.message.reply_text(permanent_caption, reply_markup=keyboard_main if return_to_main else get_keyboard_altri(now))
     context.chat_data['main_msg_id'] = msg1.message_id
     await store_id(context, msg1)
 
@@ -868,7 +887,7 @@ async def cmd_giovanni(update, context):
     context.chat_data['last_station'] = "giovanni"
     await send_station_response(update, context, "giovanni", return_to_main=False)
 async def cmd_altri(update, context):
-    await update.message.reply_text("⬇️ Altre stazioni:", reply_markup=keyboard_altri)
+    await update.message.reply_text("⬇️ Altre stazioni:", reply_markup=get_keyboard_altri(get_simulated_now(context)))
 
 async def start(update, context):
     user = update.effective_user
@@ -1091,19 +1110,23 @@ def get_shuttle_status(now: datetime) -> str:
             else:
                 next_t = t
                 break
-        # Secondi alla prossima fermata (positivi = futuro)
         if next_t:
             dep_dt = CATANIA_TZ.localize(datetime.combine(now.date(), next_t))
             secs_to_next = (dep_dt - now).total_seconds()
         else:
             secs_to_next = None
-        # Secondi dall'ultima fermata (positivi = già passata)
         if prev_t:
             prev_dt = CATANIA_TZ.localize(datetime.combine(now.date(), prev_t))
             secs_since_prev = (now - prev_dt).total_seconds()
         else:
             secs_since_prev = None
         stop_data.append((stop, next_t, secs_to_next, prev_t, secs_since_prev))
+
+    # Trovare fermate dove il bus è appena passato (≤30s fa)
+    appena_passato = set()
+    for i, (stop, next_t, secs_to_next, prev_t, secs_since_prev) in enumerate(stop_data):
+        if secs_since_prev is not None and 0 < secs_since_prev <= 30:
+            appena_passato.add(i)
 
     # Parpadeo: alterna 🔻 y ⬇️ ogni secondo
     bus_icon = "🔻" if now.second % 2 == 0 else "⬇️"
@@ -1150,6 +1173,8 @@ def get_shuttle_status(now: datetime) -> str:
             s = max(0, int(secs_to_next)) if secs_to_next is not None else 0
             tag = f"{bus_icon} {s//60:02d}:{s%60:02d}"
             lines.append(f"⚪️ **{stop}**  {tag}")
+        elif i in appena_passato:
+            lines.append(f"⚪️ **{stop}**  _Appena passato_")
         elif next_t is not None:
             lines.append(f"⚪️ {stop}  {next_t.strftime('%H:%M')}")
         else:
