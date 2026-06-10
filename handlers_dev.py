@@ -1072,6 +1072,11 @@ def get_shuttle_status(now: datetime) -> str:
     if now.weekday() >= 5:
         return "🚌 Il Metro Shuttle è attivo solo dal lunedì al venerdì."
 
+    # Assicurarsi che now sia in timezone locale (Europe/Rome)
+    if now.tzinfo is None:
+        now = CATANIA_TZ.localize(now)
+    else:
+        now = now.astimezone(CATANIA_TZ)
     current_time = now.time()
 
     # Per ogni fermata: orario schedulato precedente e prossimo
