@@ -11,7 +11,7 @@ from datetime import datetime, timedelta, time
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove
 from telegram.ext import ContextTypes
 from horarios_logic import *
-from horarios_logic import CATANIA_TZ, get_extension_message, get_shuttle_stops, get_next_shuttle_departure
+from horarios_logic import CATANIA_TZ, get_extension_message, get_shuttle_stops, get_next_shuttle_departure, get_motta_trips
 
 logger = logging.getLogger(__name__)
 
@@ -104,7 +104,7 @@ async def store_id(context, message):
             context.chat_data['all_msg_ids'].append(message.message_id)
 
 # ============================================================================
-# DETENER ACTUALIZACIÓN AUTOMÁTICA DE SUPER
+# DETENER ACTUALIZACIÓN AUTOMÁTICA DE SUPER / SHUTTLE
 # ============================================================================
 def stop_super_update(context):
     if 'super_task' in context.chat_data:
@@ -919,6 +919,7 @@ async def help_command(update, context):
         "/grazie - Info sul bot\n"
         "super - Mostra treni in arrivo in ≤59 secondi\n"
         "Shuttle - Orari del Metro Shuttle (bus)\n"
+        "Motta - Monitor bus Misterbianco-Motta\n"
         "Oppure premi i pulsanti.",
         reply_markup=keyboard_main
     )
@@ -1081,7 +1082,7 @@ async def news_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(mensaje, parse_mode='HTML', disable_web_page_preview=False)
 
 # ============================================================================
-# METRO SHUTTLE
+# METRO SHUTTLE (servicio de autobús con animación en tiempo real)
 # ============================================================================
 def get_shuttle_status(now: datetime) -> str:
     from horarios_logic import SHUTTLE_SCHEDULES
@@ -1128,17 +1129,12 @@ def get_shuttle_status(now: datetime) -> str:
         if secs_since_prev is not None and 0 < secs_since_prev <= 30:
             appena_passato.add(i)
 
-    # Parpadeo: alterna 🔻 y ⬇️ ogni secondo
+    # Parpadeo: alterna 🔻 e ⬇️ ogni secondo
     bus_icon = "🔻" if now.second % 2 == 0 else "⬇️"
 
     from datetime import datetime as _dt
 
     # Trovare TUTTI i tratti dove ci sono bus attivi (più veicoli contemporaneamente).
-    # Per ogni tratto i→i+1, cercare una corsa j tale che:
-    #   sched_i[j] <= now < sched_i1[j]
-    # Se secs_to_i1 <= 30: il triangolo va sulla fermata i+1 (arrivo imminente).
-    # Se secs_to_i1 > 30: il triangolo va nel tratto.
-
     bus_tratti = set()    # tratti con bus in transito
     bus_fermate = set()   # fermate con bus in arrivo (≤30s)
 
@@ -1254,6 +1250,88 @@ async def send_shuttle_response(update: Update, context: ContextTypes.DEFAULT_TY
     context.chat_data['shuttle_active'] = True
     task = asyncio.create_task(auto_update_shuttle(context, chat_id, message_id))
     context.chat_data['shuttle_task'] = task
+
+# ============================================================================
+# LÍNEA MOTTA (Misterbianco-Motta S.Anastasia) – monitor simple
+# ============================================================================
+def get_motta_status(now: datetime) -> str:
+    trips = get_motta_trips(now)
+    if not trips:
+        return "🚌 Servizio Motta non disponibile (solo feriali)."
+
+    current_time = now.time()
+    stops = ['MTP', 'MSB', 'MSA', 'MSB2', 'MTP2']
+    labels = ['MTP', 'MSB', 'MSA', 'MSB', 'MTP']
+    active_trip = None
+    # Buscar el viaje activo (el que aún no ha llegado a MTP2) y el viaje anterior
+    for i, trip in enumerate(trips):
+        dep_time = trip.get('MTP')
+        arr_time = trip.get('MTP2')
+        if dep_time is None or arr_time is None:
+            continue
+        if dep_time <= current_time < arr_time:
+            active_trip = trip
+            break
+    if active_trip is None:
+        # Si no hay viaje activo, buscar el próximo viaje para mostrar sus horarios (autobús en salida)
+        for trip in trips:
+            if trip.get('MTP') and trip['MTP'] > current_time:
+                active_trip = trip
+                break
+        # Si aún no hay, mostrar el último viaje del día
+        if active_trip is None and trips:
+            active_trip = trips[-1]
+
+    # Determinar posición del bus
+    bus_pos = -1  # -1 = antes de MTP, 0 = en MTP, 0.5 = entre MTP y MSB, etc.
+    for i in range(len(stops)-1):
+        t1 = active_trip[stops[i]]
+        t2 = active_trip[stops[i+1]]
+        if t1 is None or t2 is None:
+            continue
+        # Convertir a datetime para calcular diferencia
+        t1_dt = datetime.combine(now.date(), t1)
+        t2_dt = datetime.combine(now.date(), t2)
+        now_dt = datetime.combine(now.date(), current_time)
+        if t1 <= current_time < t2:
+            seg_total = (t2_dt - t1_dt).total_seconds()
+            seg_transcurridos = (now_dt - t1_dt).total_seconds()
+            frac = seg_transcurridos / seg_total if seg_total > 0 else 0
+            bus_pos = i + frac
+            break
+        elif current_time == t2:
+            bus_pos = i + 1
+            break
+    else:
+        if current_time < active_trip['MTP']:
+            bus_pos = -1
+        elif current_time >= active_trip['MTP2']:
+            bus_pos = len(stops) - 1
+
+    # Construir el diagrama
+    emoji_line = ""
+    for i in range(5):
+        if i > 0:
+            # Segmento entre paradas
+            if bus_pos != -1 and i - 1 < bus_pos < i:
+                emoji_line += "🚍"
+            else:
+                emoji_line += "▫"
+        # Parada
+        if bus_pos != -1 and abs(bus_pos - i) < 0.01:
+            emoji_line += "🚍"
+        else:
+            emoji_line += "⚪"
+    lines = [emoji_line]
+    lines.append("MTP        MSB        MSA        MSB        MTP")
+    times = [active_trip[s].strftime('%H:%M') if active_trip[s] else '--:--' for s in stops]
+    lines.append("  ".join(times))
+    return "\n".join(lines)
+
+async def send_motta_response(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    now = get_simulated_now(context)
+    msg = get_motta_status(now)
+    await update.message.reply_text(msg)
 
 # ============================================================================
 # FUNCIONES PARA "SUPER" - Tracking de posición de trenes en tiempo real
@@ -1613,6 +1691,11 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
     # ========== RESPUESTA A "shuttle" (palabra exacta) ==========
     if texto_lower == "shuttle":
         await send_shuttle_response(update, context)
+        return
+    
+    # ========== RESPUESTA A "motta" (palabra exacta) ==========
+    if texto_lower == "motta":
+        await send_motta_response(update, context)
         return
     
     # ========== RESPUESTA A PALABRAS CLAVE (about, grazie) ==========
