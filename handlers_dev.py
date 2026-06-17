@@ -104,7 +104,7 @@ async def store_id(context, message):
             context.chat_data['all_msg_ids'].append(message.message_id)
 
 # ============================================================================
-# DETENER ACTUALIZACIÓN AUTOMÁTICA DE SUPER / SHUTTLE
+# DETENER ACTUALIZACIÓN AUTOMÁTICA DE SUPER
 # ============================================================================
 def stop_super_update(context):
     if 'super_task' in context.chat_data:
@@ -919,7 +919,6 @@ async def help_command(update, context):
         "/grazie - Info sul bot\n"
         "super - Mostra treni in arrivo in ≤59 secondi\n"
         "Shuttle - Orari del Metro Shuttle (bus)\n"
-        "Motta - Monitor bus Misterbianco-Motta\n"
         "Oppure premi i pulsanti.",
         reply_markup=keyboard_main
     )
@@ -1285,10 +1284,9 @@ def get_motta_status(now: datetime) -> str:
         if active_trip is None and trips:
             active_trip = trips[-1]
 
-    # Determinar posición del bus (valor fraccionario entre 0 y 4)
+    # Determinar posición del bus (fracción entre 0 y 4)
     bus_pos = -1
     if active_trip['MSB2'] is not None:
-        # Viajes con todas las paradas
         for i in range(len(stops)-1):
             t1 = active_trip[stops[i]]
             t2 = active_trip[stops[i+1]]
@@ -1312,7 +1310,6 @@ def get_motta_status(now: datetime) -> str:
             elif current_time >= active_trip['MTP2']:
                 bus_pos = len(stops) - 1
     else:
-        # Primer viaje sin MSB2
         segmentos = [(0, 1), (1, 2), (2, 4)]
         for idx1, idx2 in segmentos:
             t1 = active_trip[stops[idx1]]
@@ -1329,7 +1326,7 @@ def get_motta_status(now: datetime) -> str:
                 if idx2 - idx1 == 1:
                     bus_pos = idx1 + frac
                 else:
-                    bus_pos = 2 + frac * 2   # reparte visualmente entre 2 y 4
+                    bus_pos = 2 + frac * 2
                 break
             elif current_time == t2:
                 bus_pos = idx2
@@ -1343,15 +1340,12 @@ def get_motta_status(now: datetime) -> str:
     # Construir línea visual (tramos siempre de 3 caracteres)
     parts = []
     for i in range(5):
-        # Parada
         if bus_pos != -1 and abs(bus_pos - i) < 0.01:
             parts.append("🚍")
         else:
             parts.append("⚪")
-        # Tramo (3 caracteres fijos)
         if i < 4:
             if bus_pos != -1 and i < bus_pos < i+1:
-                # El bus está dentro de este tramo
                 tercio = int((bus_pos - i) * 3)
                 if tercio > 2:
                     tercio = 2
@@ -1365,18 +1359,15 @@ def get_motta_status(now: datetime) -> str:
     lines = [emoji_line]
     lines.append("MTP        MSB          MSA         MSB          MTP")
 
-    # Horarios con el espaciado exacto
     t1 = active_trip['MTP'].strftime('%H:%M') if active_trip['MTP'] else '--:--'
     t2 = active_trip['MSB'].strftime('%H:%M') if active_trip['MSB'] else '--:--'
     t3 = active_trip['MSA'].strftime('%H:%M') if active_trip['MSA'] else '--:--'
     t4 = active_trip['MSB2'].strftime('%H:%M') if active_trip['MSB2'] else '--:--'
     t5 = active_trip['MTP2'].strftime('%H:%M') if active_trip['MTP2'] else '--:--'
-
     times_line = t1.ljust(11) + t2.ljust(14) + t3.ljust(14) + t4.ljust(14) + t5
     lines.append(times_line)
 
     return "\n".join(lines)
-
 
 async def send_motta_response(update: Update, context: ContextTypes.DEFAULT_TYPE):
     now = get_simulated_now(context)
@@ -1385,7 +1376,6 @@ async def send_motta_response(update: Update, context: ContextTypes.DEFAULT_TYPE
         InlineKeyboardButton("🔄 Aggiornare", callback_data="aggiornare_motta")
     ]])
     await update.message.reply_text(msg, reply_markup=keyboard, parse_mode='Markdown')
-
 
 async def aggiornare_motta_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -1402,7 +1392,8 @@ async def aggiornare_motta_callback(update: Update, context: ContextTypes.DEFAUL
         )
     except Exception:
         pass
-        # ============================================================================
+
+# ============================================================================
 # LÍNEA HUMANITAS (Nesima - Humanitas - Centro Sicilia) – monitor simple
 # ============================================================================
 def get_humanitas_status(now: datetime) -> str:
@@ -1486,9 +1477,7 @@ def get_humanitas_status(now: datetime) -> str:
     emoji_line = "".join(parts)
 
     lines = [emoji_line]
-    # Nombres con los anchos indicados
     lines.append(f"{'NES':<16}{'HUM':<18}{'CEN':<13}{'NES'}")
-    # Horarios
     t1 = active_trip['NES'].strftime('%H:%M') if active_trip['NES'] else '--:--'
     t2 = active_trip['HUM'].strftime('%H:%M') if active_trip['HUM'] else '--:--'
     t3 = active_trip['CEN'].strftime('%H:%M') if active_trip['CEN'] else '--:--'
@@ -1496,7 +1485,6 @@ def get_humanitas_status(now: datetime) -> str:
     lines.append(f"{t1:<16}{t2:<18}{t3:<13}{t4}")
 
     return "\n".join(lines)
-
 
 async def send_humanitas_response(update: Update, context: ContextTypes.DEFAULT_TYPE):
     now = get_simulated_now(context)
@@ -1518,7 +1506,6 @@ async def send_humanitas_response(update: Update, context: ContextTypes.DEFAULT_
     msg2 = await update.message.reply_text(msg2_text, reply_markup=keyboard, parse_mode='Markdown')
     if msg2:
         await store_id(context, msg2)
-
 
 async def aggiornare_humanitas_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -1896,19 +1883,38 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await send_shuttle_response(update, context)
         return
     
-       # ========== RESPUESTA A "motta" (palabra exacta) ==========
+    # ========== RESPUESTA A "motta" (palabra exacta) ==========
     if texto_lower == "motta":
         await send_motta_response(update, context)
         return
-
+    
     # ========== RESPUESTA A "humanitas" (palabra exacta) ==========
     if texto_lower == "humanitas":
         await send_humanitas_response(update, context)
         return
 
-    # ========== RESPUESTA A "shuttle" (palabra exacta) ==========
-    if texto_lower == "shuttle":
-        await send_shuttle_response(update, context)
+    # ========== RESPUESTA A "adhumanitas" (foto fija) ==========
+    if texto_lower == "adhumanitas":
+        img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/PUBLI_CS.png"
+        caption = "Prossime partenze autobus, Nesima - Humanitas - Centro Sicilia:"
+        try:
+            await update.message.reply_photo(photo=img_url, caption=caption, parse_mode='Markdown')
+        except Exception:
+            await update.message.reply_text(caption, parse_mode='Markdown')
+        return
+    
+    # ========== RESPUESTA A PALABRAS CLAVE (about, grazie) ==========
+    texto_lower = texto.lower()
+    texto_normalized = re.sub(r'^/', '', texto_lower)
+    texto_normalized = re.sub(r'\.$', '', texto_normalized)
+    if texto_normalized in ["about", "grazie"]:
+        img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/FOTOMASTER.jpg"
+        caption = "Chatbot sviluppato con grande impegno da Àlex Naranjo. Se ti piace, condividilo con i tuoi amici e familiari. https://t.me/FCEQuando_bot"
+        try:
+            result = await update.message.reply_photo(photo=img_url, caption=caption, parse_mode='Markdown')
+        except Exception:
+            result = await update.message.reply_text(caption, parse_mode='Markdown')
+        await store_id(context, result)
         return
     
     # ========== RESPUESTA A "super" (solo palabra exacta) ==========
@@ -2166,6 +2172,9 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     ALIASES = {
         "misterbianco": "montepo",
+        "humanitas": "nesima",
+        "centro sicilia": "nesima",
+        "centrosicilia": "nesima",
         "mister bianco": "montepo",
         "mr bianco": "montepo",
         "mr. bianco": "montepo",
