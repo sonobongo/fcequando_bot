@@ -1881,26 +1881,19 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await send_shuttle_response(update, context)
         return
     
-    # ========== RESPUESTA A "motta" (palabra exacta) ==========
+       # ========== RESPUESTA A "motta" (palabra exacta) ==========
     if texto_lower == "motta":
         await send_motta_response(update, context)
         return
-            if texto_lower == "humanitas":
+
+    # ========== RESPUESTA A "humanitas" (palabra exacta) ==========
+    if texto_lower == "humanitas":
         await send_humanitas_response(update, context)
         return
-    
-    # ========== RESPUESTA A PALABRAS CLAVE (about, grazie) ==========
-    texto_lower = texto.lower()
-    texto_normalized = re.sub(r'^/', '', texto_lower)
-    texto_normalized = re.sub(r'\.$', '', texto_normalized)
-    if texto_normalized in ["about", "grazie"]:
-        img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/FOTOMASTER.jpg"
-        caption = "Chatbot sviluppato con grande impegno da Àlex Naranjo. Se ti piace, condividilo con i tuoi amici e familiari. https://t.me/FCEQuando_bot"
-        try:
-            result = await update.message.reply_photo(photo=img_url, caption=caption, parse_mode='Markdown')
-        except Exception:
-            result = await update.message.reply_text(caption, parse_mode='Markdown')
-        await store_id(context, result)
+
+    # ========== RESPUESTA A "shuttle" (palabra exacta) ==========
+    if texto_lower == "shuttle":
+        await send_shuttle_response(update, context)
         return
     
     # ========== RESPUESTA A "super" (solo palabra exacta) ==========
