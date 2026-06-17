@@ -1499,11 +1499,24 @@ def get_humanitas_status(now: datetime) -> str:
 
 async def send_humanitas_response(update: Update, context: ContextTypes.DEFAULT_TYPE):
     now = get_simulated_now(context)
-    msg = get_humanitas_status(now)
+    # Mensaje 1: foto fija
+    img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/PUBLI_CS.png"
+    caption = "Prossime partenze autobus, Nesima - Humanitas - Centro Sicilia:"
+    try:
+        msg1 = await update.message.reply_photo(photo=img_url, caption=caption, parse_mode='Markdown')
+    except Exception:
+        msg1 = await update.message.reply_text(caption, parse_mode='Markdown')
+    if msg1:
+        await store_id(context, msg1)
+
+    # Mensaje 2: estado actual del autobús
+    msg2_text = get_humanitas_status(now)
     keyboard = InlineKeyboardMarkup([[
         InlineKeyboardButton("🔄 Aggiornare", callback_data="aggiornare_humanitas")
     ]])
-    await update.message.reply_text(msg, reply_markup=keyboard, parse_mode='Markdown')
+    msg2 = await update.message.reply_text(msg2_text, reply_markup=keyboard, parse_mode='Markdown')
+    if msg2:
+        await store_id(context, msg2)
 
 
 async def aggiornare_humanitas_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
