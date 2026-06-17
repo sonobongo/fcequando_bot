@@ -12,6 +12,7 @@ from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboard
 from telegram.ext import ContextTypes
 from horarios_logic import *
 from horarios_logic import CATANIA_TZ, get_extension_message, get_shuttle_stops, get_next_shuttle_departure
+from handlers_bus import send_motta_response, send_humanitas_response
 
 logger = logging.getLogger(__name__)
 
@@ -1613,6 +1614,26 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
     # ========== RESPUESTA A "shuttle" (palabra exacta) ==========
     if texto_lower == "shuttle":
         await send_shuttle_response(update, context)
+        return
+
+    # ========== RESPUESTA A "motta" (palabra exacta) ==========
+    if texto_lower == "motta":
+        await send_motta_response(update, context)
+        return
+
+    # ========== RESPUESTA A "humanitas" (palabra exacta) ==========
+    if texto_lower == "humanitas":
+        await send_humanitas_response(update, context)
+        return
+
+    # ========== RESPUESTA A "adhumanitas" (foto fija) ==========
+    if texto_lower == "adhumanitas":
+        img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/PUBLI_CS.png"
+        caption = "Prossime partenze autobus, Nesima - Humanitas - Centro Sicilia:"
+        try:
+            await update.message.reply_photo(photo=img_url, caption=caption, parse_mode='Markdown')
+        except Exception:
+            await update.message.reply_text(caption, parse_mode='Markdown')
         return
     
     # ========== RESPUESTA A PALABRAS CLAVE (about, grazie) ==========
