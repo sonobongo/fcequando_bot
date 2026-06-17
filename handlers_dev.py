@@ -1283,7 +1283,7 @@ def get_motta_status(now: datetime) -> str:
     # Determinar posición del bus
     bus_pos = -1
     if active_trip['MSB2'] is not None:
-        # Viajes con todas las paradas (índices 0-4)
+        # Viajes con todas las paradas
         for i in range(len(stops)-1):
             t1 = active_trip[stops[i]]
             t2 = active_trip[stops[i+1]]
@@ -1362,12 +1362,16 @@ def get_motta_status(now: datetime) -> str:
     emoji_line = "".join(parts)
 
     lines = [emoji_line]
-    # Línea de nombres con la separación exacta que pediste
     lines.append("MTP        MSB          MSA         MSB          MTP")
 
-    # Horarios con columnas fijas (13 caracteres cada una)
-    times = [active_trip[s].strftime('%H:%M') if active_trip[s] else '--:--' for s in stops]
-    times_line = "".join(t.ljust(13) for t in times).rstrip()
+    # Horarios con el espaciado exacto solicitado
+    t1 = active_trip['MTP'].strftime('%H:%M') if active_trip['MTP'] else '--:--'
+    t2 = active_trip['MSB'].strftime('%H:%M') if active_trip['MSB'] else '--:--'
+    t3 = active_trip['MSA'].strftime('%H:%M') if active_trip['MSA'] else '--:--'
+    t4 = active_trip['MSB2'].strftime('%H:%M') if active_trip['MSB2'] else '--:--'
+    t5 = active_trip['MTP2'].strftime('%H:%M') if active_trip['MTP2'] else '--:--'
+
+    times_line = t1.ljust(11) + t2.ljust(14) + t3.ljust(14) + t4.ljust(14) + t5
     lines.append(times_line)
 
     return "\n".join(lines)
