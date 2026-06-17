@@ -1058,3 +1058,40 @@ def get_next_shuttle_departure(stop: str, now: datetime) -> Optional[time]:
         if t > current_time:
             return t
     return None
+# ============================================================================
+# LÍNEA MOTTA (Misterbianco-Motta S.Anastasia)
+# ============================================================================
+MOTTA_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'bus_misterbianco_motta.json')
+MOTTA_SCHEDULES = {}
+
+def load_motta_schedules():
+    global MOTTA_SCHEDULES
+    if not os.path.exists(MOTTA_FILE):
+        return
+    with open(MOTTA_FILE, 'r', encoding='utf-8') as f:
+        data = json.load(f)
+        for stop, days in data.get('schedule', {}).items():
+            MOTTA_SCHEDULES[stop] = {}
+            for day, str_list in days.items():
+                MOTTA_SCHEDULES[stop][day] = [str_to_time(t) for t in str_list]
+
+load_motta_schedules()
+
+def get_motta_trips(now: datetime) -> List[Dict[str, Optional[time]]]:
+    """Devuelve todos los viajes del día (cada viaje es un diccionario con las horas de paso por cada parada)."""
+    if now.weekday() >= 5:
+        return []
+    trips = []
+    stops = ['MTP', 'MSB', 'MSA', 'MSB2', 'MTP2']
+    # El número de viajes es el máximo de horarios en MTP (origen)
+    num_trips = len(MOTTA_SCHEDULES.get('MTP', {}).get('weekday', []))
+    for i in range(num_trips):
+        trip = {}
+        for stop in stops:
+            sched = MOTTA_SCHEDULES.get(stop, {}).get('weekday', [])
+            if i < len(sched):
+                trip[stop] = sched[i]
+            else:
+                trip[stop] = None
+        trips.append(trip)
+    return trips
