@@ -180,59 +180,75 @@ def get_humanitas_status(now: datetime) -> str:
     current_time = now.time()
     stops = ['NES', 'HUM', 'CEN', 'NES2']
     active_trip = None
+    # Buscar viaje activo (el bus sigue en ruta hasta NES2)
     for trip in trips:
-        if trip.get('NES') and trip.get('NES') <= current_time:
-            cen_time = trip.get('CEN')
-            if cen_time:
-                end_time = (datetime.combine(now.date(), cen_time) + timedelta(hours=1)).time()
-                if current_time < end_time:
-                    active_trip = trip
-                    break
-        elif trip.get('NES') and trip['NES'] > current_time:
+        nes2_time = trip.get('NES2')
+        if nes2_time is None:
+            continue
+        # Convertir NES2 a datetime para comparar
+        nes2_dt = datetime.combine(now.date(), nes2_time)
+        # Si estamos antes de NES2, el viaje sigue activo
+        if now.tzinfo is None:
+            now_aware = CATANIA_TZ.localize(now)
+        else:
+            now_aware = now
+        if now_aware < CATANIA_TZ.localize(nes2_dt):
             active_trip = trip
             break
-    if active_trip is None and trips:
-        active_trip = trips[-1]
+    if active_trip is None:
+        # Si no hay viaje activo, tomar el próximo que salga
+        for trip in trips:
+            if trip.get('NES') and trip['NES'] > current_time:
+                active_trip = trip
+                break
+        if active_trip is None and trips:
+            active_trip = trips[-1]
 
+    # Determinar posición del bus (fracción entre 0 y 3)
     bus_pos = -1
     if active_trip['NES'] is not None and active_trip['CEN'] is not None:
-        if current_time <= active_trip['CEN']:
-            for i in range(2):
-                t1 = active_trip[stops[i]]
-                t2 = active_trip[stops[i+1]]
-                if t1 is None or t2 is None:
-                    continue
-                t1_dt = datetime.combine(now.date(), t1)
-                t2_dt = datetime.combine(now.date(), t2)
-                now_dt = datetime.combine(now.date(), current_time)
-                if t1 <= current_time < t2:
-                    seg_total = (t2_dt - t1_dt).total_seconds()
-                    seg_transcurridos = (now_dt - t1_dt).total_seconds()
-                    frac = seg_transcurridos / seg_total if seg_total > 0 else 0
-                    bus_pos = i + frac
-                    break
-                elif current_time == t2:
-                    bus_pos = i + 1
-                    break
-            else:
-                if current_time < active_trip['NES']:
-                    bus_pos = -1
-                elif current_time == active_trip['CEN']:
-                    bus_pos = 2
+        # Recorremos NES→HUM→CEN→NES2
+        segments = [
+            ('NES', 'HUM'),
+            ('HUM', 'CEN'),
+            ('CEN', 'NES2')
+        ]
+        for idx, (s1, s2) in enumerate(segments):
+            t1 = active_trip[s1]
+            t2 = active_trip[s2]
+            if t1 is None or t2 is None:
+                continue
+            t1_dt = datetime.combine(now.date(), t1)
+            t2_dt = datetime.combine(now.date(), t2)
+            # Si el horario cruza la medianoche (poco probable aquí), ajustar
+            if t2 < t1:
+                t2_dt += timedelta(days=1)
+            now_dt = datetime.combine(now.date(), current_time)
+            if t1_dt <= now_dt < t2_dt:
+                seg_total = (t2_dt - t1_dt).total_seconds()
+                seg_transcurridos = (now_dt - t1_dt).total_seconds()
+                frac = seg_transcurridos / seg_total if seg_total > 0 else 0
+                bus_pos = idx + frac
+                break
+            elif now_dt == t2_dt:
+                bus_pos = idx + 1
+                break
         else:
-            cen_dt = datetime.combine(now.date(), active_trip['CEN'])
-            seconds_since_cen = (datetime.combine(now.date(), current_time) - cen_dt).total_seconds()
-            total_return = 30 * 60
-            frac = min(seconds_since_cen / total_return, 1.0)
-            bus_pos = 2 + frac
+            if now_dt < datetime.combine(now.date(), active_trip['NES']):
+                bus_pos = -1
+            elif now_dt >= datetime.combine(now.date(), active_trip['NES2']):
+                bus_pos = len(stops) - 1
 
+    # Construir línea visual (longitudes de tramos: 4, 4, 3)
     seg_lengths = [4, 4, 3]
     parts = []
     for i in range(4):
+        # Parada
         if bus_pos != -1 and abs(bus_pos - i) < 0.01:
             parts.append("🚍")
         else:
             parts.append("⚪")
+        # Tramo
         if i < 3:
             n = seg_lengths[i]
             if bus_pos != -1 and i < bus_pos < i+1:
@@ -252,10 +268,11 @@ def get_humanitas_status(now: datetime) -> str:
 
     lines = [emoji_line]
     lines.append(f"{'NES':<16}{'HUM':<18}{'CEN':<13}{'NES'}")
+    # Horarios (NES2 calculado)
     t1 = active_trip['NES'].strftime('%H:%M') if active_trip['NES'] else '--:--'
     t2 = active_trip['HUM'].strftime('%H:%M') if active_trip['HUM'] else '--:--'
     t3 = active_trip['CEN'].strftime('%H:%M') if active_trip['CEN'] else '--:--'
-    t4 = '--:--'
+    t4 = active_trip['NES2'].strftime('%H:%M') if active_trip['NES2'] else '--:--'
     lines.append(f"{t1:<16}{t2:<18}{t3:<13}{t4}")
 
     return "\n".join(lines)
