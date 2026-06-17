@@ -1262,8 +1262,8 @@ def get_motta_status(now: datetime) -> str:
     current_time = now.time()
     stops = ['MTP', 'MSB', 'MSA', 'MSB2', 'MTP2']
     active_trip = None
-    # Buscar el viaje activo
-    for trip in trips:
+    # Buscar el viaje activo (el que aún no ha llegado a MTP2) y el viaje anterior
+    for i, trip in enumerate(trips):
         dep_time = trip.get('MTP')
         arr_time = trip.get('MTP2')
         if dep_time is None or arr_time is None:
@@ -1272,10 +1272,12 @@ def get_motta_status(now: datetime) -> str:
             active_trip = trip
             break
     if active_trip is None:
+        # Si no hay viaje activo, buscar el próximo viaje para mostrar sus horarios (autobús en salida)
         for trip in trips:
             if trip.get('MTP') and trip['MTP'] > current_time:
                 active_trip = trip
                 break
+        # Si aún no hay, mostrar el último viaje del día
         if active_trip is None and trips:
             active_trip = trips[-1]
 
@@ -1325,6 +1327,11 @@ def get_motta_status(now: datetime) -> str:
     times = [active_trip[s].strftime('%H:%M') if active_trip[s] else '--:--' for s in stops]
     lines.append("  ".join(times))
     return "\n".join(lines)
+
+async def send_motta_response(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    now = get_simulated_now(context)
+    msg = get_motta_status(now)
+    await update.message.reply_text(msg)
 
 # ============================================================================
 # FUNCIONES PARA "SUPER" - Tracking de posición de trenes en tiempo real
