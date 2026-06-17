@@ -1078,20 +1078,20 @@ def load_motta_schedules():
 load_motta_schedules()
 
 def get_motta_trips(now: datetime) -> List[Dict[str, Optional[time]]]:
-    """Devuelve todos los viajes del día (cada viaje es un diccionario con las horas de paso por cada parada)."""
+    """Devuelve todos los viajes del día correctamente alineados con el desfase de MSB2."""
     if now.weekday() >= 5:
         return []
     trips = []
     stops = ['MTP', 'MSB', 'MSA', 'MSB2', 'MTP2']
-    # El número de viajes es el máximo de horarios en MTP (origen)
-    num_trips = len(MOTTA_SCHEDULES.get('MTP', {}).get('weekday', []))
-    for i in range(num_trips):
+    mtp_sched = MOTTA_SCHEDULES.get('MTP', {}).get('weekday', [])
+    msb2_sched = MOTTA_SCHEDULES.get('MSB2', {}).get('weekday', [])
+    # Empezamos desde el índice 1 porque el primer viaje (06:25) no tiene parada en MSB2
+    for i in range(1, len(mtp_sched)):
         trip = {}
-        for stop in stops:
-            sched = MOTTA_SCHEDULES.get(stop, {}).get('weekday', [])
-            if i < len(sched):
-                trip[stop] = sched[i]
-            else:
-                trip[stop] = None
+        trip['MTP'] = mtp_sched[i]
+        trip['MSB'] = MOTTA_SCHEDULES['MSB']['weekday'][i] if i < len(MOTTA_SCHEDULES['MSB']['weekday']) else None
+        trip['MSA'] = MOTTA_SCHEDULES['MSA']['weekday'][i] if i < len(MOTTA_SCHEDULES['MSA']['weekday']) else None
+        trip['MSB2'] = msb2_sched[i-1] if (i-1) < len(msb2_sched) else None
+        trip['MTP2'] = MOTTA_SCHEDULES['MTP2']['weekday'][i] if i < len(MOTTA_SCHEDULES['MTP2']['weekday']) else None
         trips.append(trip)
     return trips
