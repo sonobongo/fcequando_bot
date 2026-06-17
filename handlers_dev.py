@@ -11,7 +11,7 @@ from datetime import datetime, timedelta, time
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove
 from telegram.ext import ContextTypes
 from horarios_logic import *
-from horarios_logic import CATANIA_TZ, get_extension_message, get_shuttle_stops, get_next_shuttle_departure, get_motta_trips
+from horarios_logic import CATANIA_TZ, get_extension_message, get_shuttle_stops, get_next_shuttle_departure, get_motta_trips, get_humanitas_trips
 
 logger = logging.getLogger(__name__)
 
@@ -1401,6 +1401,125 @@ async def aggiornare_motta_callback(update: Update, context: ContextTypes.DEFAUL
         )
     except Exception:
         pass
+        # ============================================================================
+# LÍNEA HUMANITAS (Nesima - Humanitas - Centro Sicilia) – monitor simple
+# ============================================================================
+def get_humanitas_status(now: datetime) -> str:
+    trips = get_humanitas_trips(now)
+    if not trips:
+        return "🚌 Servizio Humanitas non disponibile (lun-sab, no festivi)."
+
+    current_time = now.time()
+    stops = ['NES', 'HUM', 'CEN']
+    active_trip = None
+    # Buscar el viaje activo
+    for trip in trips:
+        dep_time = trip.get('NES')
+        arr_time = trip.get('CEN')
+        if dep_time is None or arr_time is None:
+            continue
+        if dep_time <= current_time < arr_time:
+            active_trip = trip
+            break
+    if active_trip is None:
+        # Buscar el próximo viaje
+        for trip in trips:
+            if trip.get('NES') and trip['NES'] > current_time:
+                active_trip = trip
+                break
+        if active_trip is None and trips:
+            active_trip = trips[-1]
+
+    # Determinar posición del bus (fracción entre 0 y 2)
+    bus_pos = -1
+    for i in range(len(stops)-1):
+        t1 = active_trip[stops[i]]
+        t2 = active_trip[stops[i+1]]
+        if t1 is None or t2 is None:
+            continue
+        t1_dt = datetime.combine(now.date(), t1)
+        t2_dt = datetime.combine(now.date(), t2)
+        now_dt = datetime.combine(now.date(), current_time)
+        if t1 <= current_time < t2:
+            seg_total = (t2_dt - t1_dt).total_seconds()
+            seg_transcurridos = (now_dt - t1_dt).total_seconds()
+            frac = seg_transcurridos / seg_total if seg_total > 0 else 0
+            bus_pos = i + frac
+            break
+        elif current_time == t2:
+            bus_pos = i + 1
+            break
+    else:
+        if current_time < active_trip['NES']:
+            bus_pos = -1
+        elif current_time >= active_trip['CEN']:
+            bus_pos = len(stops) - 1
+
+    # Construir línea visual (cuadraditos: 6 entre NES-HUM, 7 entre HUM-CEN)
+    TRAMOS_CHARS = [6, 7]  # caracteres totales por tramo
+    parts = []
+    for i in range(3):
+        # Parada
+        if bus_pos != -1 and abs(bus_pos - i) < 0.01:
+            parts.append("🚍")
+        else:
+            parts.append("⚪")
+        # Tramo
+        if i < 2:
+            n = TRAMOS_CHARS[i]
+            if bus_pos != -1 and i < bus_pos < i+1:
+                # Calcular posición dentro del tramo
+                tercio = int((bus_pos - i) * n)
+                if tercio >= n:
+                    tercio = n - 1
+                tramo_chars = []
+                for j in range(n):
+                    if j == tercio:
+                        tramo_chars.append("🚍")
+                    else:
+                        tramo_chars.append("▫")
+                parts.append("".join(tramo_chars))
+            else:
+                parts.append("▫" * n)
+    emoji_line = "".join(parts)
+
+    lines = [emoji_line]
+    # Nombres de paradas con espaciado fijo
+    lines.append("NES" + " " * 24 + "HUM" + " " * 29 + "CEN")
+    # Horarios con columnas fijas
+    t1 = active_trip['NES'].strftime('%H:%M') if active_trip['NES'] else '--:--'
+    t2 = active_trip['HUM'].strftime('%H:%M') if active_trip['HUM'] else '--:--'
+    t3 = active_trip['CEN'].strftime('%H:%M') if active_trip['CEN'] else '--:--'
+    times_line = t1.ljust(30) + t2.ljust(35) + t3
+    lines.append(times_line)
+
+    return "\n".join(lines)
+
+
+async def send_humanitas_response(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    now = get_simulated_now(context)
+    msg = get_humanitas_status(now)
+    keyboard = InlineKeyboardMarkup([[
+        InlineKeyboardButton("🔄 Aggiornare", callback_data="aggiornare_humanitas")
+    ]])
+    await update.message.reply_text(msg, reply_markup=keyboard, parse_mode='Markdown')
+
+
+async def aggiornare_humanitas_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    now = get_simulated_now(context)
+    msg = get_humanitas_status(now)
+    try:
+        await query.edit_message_text(
+            text=msg,
+            parse_mode='Markdown',
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("🔄 Aggiornare", callback_data="aggiornare_humanitas")
+            ]])
+        )
+    except Exception:
+        pass
 
 # ============================================================================
 # FUNCIONES PARA "SUPER" - Tracking de posición de trenes en tiempo real
@@ -1766,6 +1885,9 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if texto_lower == "motta":
         await send_motta_response(update, context)
         return
+            if texto_lower == "humanitas":
+        await send_humanitas_response(update, context)
+        return
     
     # ========== RESPUESTA A PALABRAS CLAVE (about, grazie) ==========
     texto_lower = texto.lower()
@@ -2036,9 +2158,6 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     ALIASES = {
         "misterbianco": "montepo",
-        "humanitas": "nesima",
-        "centro sicilia": "nesima",
-        "centrosicilia": "nesima",
         "mister bianco": "montepo",
         "mr bianco": "montepo",
         "mr. bianco": "montepo",
