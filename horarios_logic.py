@@ -1116,17 +1116,12 @@ def load_humanitas_schedules():
 load_humanitas_schedules()
 
 def get_humanitas_trips(now: datetime) -> List[Dict[str, Optional[time]]]:
-    """Devuelve todos los viajes del día."""
-    # Solo lun-sab, no festivos
+    """Devuelve todos los viajes del día (lun-sab, no festivos)."""
     if now.weekday() == 6 or is_festivo_nazionale(now):
         return []
-    # Seleccionar la lista según día (sábado o weekday)
-    if now.weekday() == 5:
-        key = 'saturday'
-    else:
-        key = 'weekday'
+    key = 'saturday' if now.weekday() == 5 else 'weekday'
     trips = []
-    stops = ['NES', 'HUM', 'CEN']
+    stops = ['NES', 'HUM', 'CEN', 'NES2']
     nes_sched = HUMANITAS_SCHEDULES.get('NES', {}).get(key, [])
     hum_sched = HUMANITAS_SCHEDULES.get('HUM', {}).get(key, [])
     cen_sched = HUMANITAS_SCHEDULES.get('CEN', {}).get(key, [])
@@ -1135,5 +1130,6 @@ def get_humanitas_trips(now: datetime) -> List[Dict[str, Optional[time]]]:
         trip['NES'] = nes_sched[i]
         trip['HUM'] = hum_sched[i] if i < len(hum_sched) else None
         trip['CEN'] = cen_sched[i] if i < len(cen_sched) else None
+        trip['NES2'] = None   # no hay horario de llegada al final
         trips.append(trip)
     return trips
