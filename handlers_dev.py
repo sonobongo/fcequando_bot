@@ -1414,9 +1414,6 @@ def get_humanitas_status(now: datetime) -> str:
     active_trip = None
     for trip in trips:
         if trip.get('NES') and trip.get('NES') <= current_time:
-            # El viaje está activo desde que sale de NES hasta que se considera finalizado (más allá de CEN)
-            # Para el último viaje, podemos considerar que termina una hora después de CEN o similar.
-            # Usaremos una hora después de CEN como límite aproximado para poder mover el bus.
             cen_time = trip.get('CEN')
             if cen_time:
                 end_time = (datetime.combine(now.date(), cen_time) + timedelta(hours=1)).time()
@@ -1424,19 +1421,15 @@ def get_humanitas_status(now: datetime) -> str:
                     active_trip = trip
                     break
         elif trip.get('NES') and trip['NES'] > current_time:
-            # Próximo viaje aún no ha salido
             active_trip = trip
             break
     if active_trip is None and trips:
-        active_trip = trips[-1]   # último viaje del día
+        active_trip = trips[-1]
 
     # Determinar posición del bus
     bus_pos = -1
     if active_trip['NES'] is not None and active_trip['CEN'] is not None:
-        # Para el segmento CEN->NES2 no hay hora exacta, así que tratamos ese tramo como "en camino"
-        # Calculamos posición hasta CEN igual que antes, y si pasó CEN, el bus está entre CEN y NES2
         if current_time <= active_trip['CEN']:
-            # Antes o en CEN: posición entre 0 y 2
             for i in range(2):
                 t1 = active_trip[stops[i]]
                 t2 = active_trip[stops[i+1]]
@@ -1460,25 +1453,20 @@ def get_humanitas_status(now: datetime) -> str:
                 elif current_time == active_trip['CEN']:
                     bus_pos = 2
         else:
-            # Después de CEN: el bus está en el tramo CEN->NES2 (posición entre 2 y 3)
-            # Asumimos que tarda unos 30 minutos en volver a NES (ajustable)
             cen_dt = datetime.combine(now.date(), active_trip['CEN'])
             seconds_since_cen = (datetime.combine(now.date(), current_time) - cen_dt).total_seconds()
-            # Suponemos un tiempo total de viaje de 30 minutos para el regreso
-            total_return = 30 * 60  # segundos
+            total_return = 30 * 60
             frac = min(seconds_since_cen / total_return, 1.0)
             bus_pos = 2 + frac
 
-    # Construir línea visual: segmentos de 4, 4 y 3 cuadraditos
+    # Construir línea visual: 4, 4, 3 cuadraditos
     seg_lengths = [4, 4, 3]
     parts = []
     for i in range(4):
-        # Parada
         if bus_pos != -1 and abs(bus_pos - i) < 0.01:
             parts.append("🚍")
         else:
             parts.append("⚪")
-        # Tramo
         if i < 3:
             n = seg_lengths[i]
             if bus_pos != -1 and i < bus_pos < i+1:
@@ -1497,14 +1485,14 @@ def get_humanitas_status(now: datetime) -> str:
     emoji_line = "".join(parts)
 
     lines = [emoji_line]
-    # Nombres de paradas con espaciado fijo (28 caracteres cada una)
-    lines.append(f"{'NES':<28}{'HUM':<28}{'CEN':<28}{'NES'}")
+    # Nombres con los anchos indicados
+    lines.append(f"{'NES':<16}{'HUM':<18}{'CEN':<13}{'NES'}")
     # Horarios
     t1 = active_trip['NES'].strftime('%H:%M') if active_trip['NES'] else '--:--'
     t2 = active_trip['HUM'].strftime('%H:%M') if active_trip['HUM'] else '--:--'
     t3 = active_trip['CEN'].strftime('%H:%M') if active_trip['CEN'] else '--:--'
-    t4 = '--:--'  # NES2
-    lines.append(f"{t1:<28}{t2:<28}{t3:<28}{t4}")
+    t4 = '--:--'
+    lines.append(f"{t1:<16}{t2:<18}{t3:<13}{t4}")
 
     return "\n".join(lines)
 
