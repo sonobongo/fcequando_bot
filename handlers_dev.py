@@ -1331,17 +1331,42 @@ def get_motta_status(now: datetime) -> str:
                 parts.append("▫▫▫")
     emoji_line = "".join(parts)
 
+    # Línea de nombres (ya con la separación deseada)
     lines = [emoji_line]
-    # Línea de nombres con la separación exacta que pediste
     lines.append("MTP        MSB          MSA         MSB          MTP")
+
+    # Horarios con columnas fijas (13 caracteres cada una)
     times = [active_trip[s].strftime('%H:%M') if active_trip[s] else '--:--' for s in stops]
-    lines.append("  ".join(times))
+    times_line = "".join(t.ljust(13) for t in times).rstrip()
+    lines.append(times_line)
+
     return "\n".join(lines)
+
 
 async def send_motta_response(update: Update, context: ContextTypes.DEFAULT_TYPE):
     now = get_simulated_now(context)
     msg = get_motta_status(now)
-    await update.message.reply_text(msg)
+    keyboard = InlineKeyboardMarkup([[
+        InlineKeyboardButton("🔄 Aggiornare", callback_data="aggiornare_motta")
+    ]])
+    await update.message.reply_text(msg, reply_markup=keyboard, parse_mode='Markdown')
+
+
+async def aggiornare_motta_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    now = get_simulated_now(context)
+    msg = get_motta_status(now)
+    try:
+        await query.edit_message_text(
+            text=msg,
+            parse_mode='Markdown',
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("🔄 Aggiornare", callback_data="aggiornare_motta")
+            ]])
+        )
+    except Exception:
+        pass
 
 # ============================================================================
 # FUNCIONES PARA "SUPER" - Tracking de posición de trenes en tiempo real
