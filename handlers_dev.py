@@ -1262,8 +1262,8 @@ def get_motta_status(now: datetime) -> str:
     current_time = now.time()
     stops = ['MTP', 'MSB', 'MSA', 'MSB2', 'MTP2']
     active_trip = None
-    # Buscar el viaje activo (el que aún no ha llegado a MTP2) y el viaje anterior
-    for i, trip in enumerate(trips):
+    # Buscar el viaje activo (el que aún no ha llegado a MTP2)
+    for trip in trips:
         dep_time = trip.get('MTP')
         arr_time = trip.get('MTP2')
         if dep_time is None or arr_time is None:
@@ -1272,16 +1272,15 @@ def get_motta_status(now: datetime) -> str:
             active_trip = trip
             break
     if active_trip is None:
-        # Si no hay viaje activo, buscar el próximo viaje para mostrar sus horarios (autobús en salida)
+        # Buscar el próximo viaje
         for trip in trips:
             if trip.get('MTP') and trip['MTP'] > current_time:
                 active_trip = trip
                 break
-        # Si aún no hay, mostrar el último viaje del día
         if active_trip is None and trips:
-            active_trip = trips[-1]
+            active_trip = trips[-1]  # último viaje del día
 
-    # Determinar posición del bus (valor fraccionario entre 0 y 4)
+    # Determinar posición del bus (fracción entre 0 y 4)
     bus_pos = -1
     for i in range(len(stops)-1):
         t1 = active_trip[stops[i]]
@@ -1306,21 +1305,31 @@ def get_motta_status(now: datetime) -> str:
         elif current_time >= active_trip['MTP2']:
             bus_pos = len(stops) - 1
 
-    # Construir la línea de emojis con espacios para separar los símbolos
-    elementos = []
+    # Construir la línea visual (sin espacios)
+    parts = []
     for i in range(5):
         # Parada
         if bus_pos != -1 and abs(bus_pos - i) < 0.01:
-            elementos.append("🚍")
+            parts.append("🚍")
         else:
-            elementos.append("⚪")
-        # Segmento (excepto después de la última parada)
+            parts.append("⚪")
+        # Tramo (tres caracteres)
         if i < 4:
             if bus_pos != -1 and i < bus_pos < i+1:
-                elementos.append("🚍")
+                # Calcular tercio del tramo (0, 1 o 2)
+                tercio = int((bus_pos - i) * 3)
+                if tercio > 2:
+                    tercio = 2
+                tramo_chars = []
+                for j in range(3):
+                    if j == tercio:
+                        tramo_chars.append("🚍")
+                    else:
+                        tramo_chars.append("▫")
+                parts.append("".join(tramo_chars))
             else:
-                elementos.append("▫")
-    emoji_line = " ".join(elementos)   # espacio entre cada símbolo
+                parts.append("▫▫▫")
+    emoji_line = "".join(parts)
 
     lines = [emoji_line]
     lines.append("MTP        MSB        MSA        MSB        MTP")
