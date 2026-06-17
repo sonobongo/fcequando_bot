@@ -1082,7 +1082,7 @@ async def news_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(mensaje, parse_mode='HTML', disable_web_page_preview=False)
 
 # ============================================================================
-# METRO SHUTTLE (servicio de autobús con animación en tiempo real)
+# METRO SHUTTLE
 # ============================================================================
 def get_shuttle_status(now: datetime) -> str:
     from horarios_logic import SHUTTLE_SCHEDULES
@@ -1129,12 +1129,17 @@ def get_shuttle_status(now: datetime) -> str:
         if secs_since_prev is not None and 0 < secs_since_prev <= 30:
             appena_passato.add(i)
 
-    # Parpadeo: alterna 🔻 e ⬇️ ogni secondo
+    # Parpadeo: alterna 🔻 y ⬇️ ogni secondo
     bus_icon = "🔻" if now.second % 2 == 0 else "⬇️"
 
     from datetime import datetime as _dt
 
     # Trovare TUTTI i tratti dove ci sono bus attivi (più veicoli contemporaneamente).
+    # Per ogni tratto i→i+1, cercare una corsa j tale che:
+    #   sched_i[j] <= now < sched_i1[j]
+    # Se secs_to_i1 <= 30: il triangolo va sulla fermata i+1 (arrivo imminente).
+    # Se secs_to_i1 > 30: il triangolo va nel tratto.
+
     bus_tratti = set()    # tratti con bus in transito
     bus_fermate = set()   # fermate con bus in arrivo (≤30s)
 
