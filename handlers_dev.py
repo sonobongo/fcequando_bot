@@ -1280,7 +1280,7 @@ def get_motta_status(now: datetime) -> str:
         if active_trip is None and trips:
             active_trip = trips[-1]
 
-    # Determinar posición del bus
+    # Determinar posición del bus (valor fraccionario entre 0 y 4)
     bus_pos = -1
     if active_trip['MSB2'] is not None:
         # Viajes con todas las paradas
@@ -1307,7 +1307,7 @@ def get_motta_status(now: datetime) -> str:
             elif current_time >= active_trip['MTP2']:
                 bus_pos = len(stops) - 1
     else:
-        # Primer viaje sin MSB2: MTP(0) -> MSB(1) -> MSA(2) -> MTP2(4)
+        # Primer viaje sin MSB2
         segmentos = [(0, 1), (1, 2), (2, 4)]
         for idx1, idx2 in segmentos:
             t1 = active_trip[stops[idx1]]
@@ -1324,7 +1324,7 @@ def get_motta_status(now: datetime) -> str:
                 if idx2 - idx1 == 1:
                     bus_pos = idx1 + frac
                 else:
-                    bus_pos = 2 + frac * 2   # reparte visualmente entre índice 2 y 4
+                    bus_pos = 2 + frac * 2   # reparte visualmente entre 2 y 4
                 break
             elif current_time == t2:
                 bus_pos = idx2
@@ -1335,7 +1335,7 @@ def get_motta_status(now: datetime) -> str:
             elif current_time >= active_trip['MTP2']:
                 bus_pos = len(stops) - 1
 
-    # Construir la línea visual (sin espacios)
+    # Construir línea visual (tramos siempre de 3 caracteres)
     parts = []
     for i in range(5):
         # Parada
@@ -1343,19 +1343,15 @@ def get_motta_status(now: datetime) -> str:
             parts.append("🚍")
         else:
             parts.append("⚪")
-        # Tramo (tres caracteres)
+        # Tramo (3 caracteres fijos)
         if i < 4:
             if bus_pos != -1 and i < bus_pos < i+1:
-                # Calcular tercio del tramo (0, 1 o 2)
+                # El bus está dentro de este tramo
                 tercio = int((bus_pos - i) * 3)
                 if tercio > 2:
                     tercio = 2
-                tramo_chars = []
-                for j in range(3):
-                    if j == tercio:
-                        tramo_chars.append("🚍")
-                    else:
-                        tramo_chars.append("▫")
+                tramo_chars = ["▫"] * 3
+                tramo_chars[tercio] = "🚍"
                 parts.append("".join(tramo_chars))
             else:
                 parts.append("▫▫▫")
@@ -1364,7 +1360,7 @@ def get_motta_status(now: datetime) -> str:
     lines = [emoji_line]
     lines.append("MTP        MSB          MSA         MSB          MTP")
 
-    # Horarios con el espaciado exacto solicitado
+    # Horarios con el espaciado exacto
     t1 = active_trip['MTP'].strftime('%H:%M') if active_trip['MTP'] else '--:--'
     t2 = active_trip['MSB'].strftime('%H:%M') if active_trip['MSB'] else '--:--'
     t3 = active_trip['MSA'].strftime('%H:%M') if active_trip['MSA'] else '--:--'
