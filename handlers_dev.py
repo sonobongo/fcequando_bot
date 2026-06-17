@@ -1262,7 +1262,7 @@ def get_motta_status(now: datetime) -> str:
     current_time = now.time()
     stops = ['MTP', 'MSB', 'MSA', 'MSB2', 'MTP2']
     active_trip = None
-    # Buscar el viaje activo (el que aún no ha llegado a MTP2)
+    # Buscar el viaje activo
     for trip in trips:
         dep_time = trip.get('MTP')
         arr_time = trip.get('MTP2')
@@ -1278,7 +1278,7 @@ def get_motta_status(now: datetime) -> str:
                 active_trip = trip
                 break
         if active_trip is None and trips:
-            active_trip = trips[-1]  # último viaje del día
+            active_trip = trips[-1]
 
     # Determinar posición del bus (fracción entre 0 y 4)
     bus_pos = -1
@@ -1332,7 +1332,8 @@ def get_motta_status(now: datetime) -> str:
     emoji_line = "".join(parts)
 
     lines = [emoji_line]
-    lines.append("MTP        MSB        MSA        MSB        MTP")
+    # Línea de nombres con la separación exacta que pediste
+    lines.append("MTP        MSB          MSA         MSB          MTP")
     times = [active_trip[s].strftime('%H:%M') if active_trip[s] else '--:--' for s in stops]
     lines.append("  ".join(times))
     return "\n".join(lines)
