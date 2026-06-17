@@ -1261,10 +1261,9 @@ def get_motta_status(now: datetime) -> str:
 
     current_time = now.time()
     stops = ['MTP', 'MSB', 'MSA', 'MSB2', 'MTP2']
-    labels = ['MTP', 'MSB', 'MSA', 'MSB', 'MTP']
     active_trip = None
-    # Buscar el viaje activo (el que aún no ha llegado a MTP2) y el viaje anterior
-    for i, trip in enumerate(trips):
+    # Buscar el viaje activo
+    for trip in trips:
         dep_time = trip.get('MTP')
         arr_time = trip.get('MTP2')
         if dep_time is None or arr_time is None:
@@ -1273,23 +1272,20 @@ def get_motta_status(now: datetime) -> str:
             active_trip = trip
             break
     if active_trip is None:
-        # Si no hay viaje activo, buscar el próximo viaje para mostrar sus horarios (autobús en salida)
         for trip in trips:
             if trip.get('MTP') and trip['MTP'] > current_time:
                 active_trip = trip
                 break
-        # Si aún no hay, mostrar el último viaje del día
         if active_trip is None and trips:
             active_trip = trips[-1]
 
-    # Determinar posición del bus
-    bus_pos = -1  # -1 = antes de MTP, 0 = en MTP, 0.5 = entre MTP y MSB, etc.
+    # Determinar posición del bus (valor fraccionario entre 0 y 4)
+    bus_pos = -1
     for i in range(len(stops)-1):
         t1 = active_trip[stops[i]]
         t2 = active_trip[stops[i+1]]
         if t1 is None or t2 is None:
             continue
-        # Convertir a datetime para calcular diferencia
         t1_dt = datetime.combine(now.date(), t1)
         t2_dt = datetime.combine(now.date(), t2)
         now_dt = datetime.combine(now.date(), current_time)
@@ -1308,30 +1304,27 @@ def get_motta_status(now: datetime) -> str:
         elif current_time >= active_trip['MTP2']:
             bus_pos = len(stops) - 1
 
-    # Construir el diagrama
-    emoji_line = ""
+    # Construir la línea de emojis con espacios para separar los símbolos
+    elementos = []
     for i in range(5):
-        if i > 0:
-            # Segmento entre paradas
-            if bus_pos != -1 and i - 1 < bus_pos < i:
-                emoji_line += "🚍"
-            else:
-                emoji_line += "▫"
         # Parada
         if bus_pos != -1 and abs(bus_pos - i) < 0.01:
-            emoji_line += "🚍"
+            elementos.append("🚍")
         else:
-            emoji_line += "⚪"
+            elementos.append("⚪")
+        # Segmento (excepto después de la última parada)
+        if i < 4:
+            if bus_pos != -1 and i < bus_pos < i+1:
+                elementos.append("🚍")
+            else:
+                elementos.append("▫")
+    emoji_line = " ".join(elementos)   # espacio entre cada símbolo
+
     lines = [emoji_line]
     lines.append("MTP        MSB        MSA        MSB        MTP")
     times = [active_trip[s].strftime('%H:%M') if active_trip[s] else '--:--' for s in stops]
     lines.append("  ".join(times))
     return "\n".join(lines)
-
-async def send_motta_response(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    now = get_simulated_now(context)
-    msg = get_motta_status(now)
-    await update.message.reply_text(msg)
 
 # ============================================================================
 # FUNCIONES PARA "SUPER" - Tracking de posición de trenes en tiempo real
