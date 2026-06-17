@@ -1096,3 +1096,44 @@ def get_motta_trips(now: datetime) -> List[Dict[str, Optional[time]]]:
         trip['MTP2'] = MOTTA_SCHEDULES['MTP2']['weekday'][i] if i < len(MOTTA_SCHEDULES['MTP2']['weekday']) else None
         trips.append(trip)
     return trips
+    # ============================================================================
+# LÍNEA HUMANITAS (Nesima - Humanitas - Centro Sicilia)
+# ============================================================================
+HUMANITAS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'bus_humanitas.json')
+HUMANITAS_SCHEDULES = {}
+
+def load_humanitas_schedules():
+    global HUMANITAS_SCHEDULES
+    if not os.path.exists(HUMANITAS_FILE):
+        return
+    with open(HUMANITAS_FILE, 'r', encoding='utf-8') as f:
+        data = json.load(f)
+        for stop, days in data.get('schedule', {}).items():
+            HUMANITAS_SCHEDULES[stop] = {}
+            for day, str_list in days.items():
+                HUMANITAS_SCHEDULES[stop][day] = [str_to_time(t) for t in str_list]
+
+load_humanitas_schedules()
+
+def get_humanitas_trips(now: datetime) -> List[Dict[str, Optional[time]]]:
+    """Devuelve todos los viajes del día."""
+    # Solo lun-sab, no festivos
+    if now.weekday() == 6 or is_festivo_nazionale(now):
+        return []
+    # Seleccionar la lista según día (sábado o weekday)
+    if now.weekday() == 5:
+        key = 'saturday'
+    else:
+        key = 'weekday'
+    trips = []
+    stops = ['NES', 'HUM', 'CEN']
+    nes_sched = HUMANITAS_SCHEDULES.get('NES', {}).get(key, [])
+    hum_sched = HUMANITAS_SCHEDULES.get('HUM', {}).get(key, [])
+    cen_sched = HUMANITAS_SCHEDULES.get('CEN', {}).get(key, [])
+    for i in range(len(nes_sched)):
+        trip = {}
+        trip['NES'] = nes_sched[i]
+        trip['HUM'] = hum_sched[i] if i < len(hum_sched) else None
+        trip['CEN'] = cen_sched[i] if i < len(cen_sched) else None
+        trips.append(trip)
+    return trips
