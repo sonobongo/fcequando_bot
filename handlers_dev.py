@@ -1455,8 +1455,8 @@ def get_humanitas_status(now: datetime) -> str:
         elif current_time >= active_trip['CEN']:
             bus_pos = len(stops) - 1
 
-    # Construir línea visual (cuadraditos: 6 entre NES-HUM, 7 entre HUM-CEN)
-    TRAMOS_CHARS = [6, 7]  # caracteres totales por tramo
+    # Construir línea visual: 6 cuadraditos en cada tramo
+    TRAMOS_CHARS = [6, 6]  # NES-HUM y HUM-CEN
     parts = []
     for i in range(3):
         # Parada
@@ -1484,14 +1484,13 @@ def get_humanitas_status(now: datetime) -> str:
     emoji_line = "".join(parts)
 
     lines = [emoji_line]
-    # Nombres de paradas con espaciado fijo
-    lines.append("NES" + " " * 24 + "HUM" + " " * 29 + "CEN")
-    # Horarios con columnas fijas
+    # Nombres de paradas alineados
+    lines.append(f"{'NES':<28}{'HUM':<28}{'CEN'}")
+    # Horarios alineados
     t1 = active_trip['NES'].strftime('%H:%M') if active_trip['NES'] else '--:--'
     t2 = active_trip['HUM'].strftime('%H:%M') if active_trip['HUM'] else '--:--'
     t3 = active_trip['CEN'].strftime('%H:%M') if active_trip['CEN'] else '--:--'
-    times_line = t1.ljust(30) + t2.ljust(35) + t3
-    lines.append(times_line)
+    lines.append(f"{t1:<28}{t2:<28}{t3}")
 
     return "\n".join(lines)
 
