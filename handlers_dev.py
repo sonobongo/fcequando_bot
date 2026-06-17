@@ -1410,65 +1410,78 @@ def get_humanitas_status(now: datetime) -> str:
         return "🚌 Servizio Humanitas non disponibile (lun-sab, no festivi)."
 
     current_time = now.time()
-    stops = ['NES', 'HUM', 'CEN']
+    stops = ['NES', 'HUM', 'CEN', 'NES2']
     active_trip = None
-    # Buscar el viaje activo
     for trip in trips:
-        dep_time = trip.get('NES')
-        arr_time = trip.get('CEN')
-        if dep_time is None or arr_time is None:
-            continue
-        if dep_time <= current_time < arr_time:
+        if trip.get('NES') and trip.get('NES') <= current_time:
+            # El viaje está activo desde que sale de NES hasta que se considera finalizado (más allá de CEN)
+            # Para el último viaje, podemos considerar que termina una hora después de CEN o similar.
+            # Usaremos una hora después de CEN como límite aproximado para poder mover el bus.
+            cen_time = trip.get('CEN')
+            if cen_time:
+                end_time = (datetime.combine(now.date(), cen_time) + timedelta(hours=1)).time()
+                if current_time < end_time:
+                    active_trip = trip
+                    break
+        elif trip.get('NES') and trip['NES'] > current_time:
+            # Próximo viaje aún no ha salido
             active_trip = trip
             break
-    if active_trip is None:
-        # Buscar el próximo viaje
-        for trip in trips:
-            if trip.get('NES') and trip['NES'] > current_time:
-                active_trip = trip
-                break
-        if active_trip is None and trips:
-            active_trip = trips[-1]
+    if active_trip is None and trips:
+        active_trip = trips[-1]   # último viaje del día
 
-    # Determinar posición del bus (fracción entre 0 y 2)
+    # Determinar posición del bus
     bus_pos = -1
-    for i in range(len(stops)-1):
-        t1 = active_trip[stops[i]]
-        t2 = active_trip[stops[i+1]]
-        if t1 is None or t2 is None:
-            continue
-        t1_dt = datetime.combine(now.date(), t1)
-        t2_dt = datetime.combine(now.date(), t2)
-        now_dt = datetime.combine(now.date(), current_time)
-        if t1 <= current_time < t2:
-            seg_total = (t2_dt - t1_dt).total_seconds()
-            seg_transcurridos = (now_dt - t1_dt).total_seconds()
-            frac = seg_transcurridos / seg_total if seg_total > 0 else 0
-            bus_pos = i + frac
-            break
-        elif current_time == t2:
-            bus_pos = i + 1
-            break
-    else:
-        if current_time < active_trip['NES']:
-            bus_pos = -1
-        elif current_time >= active_trip['CEN']:
-            bus_pos = len(stops) - 1
+    if active_trip['NES'] is not None and active_trip['CEN'] is not None:
+        # Para el segmento CEN->NES2 no hay hora exacta, así que tratamos ese tramo como "en camino"
+        # Calculamos posición hasta CEN igual que antes, y si pasó CEN, el bus está entre CEN y NES2
+        if current_time <= active_trip['CEN']:
+            # Antes o en CEN: posición entre 0 y 2
+            for i in range(2):
+                t1 = active_trip[stops[i]]
+                t2 = active_trip[stops[i+1]]
+                if t1 is None or t2 is None:
+                    continue
+                t1_dt = datetime.combine(now.date(), t1)
+                t2_dt = datetime.combine(now.date(), t2)
+                now_dt = datetime.combine(now.date(), current_time)
+                if t1 <= current_time < t2:
+                    seg_total = (t2_dt - t1_dt).total_seconds()
+                    seg_transcurridos = (now_dt - t1_dt).total_seconds()
+                    frac = seg_transcurridos / seg_total if seg_total > 0 else 0
+                    bus_pos = i + frac
+                    break
+                elif current_time == t2:
+                    bus_pos = i + 1
+                    break
+            else:
+                if current_time < active_trip['NES']:
+                    bus_pos = -1
+                elif current_time == active_trip['CEN']:
+                    bus_pos = 2
+        else:
+            # Después de CEN: el bus está en el tramo CEN->NES2 (posición entre 2 y 3)
+            # Asumimos que tarda unos 30 minutos en volver a NES (ajustable)
+            cen_dt = datetime.combine(now.date(), active_trip['CEN'])
+            seconds_since_cen = (datetime.combine(now.date(), current_time) - cen_dt).total_seconds()
+            # Suponemos un tiempo total de viaje de 30 minutos para el regreso
+            total_return = 30 * 60  # segundos
+            frac = min(seconds_since_cen / total_return, 1.0)
+            bus_pos = 2 + frac
 
-    # Construir línea visual: 6 cuadraditos en cada tramo
-    TRAMOS_CHARS = [6, 6]  # NES-HUM y HUM-CEN
+    # Construir línea visual: segmentos de 4, 4 y 3 cuadraditos
+    seg_lengths = [4, 4, 3]
     parts = []
-    for i in range(3):
+    for i in range(4):
         # Parada
         if bus_pos != -1 and abs(bus_pos - i) < 0.01:
             parts.append("🚍")
         else:
             parts.append("⚪")
         # Tramo
-        if i < 2:
-            n = TRAMOS_CHARS[i]
+        if i < 3:
+            n = seg_lengths[i]
             if bus_pos != -1 and i < bus_pos < i+1:
-                # Calcular posición dentro del tramo
                 tercio = int((bus_pos - i) * n)
                 if tercio >= n:
                     tercio = n - 1
@@ -1484,13 +1497,14 @@ def get_humanitas_status(now: datetime) -> str:
     emoji_line = "".join(parts)
 
     lines = [emoji_line]
-    # Nombres de paradas alineados
-    lines.append(f"{'NES':<28}{'HUM':<28}{'CEN'}")
-    # Horarios alineados
+    # Nombres de paradas con espaciado fijo (28 caracteres cada una)
+    lines.append(f"{'NES':<28}{'HUM':<28}{'CEN':<28}{'NES'}")
+    # Horarios
     t1 = active_trip['NES'].strftime('%H:%M') if active_trip['NES'] else '--:--'
     t2 = active_trip['HUM'].strftime('%H:%M') if active_trip['HUM'] else '--:--'
     t3 = active_trip['CEN'].strftime('%H:%M') if active_trip['CEN'] else '--:--'
-    lines.append(f"{t1:<28}{t2:<28}{t3}")
+    t4 = '--:--'  # NES2
+    lines.append(f"{t1:<28}{t2:<28}{t3:<28}{t4}")
 
     return "\n".join(lines)
 
