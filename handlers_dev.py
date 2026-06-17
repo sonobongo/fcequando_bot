@@ -1280,30 +1280,60 @@ def get_motta_status(now: datetime) -> str:
         if active_trip is None and trips:
             active_trip = trips[-1]
 
-    # Determinar posición del bus (fracción entre 0 y 4)
+    # Determinar posición del bus
     bus_pos = -1
-    for i in range(len(stops)-1):
-        t1 = active_trip[stops[i]]
-        t2 = active_trip[stops[i+1]]
-        if t1 is None or t2 is None:
-            continue
-        t1_dt = datetime.combine(now.date(), t1)
-        t2_dt = datetime.combine(now.date(), t2)
-        now_dt = datetime.combine(now.date(), current_time)
-        if t1 <= current_time < t2:
-            seg_total = (t2_dt - t1_dt).total_seconds()
-            seg_transcurridos = (now_dt - t1_dt).total_seconds()
-            frac = seg_transcurridos / seg_total if seg_total > 0 else 0
-            bus_pos = i + frac
-            break
-        elif current_time == t2:
-            bus_pos = i + 1
-            break
+    if active_trip['MSB2'] is not None:
+        # Viajes con todas las paradas (índices 0-4)
+        for i in range(len(stops)-1):
+            t1 = active_trip[stops[i]]
+            t2 = active_trip[stops[i+1]]
+            if t1 is None or t2 is None:
+                continue
+            t1_dt = datetime.combine(now.date(), t1)
+            t2_dt = datetime.combine(now.date(), t2)
+            now_dt = datetime.combine(now.date(), current_time)
+            if t1 <= current_time < t2:
+                seg_total = (t2_dt - t1_dt).total_seconds()
+                seg_transcurridos = (now_dt - t1_dt).total_seconds()
+                frac = seg_transcurridos / seg_total if seg_total > 0 else 0
+                bus_pos = i + frac
+                break
+            elif current_time == t2:
+                bus_pos = i + 1
+                break
+        else:
+            if current_time < active_trip['MTP']:
+                bus_pos = -1
+            elif current_time >= active_trip['MTP2']:
+                bus_pos = len(stops) - 1
     else:
-        if current_time < active_trip['MTP']:
-            bus_pos = -1
-        elif current_time >= active_trip['MTP2']:
-            bus_pos = len(stops) - 1
+        # Primer viaje sin MSB2: MTP(0) -> MSB(1) -> MSA(2) -> MTP2(4)
+        segmentos = [(0, 1), (1, 2), (2, 4)]
+        for idx1, idx2 in segmentos:
+            t1 = active_trip[stops[idx1]]
+            t2 = active_trip[stops[idx2]]
+            if t1 is None or t2 is None:
+                continue
+            t1_dt = datetime.combine(now.date(), t1)
+            t2_dt = datetime.combine(now.date(), t2)
+            now_dt = datetime.combine(now.date(), current_time)
+            if t1 <= current_time < t2:
+                seg_total = (t2_dt - t1_dt).total_seconds()
+                seg_transcurridos = (now_dt - t1_dt).total_seconds()
+                frac = seg_transcurridos / seg_total if seg_total > 0 else 0
+                if idx2 - idx1 == 1:
+                    bus_pos = idx1 + frac
+                else:
+                    bus_pos = 2 + frac * 2   # reparte visualmente entre índice 2 y 4
+                break
+            elif current_time == t2:
+                bus_pos = idx2
+                break
+        else:
+            if current_time < active_trip['MTP']:
+                bus_pos = -1
+            elif current_time >= active_trip['MTP2']:
+                bus_pos = len(stops) - 1
 
     # Construir la línea visual (sin espacios)
     parts = []
@@ -1331,8 +1361,8 @@ def get_motta_status(now: datetime) -> str:
                 parts.append("▫▫▫")
     emoji_line = "".join(parts)
 
-    # Línea de nombres (ya con la separación deseada)
     lines = [emoji_line]
+    # Línea de nombres con la separación exacta que pediste
     lines.append("MTP        MSB          MSA         MSB          MTP")
 
     # Horarios con columnas fijas (13 caracteres cada una)
