@@ -180,18 +180,17 @@ def get_humanitas_status(now: datetime) -> str:
     current_time = now.time()
     stops = ['NES', 'HUM', 'CEN', 'NES2']
     active_trip = None
-    # Buscar viaje activo (el bus sigue en ruta hasta NES2)
+    # Buscar el viaje activo (el autobús sigue en ruta hasta NES2)
     for trip in trips:
         nes2_time = trip.get('NES2')
         if nes2_time is None:
             continue
-        # Convertir NES2 a datetime para comparar
         nes2_dt = datetime.combine(now.date(), nes2_time)
-        # Si estamos antes de NES2, el viaje sigue activo
         if now.tzinfo is None:
             now_aware = CATANIA_TZ.localize(now)
         else:
             now_aware = now
+        # Si estamos antes de NES2, el viaje sigue activo
         if now_aware < CATANIA_TZ.localize(nes2_dt):
             active_trip = trip
             break
@@ -207,12 +206,7 @@ def get_humanitas_status(now: datetime) -> str:
     # Determinar posición del bus (fracción entre 0 y 3)
     bus_pos = -1
     if active_trip['NES'] is not None and active_trip['CEN'] is not None:
-        # Recorremos NES→HUM→CEN→NES2
-        segments = [
-            ('NES', 'HUM'),
-            ('HUM', 'CEN'),
-            ('CEN', 'NES2')
-        ]
+        segments = [('NES', 'HUM'), ('HUM', 'CEN'), ('CEN', 'NES2')]
         for idx, (s1, s2) in enumerate(segments):
             t1 = active_trip[s1]
             t2 = active_trip[s2]
@@ -220,8 +214,7 @@ def get_humanitas_status(now: datetime) -> str:
                 continue
             t1_dt = datetime.combine(now.date(), t1)
             t2_dt = datetime.combine(now.date(), t2)
-            # Si el horario cruza la medianoche (poco probable aquí), ajustar
-            if t2 < t1:
+            if t2 < t1:   # cruza la medianoche (no debería, pero por si acaso)
                 t2_dt += timedelta(days=1)
             now_dt = datetime.combine(now.date(), current_time)
             if t1_dt <= now_dt < t2_dt:
@@ -268,7 +261,7 @@ def get_humanitas_status(now: datetime) -> str:
 
     lines = [emoji_line]
     lines.append(f"{'NES':<16}{'HUM':<18}{'CEN':<13}{'NES'}")
-    # Horarios (NES2 calculado)
+    # Horarios (NES2 ya es un valor real)
     t1 = active_trip['NES'].strftime('%H:%M') if active_trip['NES'] else '--:--'
     t2 = active_trip['HUM'].strftime('%H:%M') if active_trip['HUM'] else '--:--'
     t3 = active_trip['CEN'].strftime('%H:%M') if active_trip['CEN'] else '--:--'
@@ -280,6 +273,7 @@ def get_humanitas_status(now: datetime) -> str:
 
 async def send_humanitas_response(update: Update, context: ContextTypes.DEFAULT_TYPE):
     now = get_simulated_now(context)
+    # Mensaje 1: foto fija
     img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/PUBLI_CS.png"
     caption = "Prossime partenze autobus, Nesima - Humanitas - Centro Sicilia:"
     try:
@@ -287,19 +281,16 @@ async def send_humanitas_response(update: Update, context: ContextTypes.DEFAULT_
     except Exception:
         msg1 = await update.message.reply_text(caption, parse_mode='Markdown')
     if msg1:
-        if 'all_msg_ids' not in context.chat_data:
-            context.chat_data['all_msg_ids'] = []
-        context.chat_data['all_msg_ids'].append(msg1.message_id)
+        await store_id(context, msg1)
 
+    # Mensaje 2: estado actual del autobús
     msg2_text = get_humanitas_status(now)
     keyboard = InlineKeyboardMarkup([[
         InlineKeyboardButton("🔄 Aggiornare", callback_data="aggiornare_humanitas")
     ]])
     msg2 = await update.message.reply_text(msg2_text, reply_markup=keyboard, parse_mode='Markdown')
     if msg2:
-        if 'all_msg_ids' not in context.chat_data:
-            context.chat_data['all_msg_ids'] = []
-        context.chat_data['all_msg_ids'].append(msg2.message_id)
+        await store_id(context, msg2)
 
 
 async def aggiornare_humanitas_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
