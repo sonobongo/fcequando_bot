@@ -11,8 +11,8 @@ from datetime import datetime, timedelta, time
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove
 from telegram.ext import ContextTypes
 from horarios_logic import *
+import handlers_bus as bus_handlers
 from horarios_logic import CATANIA_TZ, get_extension_message, get_shuttle_stops, get_next_shuttle_departure
-from handlers_bus import send_motta_response, send_humanitas_response
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +45,8 @@ def get_keyboard_altri(now=None):
             ["Fontana", "Nesima", "San Nullo"],
             ["Cibali", "Milo", "Borgo"],
             ["Giuffrida", "Italia", "Galatea"],
-            last_row
+            last_row,
+            ["BRT-1", "← Menu"],
         ],
         resize_keyboard=True, one_time_keyboard=False
     )
@@ -936,6 +937,8 @@ async def handle_button(update, context):
         await update.message.reply_text("🔙 Ritorno al menu principale.", reply_markup=keyboard_main)
     elif text == "Shuttle":
         await send_shuttle_response(update, context)
+    elif text == "BRT-1":
+        await bus_handlers.send_brt1_response(update, context)
     elif text in BOTON_TO_KEY:
         est_key = BOTON_TO_KEY[text]
         context.chat_data['last_station'] = est_key
@@ -1615,25 +1618,8 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if texto_lower == "shuttle":
         await send_shuttle_response(update, context)
         return
-
-    # ========== RESPUESTA A "motta" (palabra exacta) ==========
-    if texto_lower == "motta":
-        await send_motta_response(update, context)
-        return
-
-    # ========== RESPUESTA A "humanitas" (palabra exacta) ==========
-    if texto_lower == "humanitas":
-        await send_humanitas_response(update, context)
-        return
-
-    # ========== RESPUESTA A "adhumanitas" (foto fija) ==========
-    if texto_lower == "adhumanitas":
-        img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/PUBLI_CS.png"
-        caption = "Prossime partenze autobus, Nesima - Humanitas - Centro Sicilia:"
-        try:
-            await update.message.reply_photo(photo=img_url, caption=caption, parse_mode='Markdown')
-        except Exception:
-            await update.message.reply_text(caption, parse_mode='Markdown')
+    if texto_lower in ("brt1", "brt-1", "brt 1"):
+        await bus_handlers.send_brt1_response(update, context)
         return
     
     # ========== RESPUESTA A PALABRAS CLAVE (about, grazie) ==========
