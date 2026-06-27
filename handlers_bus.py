@@ -311,7 +311,7 @@ async def aggiornare_humanitas_callback(update: Update, context: ContextTypes.DE
 
 
 # ============================================================================
-# LÍNEA BRT-1 (Parcheggio Due Obelischi ↔ Stesicoro) – monitor tiempo real
+# LÍNEA BRT-1 (Parcheggio Due Obelischi → Stesicoro → Parcheggio) circular
 # ============================================================================
 import os as _os
 import json as _json
@@ -328,145 +328,86 @@ def _load_brt1():
 
 _load_brt1()
 
-def _brt1_times(stop_name: str, direction: str, now: datetime):
-    """Restituisce la lista di orari (time) per una fermata e direzione."""
-    if not _BRT1_DATA:
-        return []
-    if direction == 'fwd':
-        stops = _BRT1_DATA['stops_forward']
-        offsets = _BRT1_DATA['offsets_forward']
-        departures = _BRT1_DATA['departures_forward']
-    else:
-        stops = _BRT1_DATA['stops_return']
-        offsets = _BRT1_DATA['offsets_return']
-        departures = _BRT1_DATA['departures_return']
-
-    if stop_name not in offsets:
-        return []
-    offset_secs = offsets[stop_name]
-    times = []
-    for dep in departures:
-        base = datetime.strptime(dep, "%H:%M")
-        arr = base + timedelta(seconds=offset_secs)
-        if arr.day > 1 or arr.hour > 23:
-            continue
-        times.append(arr.time())
-    return times
-
 def get_brt1_status(now: datetime) -> str:
     if not _BRT1_DATA:
         return "🚌 Dati BRT-1 non disponibili."
 
-    # Assicura timezone locale
     if now.tzinfo is None:
         now = CATANIA_TZ.localize(now)
     else:
         now = now.astimezone(CATANIA_TZ)
     current_time = now.time()
 
-    # Parpadeo
     bus_icon = "🔻" if now.second % 2 == 0 else "⬇️"
 
-    stops_fwd = _BRT1_DATA['stops_forward']
-    stops_ret = _BRT1_DATA['stops_return']
-    deps_fwd = _BRT1_DATA['departures_forward']
-    deps_ret = _BRT1_DATA['departures_return']
-    off_fwd = _BRT1_DATA['offsets_forward']
-    off_ret = _BRT1_DATA['offsets_return']
+    stops = _BRT1_DATA['stops']
+    offsets = _BRT1_DATA['offsets']
+    departures = _BRT1_DATA['departures']
 
-    def find_active_buses(stops, offsets, departures):
-        """Trova tutti i tratti con bus attivi. Restituisce set di indici tratto."""
-        bus_tratti = set()
-        bus_fermate = set()
-        appena_passati = set()
-        N = len(stops)
-        for i in range(N - 1):
-            s_i = stops[i]
-            s_i1 = stops[i + 1]
-            if s_i not in offsets or s_i1 not in offsets:
-                continue
-            off_i = offsets[s_i]
-            off_i1 = offsets[s_i1]
-            for dep in departures:
-                base = datetime.strptime(dep, "%H:%M")
-                t_i = (base + timedelta(seconds=off_i)).time()
-                t_i1 = (base + timedelta(seconds=off_i1)).time()
-                if t_i <= current_time < t_i1:
-                    dt_i1 = CATANIA_TZ.localize(datetime.combine(now.date(), t_i1))
-                    secs = (dt_i1 - now).total_seconds()
-                    if secs <= 30:
-                        bus_fermate.add(i + 1)
-                    else:
-                        bus_tratti.add(i)
-                    break
-            # Appena passato (≤30s fa)
-            if s_i in offsets:
-                for dep in departures:
-                    base = datetime.strptime(dep, "%H:%M")
-                    t_i = (base + timedelta(seconds=off_i)).time()
-                    dt_i = CATANIA_TZ.localize(datetime.combine(now.date(), t_i))
-                    secs_ago = (now - dt_i).total_seconds()
-                    if 0 < secs_ago <= 30:
-                        appena_passati.add(i)
-                        break
+    # Trovare tutti i tratti con bus attivi (più corse simultanee)
+    bus_tratti = set()
+    bus_fermate = set()
+    appena_passati = set()
+    N = len(stops)
 
-        # Fallback: nessun bus trovato
-        if not bus_tratti and not bus_fermate:
-            bus_tratti.add(0)
-        return bus_tratti, bus_fermate, appena_passati
+    for i in range(N - 1):
+        s_i = stops[i]
+        s_i1 = stops[i + 1]
+        off_i = offsets[s_i]
+        off_i1 = offsets[s_i1]
+        for dep in departures:
+            base = datetime.strptime(dep, "%H:%M")
+            t_i = (base + timedelta(seconds=off_i)).time()
+            t_i1 = (base + timedelta(seconds=off_i1)).time()
+            if t_i <= current_time < t_i1:
+                dt_i1 = CATANIA_TZ.localize(datetime.combine(now.date(), t_i1))
+                secs = (dt_i1 - now).total_seconds()
+                if secs <= 30:
+                    bus_fermate.add(i + 1)
+                else:
+                    bus_tratti.add(i)
+                break
 
-    def next_time_for_stop(stop, offsets, departures):
-        if stop not in offsets:
-            return None
+    # Appena passato (≤30s fa) per ogni fermata
+    for i, stop in enumerate(stops):
         off = offsets[stop]
         for dep in departures:
             base = datetime.strptime(dep, "%H:%M")
             t = (base + timedelta(seconds=off)).time()
-            if t > current_time:
-                return t
-        return None
+            dt = CATANIA_TZ.localize(datetime.combine(now.date(), t))
+            secs_ago = (now - dt).total_seconds()
+            if 0 < secs_ago <= 30:
+                appena_passati.add(i)
+                break
 
-    # --- Direzione ANDATA: Parcheggio → Stesicoro ---
-    tratti_fwd, fermate_fwd, passati_fwd = find_active_buses(stops_fwd, off_fwd, deps_fwd)
-    # --- Direzione RITORNO: Stesicoro → Parcheggio ---
-    tratti_ret, fermate_ret, passati_ret = find_active_buses(stops_ret, off_ret, deps_ret)
+    # Fallback se nessun bus trovato
+    if not bus_tratti and not bus_fermate:
+        bus_tratti.add(0)
 
     lines = ["🚌 **BRT-1 – Monitoraggio in tempo reale**\n"]
+    for i, stop in enumerate(stops):
+        # Prossimo orario per questa fermata
+        off = offsets[stop]
+        next_t = None
+        for dep in departures:
+            base = datetime.strptime(dep, "%H:%M")
+            t = (base + timedelta(seconds=off)).time()
+            if t > current_time:
+                next_t = t
+                break
 
-    # Sezione ANDATA
-    lines.append("🔼 *Verso Stesicoro*")
-    N_fwd = len(stops_fwd)
-    for i, stop in enumerate(stops_fwd):
-        next_t = next_time_for_stop(stop, off_fwd, deps_fwd)
-        if i in fermate_fwd:
+        if i in bus_fermate:
             s = int((CATANIA_TZ.localize(datetime.combine(now.date(), next_t)) - now).total_seconds()) if next_t else 0
             lines.append(f"⚪️ **{stop}**  {bus_icon} {max(0,s)//60:02d}:{max(0,s)%60:02d}")
-        elif i in passati_fwd:
+        elif i in appena_passati:
             lines.append(f"⚪️ **{stop}**  _Appena passato_")
         elif next_t:
             lines.append(f"⚪️ {stop}  {next_t.strftime('%H:%M')}")
         else:
             lines.append(f"⚪️ {stop}  —")
-        if i < N_fwd - 1:
-            lines.append(f"▫️  {bus_icon}" if i in tratti_fwd else "▫️")
 
-    lines.append("")
-    # Sezione RITORNO
-    lines.append("🔽 *Verso Parcheggio Due Obelischi*")
-    N_ret = len(stops_ret)
-    for i, stop in enumerate(stops_ret):
-        next_t = next_time_for_stop(stop, off_ret, deps_ret)
-        if i in fermate_ret:
-            s = int((CATANIA_TZ.localize(datetime.combine(now.date(), next_t)) - now).total_seconds()) if next_t else 0
-            lines.append(f"⚪️ **{stop}**  {bus_icon} {max(0,s)//60:02d}:{max(0,s)%60:02d}")
-        elif i in passati_ret:
-            lines.append(f"⚪️ **{stop}**  _Appena passato_")
-        elif next_t:
-            lines.append(f"⚪️ {stop}  {next_t.strftime('%H:%M')}")
-        else:
-            lines.append(f"⚪️ {stop}  —")
-        if i < N_ret - 1:
-            lines.append(f"▫️  {bus_icon}" if i in tratti_ret else "▫️")
+        if i < N - 1:
+            lines.append(f"▫️  {bus_icon}" if i in bus_tratti else "▫️")
 
     return "\n".join(lines)
 
