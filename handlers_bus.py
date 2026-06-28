@@ -9,6 +9,13 @@ from horarios_logic import CATANIA_TZ, get_motta_trips, get_humanitas_trips
 
 logger = logging.getLogger(__name__)
 
+async def store_id(context, message):
+    if not hasattr(message, 'message_id'):
+        return
+    ids = context.chat_data.get('last_message_ids', [])
+    ids.append(message.message_id)
+    context.chat_data['last_message_ids'] = ids[-10:]
+
 # ============================================================================
 # FUNCIÓN AUXILIAR PARA OBTENER LA HORA SIMULADA (importada de handlers_dev)
 # ============================================================================
