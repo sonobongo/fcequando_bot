@@ -939,16 +939,18 @@ async def handle_button(update, context):
         await update.message.reply_text("🔙 Ritorno al menu principale.", reply_markup=keyboard_main)
     elif text == "Bus":
         now = get_simulated_now(context)
-        kb = get_keyboard_bus(now)
-        kb.one_time_keyboard = True
-        await update.message.reply_text("🚌 Servizi Bus:", reply_markup=kb)
+        await update.message.reply_text("🚌 Servizi Bus:", reply_markup=get_keyboard_bus(now))
     elif text == "Metro Shuttle":
+        await update.message.reply_text("🚌", reply_markup=ReplyKeyboardRemove())
         await send_shuttle_response(update, context)
     elif text == "BRT-1":
+        await update.message.reply_text("🚌", reply_markup=ReplyKeyboardRemove())
         await bus_handlers.send_brt1_response(update, context)
     elif text == "Humanitas":
+        await update.message.reply_text("🚌", reply_markup=ReplyKeyboardRemove())
         await bus_handlers.send_humanitas_response(update, context)
     elif text == "Motta":
+        await update.message.reply_text("🚌", reply_markup=ReplyKeyboardRemove())
         await bus_handlers.send_motta_response(update, context)
     elif text in BOTON_TO_KEY:
         est_key = BOTON_TO_KEY[text]
