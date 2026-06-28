@@ -942,16 +942,16 @@ async def handle_button(update, context):
         await update.message.reply_text("🚌 Servizi Bus:", reply_markup=get_keyboard_bus(now))
     elif text == "Metro Shuttle":
         await send_shuttle_response(update, context)
-        await update.message.reply_text("🔙", reply_markup=keyboard_main)
+        await context.bot.send_message(chat_id=update.effective_chat.id, text="​", reply_markup=keyboard_main, disable_notification=True)
     elif text == "BRT-1":
         await bus_handlers.send_brt1_response(update, context)
-        await update.message.reply_text("🔙", reply_markup=keyboard_main)
+        await context.bot.send_message(chat_id=update.effective_chat.id, text="​", reply_markup=keyboard_main, disable_notification=True)
     elif text == "Humanitas":
         await bus_handlers.send_humanitas_response(update, context)
-        await update.message.reply_text("🔙", reply_markup=keyboard_main)
+        await context.bot.send_message(chat_id=update.effective_chat.id, text="​", reply_markup=keyboard_main, disable_notification=True)
     elif text == "Motta":
         await bus_handlers.send_motta_response(update, context)
-        await update.message.reply_text("🔙", reply_markup=keyboard_main)
+        await context.bot.send_message(chat_id=update.effective_chat.id, text="​", reply_markup=keyboard_main, disable_notification=True)
     elif text in BOTON_TO_KEY:
         est_key = BOTON_TO_KEY[text]
         context.chat_data['last_station'] = est_key
