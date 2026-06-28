@@ -144,7 +144,7 @@ def main():
     app.add_handler(CommandHandler("devfin", dev_fin_wrapper))
 
     button_texts = ["Monte Po", "Stesicoro", "Altri", "Menu", "← Menu", "Fontana", "Nesima", "San Nullo",
-                    "Cibali", "Milo", "Borgo", "Giuffrida", "Italia", "Galatea", "Giovanni XXIII", "BRT-1"]
+                    "Cibali", "Milo", "Borgo", "Giuffrida", "Italia", "Galatea", "Giovanni XXIII", "Bus", "Metro Shuttle", "BRT-1", "Motta"]
     async def handle_button_wrapper(update, context):
         if context.chat_data.get('acces_mode', False):
             await acc_handlers.normal_handle_text(update, context)
