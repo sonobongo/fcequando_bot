@@ -24,42 +24,44 @@ keyboard_main = ReplyKeyboardMarkup(
     resize_keyboard=True, one_time_keyboard=False
 )
 
+keyboard_altri = ReplyKeyboardMarkup(
+    [
+        ["Fontana", "Nesima", "San Nullo"],
+        ["Cibali", "Milo", "Borgo"],
+        ["Giuffrida", "Italia", "Galatea"],
+        ["Giovanni XXIII", "Bus", "← Menu"],
+    ],
+    resize_keyboard=True, one_time_keyboard=False
+)
+
 def get_keyboard_altri(now=None):
-    """Shuttle visibile solo lun-ven, o dom sera dalle 22:30 (ultima riga senza shuttle il weekend)."""
+    return keyboard_altri
+
+def get_keyboard_bus(now=None):
+    """Botonera Bus: Metro Shuttle visibile solo lun-ven / dom notte."""
     show_shuttle = False
     if now is not None:
-        wd = now.weekday()  # 0=lun, 4=ven, 5=sab, 6=dom
-        h, m = now.hour, now.minute
-        time_mins = h * 60 + m
-        # Attivo lun(0)-ven(4) prima delle 22:30
+        wd = now.weekday()
+        time_mins = now.hour * 60 + now.minute
         if 0 <= wd <= 3:
             show_shuttle = True
-        elif wd == 4:  # venerdì
+        elif wd == 4:
             show_shuttle = time_mins < 22 * 60 + 30
-        elif wd == 6:  # domenica
+        elif wd == 6:
             show_shuttle = time_mins >= 22 * 60 + 30
-        # sabato: mai
-    last_row = ["Giovanni XXIII", "Shuttle", "← Menu"] if show_shuttle else ["Giovanni XXIII", "← Menu"]
-    return ReplyKeyboardMarkup(
-        [
-            ["Fontana", "Nesima", "San Nullo"],
-            ["Cibali", "Milo", "Borgo"],
-            ["Giuffrida", "Italia", "Galatea"],
-            last_row,
-            ["BRT-1", "← Menu"],
-        ],
-        resize_keyboard=True, one_time_keyboard=False
-    )
+    rows = [["BRT-1"], ["Motta"], ["← Menu"]]
+    if show_shuttle:
+        rows.insert(0, ["Metro Shuttle"])
+    return ReplyKeyboardMarkup(rows, resize_keyboard=True, one_time_keyboard=False)
 
-# Compatibilità: keyboard_altri statico (usato in posti senza contesto ora)
-keyboard_altri = get_keyboard_altri()
+keyboard_bus = get_keyboard_bus()
 
 BOTON_TO_KEY = {
     "Monte Po": "montepo", "Stesicoro": "stesicoro", "Fontana": "fontana",
     "Nesima": "nesima", "San Nullo": "sannullo", "Cibali": "cibali",
     "Milo": "milo", "Borgo": "borgo", "Giuffrida": "giuffrida",
     "Italia": "italia", "Galatea": "galatea", "Giovanni XXIII": "giovanni",
-    "Shuttle": "shuttle"
+    "Metro Shuttle": "shuttle"
 }
 
 # ============================================================================
@@ -935,10 +937,15 @@ async def handle_button(update, context):
         await cmd_altri(update, context)
     elif text == "← Menu":
         await update.message.reply_text("🔙 Ritorno al menu principale.", reply_markup=keyboard_main)
-    elif text == "Shuttle":
+    elif text == "Bus":
+        now = get_simulated_now(context)
+        await update.message.reply_text("🚌 Servizi Bus:", reply_markup=get_keyboard_bus(now))
+    elif text == "Metro Shuttle":
         await send_shuttle_response(update, context)
     elif text == "BRT-1":
         await bus_handlers.send_brt1_response(update, context)
+    elif text == "Motta":
+        await bus_handlers.send_motta_response(update, context)
     elif text in BOTON_TO_KEY:
         est_key = BOTON_TO_KEY[text]
         context.chat_data['last_station'] = est_key
@@ -1615,11 +1622,18 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return
     
     # ========== RESPUESTA A "shuttle" (palabra exacta) ==========
-    if texto_lower == "shuttle":
+    if texto_lower in ("shuttle", "metro shuttle"):
         await send_shuttle_response(update, context)
         return
     if texto_lower in ("brt1", "brt-1", "brt 1"):
         await bus_handlers.send_brt1_response(update, context)
+        return
+    if texto_lower == "motta":
+        await bus_handlers.send_motta_response(update, context)
+        return
+    if texto_lower == "bus":
+        now = get_simulated_now(context)
+        await update.message.reply_text("🚌 Servizi Bus:", reply_markup=get_keyboard_bus(now))
         return
     
     # ========== RESPUESTA A PALABRAS CLAVE (about, grazie) ==========
