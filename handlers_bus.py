@@ -190,14 +190,6 @@ def get_humanitas_status(now: datetime) -> str:
 
     current_time = now.time()
     stops = ['NES', 'HUM', 'CEN', 'NES2']
-    # NES2 non è nel JSON: calcolarlo come CEN + 34 minuti (durata ritorno CEN→NES)
-    RETURN_MINUTES = 34
-    for trip in trips:
-        if trip.get('CEN') is not None and trip.get('NES2') is None:
-            cen_dt = datetime.combine(datetime.today(), trip['CEN'])
-            nes2_dt = cen_dt + timedelta(minutes=RETURN_MINUTES)
-            trip['NES2'] = nes2_dt.time()
-
     active_trip = None
     # 1. Viaggio attualmente in corso: NES <= now < NES2
     for trip in trips:
