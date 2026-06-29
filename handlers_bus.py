@@ -177,7 +177,7 @@ async def aggiornare_motta_callback(update: Update, context: ContextTypes.DEFAUL
     try:
         await query.edit_message_text(text=msg, parse_mode='Markdown', reply_markup=keyboard)
     except Exception:
-        await query.message.reply_text(msg, parse_mode='Markdown', reply_markup=keyboard)
+        pass
 
 
 # ============================================================================
@@ -190,8 +190,16 @@ def get_humanitas_status(now: datetime) -> str:
 
     current_time = now.time()
     stops = ['NES', 'HUM', 'CEN', 'NES2']
+    # NES2 non è nel JSON: calcolarlo come CEN + 34 minuti (durata ritorno CEN→NES)
+    RETURN_MINUTES = 34
+    for trip in trips:
+        if trip.get('CEN') is not None and trip.get('NES2') is None:
+            cen_dt = datetime.combine(datetime.today(), trip['CEN'])
+            nes2_dt = cen_dt + timedelta(minutes=RETURN_MINUTES)
+            trip['NES2'] = nes2_dt.time()
+
     active_trip = None
-    # 1. Cercare il viaggio attualmente in corso: NES <= now < NES2
+    # 1. Viaggio attualmente in corso: NES <= now < NES2
     for trip in trips:
         nes_time = trip.get('NES')
         nes2_time = trip.get('NES2')
@@ -200,13 +208,13 @@ def get_humanitas_status(now: datetime) -> str:
         if nes_time <= current_time < nes2_time:
             active_trip = trip
             break
-    # 2. Se nessun viaggio in corso, prendere il prossimo
+    # 2. Prossimo viaggio
     if active_trip is None:
         for trip in trips:
             if trip.get('NES') and trip['NES'] > current_time:
                 active_trip = trip
                 break
-    # 3. Fallback: ultimo viaggio della giornata
+    # 3. Fallback
     if active_trip is None and trips:
         active_trip = trips[-1]
 
@@ -311,7 +319,7 @@ async def aggiornare_humanitas_callback(update: Update, context: ContextTypes.DE
     try:
         await query.edit_message_text(text=msg, parse_mode='Markdown', reply_markup=keyboard)
     except Exception:
-        await query.message.reply_text(msg, parse_mode='Markdown', reply_markup=keyboard)
+        pass
 
 
 # ============================================================================
