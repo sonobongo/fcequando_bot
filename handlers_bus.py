@@ -212,32 +212,29 @@ def get_humanitas_status(now: datetime) -> str:
 
     # Determinar posición del bus (fracción entre 0 y 3)
     bus_pos = -1
-    if active_trip['NES'] is not None and active_trip['CEN'] is not None:
-        segments = [('NES', 'HUM'), ('HUM', 'CEN'), ('CEN', 'NES2')]
-        for idx, (s1, s2) in enumerate(segments):
-            t1 = active_trip[s1]
-            t2 = active_trip[s2]
-            if t1 is None or t2 is None:
-                continue
-            t1_dt = datetime.combine(now.date(), t1)
-            t2_dt = datetime.combine(now.date(), t2)
-            if t2 < t1:   # cruza la medianoche (no debería, pero por si acaso)
-                t2_dt += timedelta(days=1)
-            now_dt = datetime.combine(now.date(), current_time)
-            if t1_dt <= now_dt < t2_dt:
-                seg_total = (t2_dt - t1_dt).total_seconds()
-                seg_transcurridos = (now_dt - t1_dt).total_seconds()
-                frac = seg_transcurridos / seg_total if seg_total > 0 else 0
-                bus_pos = idx + frac
-                break
-            elif now_dt == t2_dt:
-                bus_pos = idx + 1
-                break
-        else:
-            if now_dt < datetime.combine(now.date(), active_trip['NES']):
-                bus_pos = -1
-            elif now_dt >= datetime.combine(now.date(), active_trip['NES2']):
-                bus_pos = len(stops) - 1
+    now_dt = datetime.combine(now.date(), current_time)
+    segments = [('NES', 'HUM'), ('HUM', 'CEN'), ('CEN', 'NES2')]
+    for idx, (s1, s2) in enumerate(segments):
+        t1 = active_trip.get(s1)
+        t2 = active_trip.get(s2)
+        if t1 is None or t2 is None:
+            continue
+        t1_dt = datetime.combine(now.date(), t1)
+        t2_dt = datetime.combine(now.date(), t2)
+        if t1_dt <= now_dt < t2_dt:
+            seg_total = (t2_dt - t1_dt).total_seconds()
+            seg_transcurridos = (now_dt - t1_dt).total_seconds()
+            frac = seg_transcurridos / seg_total if seg_total > 0 else 0
+            bus_pos = idx + frac
+            break
+    # Se non in nessun segmento, controllare se prima o dopo il viaggio
+    if bus_pos == -1:
+        nes_dt = datetime.combine(now.date(), active_trip['NES']) if active_trip.get('NES') else None
+        nes2_dt = datetime.combine(now.date(), active_trip['NES2']) if active_trip.get('NES2') else None
+        if nes_dt and now_dt < nes_dt:
+            bus_pos = -1  # non ancora partito
+        elif nes2_dt and now_dt >= nes2_dt:
+            bus_pos = 3   # viaggio terminato, mostrare a NES2
 
     # Construir línea visual (longitudes de tramos: 4, 4, 3)
     seg_lengths = [4, 4, 3]
