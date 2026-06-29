@@ -191,28 +191,24 @@ def get_humanitas_status(now: datetime) -> str:
     current_time = now.time()
     stops = ['NES', 'HUM', 'CEN', 'NES2']
     active_trip = None
-    # Buscar el viaje activo (el autobús sigue en ruta hasta NES2)
+    # 1. Cercare il viaggio attualmente in corso: NES <= now < NES2
     for trip in trips:
+        nes_time = trip.get('NES')
         nes2_time = trip.get('NES2')
-        if nes2_time is None:
+        if nes_time is None or nes2_time is None:
             continue
-        nes2_dt = datetime.combine(now.date(), nes2_time)
-        if now.tzinfo is None:
-            now_aware = CATANIA_TZ.localize(now)
-        else:
-            now_aware = now
-        # Si estamos antes de NES2, el viaje sigue activo
-        if now_aware < CATANIA_TZ.localize(nes2_dt):
+        if nes_time <= current_time < nes2_time:
             active_trip = trip
             break
+    # 2. Se nessun viaggio in corso, prendere il prossimo
     if active_trip is None:
-        # Si no hay viaje activo, tomar el próximo que salga
         for trip in trips:
             if trip.get('NES') and trip['NES'] > current_time:
                 active_trip = trip
                 break
-        if active_trip is None and trips:
-            active_trip = trips[-1]
+    # 3. Fallback: ultimo viaggio della giornata
+    if active_trip is None and trips:
+        active_trip = trips[-1]
 
     # Determinar posición del bus (fracción entre 0 y 3)
     bus_pos = -1
