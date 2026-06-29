@@ -152,11 +152,18 @@ def get_motta_status(now: datetime) -> str:
 
 async def send_motta_response(update: Update, context: ContextTypes.DEFAULT_TYPE):
     now = get_simulated_now(context)
+    img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/st_busmotta.png"
+    try:
+        msg1 = await update.message.reply_photo(photo=img_url, caption="🚌 Linea Motta")
+    except Exception:
+        msg1 = await update.message.reply_text("🚌 Linea Motta")
+    await store_id(context, msg1)
     msg = get_motta_status(now)
     keyboard = InlineKeyboardMarkup([[
         InlineKeyboardButton("🔄 Aggiornare", callback_data="aggiornare_motta")
     ]])
-    await update.message.reply_text(msg, reply_markup=keyboard, parse_mode='Markdown')
+    msg2 = await update.message.reply_text(msg, reply_markup=keyboard, parse_mode='Markdown')
+    await store_id(context, msg2)
 
 
 async def aggiornare_motta_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -164,16 +171,13 @@ async def aggiornare_motta_callback(update: Update, context: ContextTypes.DEFAUL
     await query.answer()
     now = get_simulated_now(context)
     msg = get_motta_status(now)
+    keyboard = InlineKeyboardMarkup([[
+        InlineKeyboardButton("🔄 Aggiornare", callback_data="aggiornare_motta")
+    ]])
     try:
-        await query.edit_message_text(
-            text=msg,
-            parse_mode='Markdown',
-            reply_markup=InlineKeyboardMarkup([[
-                InlineKeyboardButton("🔄 Aggiornare", callback_data="aggiornare_motta")
-            ]])
-        )
+        await query.edit_message_text(text=msg, parse_mode='Markdown', reply_markup=keyboard)
     except Exception:
-        pass
+        await query.message.reply_text(msg, parse_mode='Markdown', reply_markup=keyboard)
 
 
 # ============================================================================
@@ -281,8 +285,8 @@ def get_humanitas_status(now: datetime) -> str:
 async def send_humanitas_response(update: Update, context: ContextTypes.DEFAULT_TYPE):
     now = get_simulated_now(context)
     # Mensaje 1: foto fija
-    img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/PUBLI_CS.png"
-    caption = "Prossime partenze autobus, Nesima - Humanitas - Centro Sicilia:"
+    img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/st_bushumanitas.png"
+    caption = "🚌 Linea Humanitas"
     try:
         msg1 = await update.message.reply_photo(photo=img_url, caption=caption, parse_mode='Markdown')
     except Exception:
@@ -305,16 +309,13 @@ async def aggiornare_humanitas_callback(update: Update, context: ContextTypes.DE
     await query.answer()
     now = get_simulated_now(context)
     msg = get_humanitas_status(now)
+    keyboard = InlineKeyboardMarkup([[
+        InlineKeyboardButton("🔄 Aggiornare", callback_data="aggiornare_humanitas")
+    ]])
     try:
-        await query.edit_message_text(
-            text=msg,
-            parse_mode='Markdown',
-            reply_markup=InlineKeyboardMarkup([[
-                InlineKeyboardButton("🔄 Aggiornare", callback_data="aggiornare_humanitas")
-            ]])
-        )
+        await query.edit_message_text(text=msg, parse_mode='Markdown', reply_markup=keyboard)
     except Exception:
-        pass
+        await query.message.reply_text(msg, parse_mode='Markdown', reply_markup=keyboard)
 
 
 # ============================================================================
