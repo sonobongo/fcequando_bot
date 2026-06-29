@@ -1130,6 +1130,7 @@ def get_humanitas_trips(now: datetime) -> List[Dict[str, Optional[time]]]:
         trip['NES'] = nes_sched[i]
         trip['HUM'] = hum_sched[i] if i < len(hum_sched) else None
         trip['CEN'] = cen_sched[i] if i < len(cen_sched) else None
-        trip['NES2'] = None   # no hay horario de llegada al final
+        nes2_sched = HUMANITAS_SCHEDULES.get('NES2', {}).get(key, [])
+        trip['NES2'] = nes2_sched[i] if i < len(nes2_sched) else None
         trips.append(trip)
     return trips
