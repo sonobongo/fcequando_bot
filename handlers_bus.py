@@ -450,7 +450,7 @@ async def auto_update_brt1(context, chat_id, message_id, cycles=40, interval=3):
         context.chat_data.pop('brt1_task', None)
 
 
-async def send_brt1_response(update, context):
+async def send_brt1_response(update, context, restore_keyboard=None):
     if 'brt1_task' in context.chat_data:
         context.chat_data['brt1_active'] = False
         try:
@@ -460,7 +460,7 @@ async def send_brt1_response(update, context):
         context.chat_data.pop('brt1_task', None)
     now = get_simulated_now(context)
     msg = get_brt1_status(now)
-    result = await update.message.reply_text(msg, parse_mode='Markdown')
+    result = await update.message.reply_text(msg, parse_mode='Markdown', reply_markup=restore_keyboard)
     message_id = result.message_id
     chat_id = update.effective_chat.id
     context.chat_data['brt1_active'] = True
