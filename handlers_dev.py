@@ -941,13 +941,9 @@ async def handle_button(update, context):
         now = get_simulated_now(context)
         await update.message.reply_text("🚌 Servizi Bus:", reply_markup=get_keyboard_bus(now))
     elif text == "Metro Shuttle":
-        dot = await update.message.reply_text(".", reply_markup=keyboard_main, disable_notification=True)
-        await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=dot.message_id)
-        await send_shuttle_response(update, context)
+        await send_shuttle_response(update, context, restore_keyboard=keyboard_main)
     elif text == "BRT-1":
-        dot = await update.message.reply_text(".", reply_markup=keyboard_main, disable_notification=True)
-        await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=dot.message_id)
-        await bus_handlers.send_brt1_response(update, context)
+        await bus_handlers.send_brt1_response(update, context, restore_keyboard=keyboard_main)
     elif text == "Humanitas":
         await bus_handlers.send_humanitas_response(update, context, restore_keyboard=keyboard_main)
     elif text == "Motta":
@@ -1261,11 +1257,11 @@ async def aggiornare_shuttle_callback(update: Update, context: ContextTypes.DEFA
     except Exception:
         pass
 
-async def send_shuttle_response(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def send_shuttle_response(update: Update, context: ContextTypes.DEFAULT_TYPE, restore_keyboard=None):
     stop_shuttle_update(context)
     now = get_simulated_now(context)
     msg = get_shuttle_status(now)
-    result = await update.message.reply_text(msg, parse_mode='Markdown')
+    result = await update.message.reply_text(msg, parse_mode='Markdown', reply_markup=restore_keyboard)
     message_id = result.message_id
     chat_id = update.effective_chat.id
     context.chat_data['shuttle_active'] = True
