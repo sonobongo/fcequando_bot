@@ -1,26 +1,33 @@
-{
-  "cierres_estaciones": [
-    {
-      "station": "borgo",
-      "start": "2026-02-09",
-      "end": "2026-03-08",
-      "reduction_seconds": 40,
-      "descripcion": "Cierre temporal de Borgo por obras"
-    },
-    {
-      "station": "giuffrida",
-      "start": "2026-03-16",
-      "end": "2026-04-26",
-      "reduction_seconds": 40,
-      "descripcion": "Cierre temporal de Giuffrida por obras"
-    },
-    {
-      "station": "italia",
-      "start": "2026-05-18",
-      "end": "2026-06-21",
-      "reduction_seconds": 40,
-      "descripcion": "Cierre temporal de Italia por obras"
-    }
+"cierres_estaciones": [
+  {
+    "station": "borgo",
+    "start": "2026-02-09",
+    "end": "2026-03-08",
+    "reduction_seconds": 40,
+    "descripcion": "Cierre temporal de Borgo por obras"
+  },
+  {
+    "station": "giuffrida",
+    "start": "2026-03-16",
+    "end": "2026-04-26",
+    "reduction_seconds": 40,
+    "descripcion": "Cierre temporal de Giuffrida por obras"
+  },
+  {
+    "station": "italia",
+    "start": "2026-05-18",
+    "end": "2026-06-21",
+    "reduction_seconds": 40,
+    "descripcion": "Cierre temporal de Italia por obras"
+  },
+  {
+    "station": "galatea",
+    "start": "2026-07-06",
+    "end": "2026-08-09",
+    "reduction_seconds": 40,
+    "descripcion": "Cierre temporal de Galatea por obras"
+  }
+]¡
   ],
   "extensiones_horario": [
     {
