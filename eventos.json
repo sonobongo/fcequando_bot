@@ -1,33 +1,33 @@
-"cierres_estaciones": [
-  {
-    "station": "borgo",
-    "start": "2026-02-09",
-    "end": "2026-03-08",
-    "reduction_seconds": 40,
-    "descripcion": "Cierre temporal de Borgo por obras"
-  },
-  {
-    "station": "giuffrida",
-    "start": "2026-03-16",
-    "end": "2026-04-26",
-    "reduction_seconds": 40,
-    "descripcion": "Cierre temporal de Giuffrida por obras"
-  },
-  {
-    "station": "italia",
-    "start": "2026-05-18",
-    "end": "2026-06-21",
-    "reduction_seconds": 40,
-    "descripcion": "Cierre temporal de Italia por obras"
-  },
-  {
-    "station": "galatea",
-    "start": "2026-07-06",
-    "end": "2026-08-09",
-    "reduction_seconds": 40,
-    "descripcion": "Cierre temporal de Galatea por obras"
-  }
-]¡
+{
+  "cierres_estaciones": [
+    {
+      "station": "borgo",
+      "start": "2026-02-09",
+      "end": "2026-03-08",
+      "reduction_seconds": 40,
+      "descripcion": "Cierre temporal de Borgo por obras"
+    },
+    {
+      "station": "giuffrida",
+      "start": "2026-03-16",
+      "end": "2026-04-26",
+      "reduction_seconds": 40,
+      "descripcion": "Cierre temporal de Giuffrida por obras"
+    },
+    {
+      "station": "italia",
+      "start": "2026-05-18",
+      "end": "2026-06-21",
+      "reduction_seconds": 40,
+      "descripcion": "Cierre temporal de Italia por obras"
+    },
+    {
+      "station": "galatea",
+      "start": "2026-07-06",
+      "end": "2026-08-09",
+      "reduction_seconds": 40,
+      "descripcion": "Cierre temporal de Galatea por obras"
+    }
   ],
   "extensiones_horario": [
     {
@@ -51,30 +51,40 @@
       "tipo_dia_base": "weekday"
     },
     {
+      "fecha": "2026-05-27",
+      "horario_extendido": {
+        "Montepo": { "ultimo_tren": "00:34" },
+        "Stesicoro": { "ultimo_tren": "01:00" }
+      },
+      "descripcion": "Orario tipo venerdì (chiusura alle 01:00)",
+      "mantiene_frecuencia": true,
+      "tipo_dia_base": "friday"
+    },
+    {
       "fecha": "2026-12-31",
       "horario_extendido": {
-        "Montepo": { "primer_tren": "06:00", "ultimo_tren": "02:30" },
-        "Stesicoro": { "primer_tren": "06:25", "ultimo_tren": "03:00" }
+        "Montepo": { "primer_tren": "06:00", "ultimo_tren": "03:00" },
+        "Stesicoro": { "primer_tren": "06:25", "ultimo_tren": "03:30" }
       },
       "descripcion": "Nochevieja: servicio extendido"
     },
     {
       "fecha": "2026-01-01",
       "horario_extendido": {
-        "Montepo": { "primer_tren": "07:00", "ultimo_tren": "21:58" },
-        "Stesicoro": { "primer_tren": "07:25", "ultimo_tren": "22:30" }
+        "Montepo": { "primer_tren": "07:00", "ultimo_tren": "22:30" },
+        "Stesicoro": { "primer_tren": "07:25", "ultimo_tren": "23:00" }
       },
       "descripcion": "Año Nuevo: horario especial"
     }
   ],
-  "extra_tiempo_estacion": [
+  "horas_punta_eventos": [
     {
-      "station": "giovanni",
-      "fechas": ["2026-05-30", "2026-05-31", "2026-06-01", "2026-06-02"],
-      "hora_inicio": "09:00",
-      "hora_fin": "21:00",
-      "extra_seconds": 10,
-      "descripcion": "Etna Comics 2026: tempo aggiuntivo per salita/discesa passeggeri a Giovanni XXIII"
+      "fecha": "2026-05-20",
+      "intervalo": {
+        "inicio": "19:30",
+        "fin": "22:30"
+      },
+      "descripcion": "Hora punta extendida por evento especial"
     }
   ],
   "notas": [
