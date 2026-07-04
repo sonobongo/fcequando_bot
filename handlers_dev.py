@@ -1262,7 +1262,7 @@ async def send_shuttle_response(update: Update, context: ContextTypes.DEFAULT_TY
     if restore_keyboard is not None:
         await context.bot.send_message(
             chat_id=update.effective_chat.id,
-            text="​",
+            text=" ",
             reply_markup=restore_keyboard,
             disable_notification=True
         )
