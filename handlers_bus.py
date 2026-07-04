@@ -496,3 +496,183 @@ async def aggiornare_brt1_callback(update, context):
         )
     except Exception:
         pass
+
+
+# ============================================================================
+# LÍNEA BRT-5 (Terminal Stazione Centrale ↔ Ospedale Cannizzaro) circular
+# ============================================================================
+import os as _os5
+import json as _json5
+
+_BRT5_FILE = _os5.path.join(_os5.path.dirname(_os5.path.abspath(__file__)), 'brt5_horarios.json')
+_BRT5_DATA = {}
+
+def _load_brt5():
+    global _BRT5_DATA
+    if not _os5.path.exists(_BRT5_FILE):
+        return
+    with open(_BRT5_FILE, 'r', encoding='utf-8') as f:
+        _BRT5_DATA = _json5.load(f)
+
+_load_brt5()
+
+def get_brt5_status(now: datetime) -> str:
+    if not _BRT5_DATA:
+        return "🚌 Dati BRT-5 non disponibili."
+    if now.tzinfo is None:
+        now = CATANIA_TZ.localize(now)
+    else:
+        now = now.astimezone(CATANIA_TZ)
+    current_time = now.time()
+    bus_icon = "🔻" if now.second % 2 == 0 else "⬇️"
+
+    def find_buses(stops, offsets, departures):
+        bus_tratti, bus_fermate, appena = set(), set(), set()
+        N = len(stops)
+        for i in range(N - 1):
+            off_i = offsets[stops[i]]
+            off_i1 = offsets[stops[i+1]]
+            for dep in departures:
+                base = datetime.strptime(dep, "%H:%M")
+                t_i = (base + timedelta(seconds=off_i)).time()
+                t_i1 = (base + timedelta(seconds=off_i1)).time()
+                if t_i <= current_time < t_i1:
+                    dt_i1 = CATANIA_TZ.localize(datetime.combine(now.date(), t_i1))
+                    secs = (dt_i1 - now).total_seconds()
+                    if secs <= 30:
+                        bus_fermate.add(i+1)
+                    else:
+                        bus_tratti.add(i)
+                    break
+        for i, stop in enumerate(stops):
+            off = offsets[stop]
+            for dep in departures:
+                base = datetime.strptime(dep, "%H:%M")
+                t = (base + timedelta(seconds=off)).time()
+                dt = CATANIA_TZ.localize(datetime.combine(now.date(), t))
+                if 0 < (now - dt).total_seconds() <= 30:
+                    appena.add(i)
+                    break
+        if not bus_tratti and not bus_fermate:
+            bus_tratti.add(0)
+        return bus_tratti, bus_fermate, appena
+
+    def next_t(stop, offsets, departures):
+        off = offsets[stop]
+        for dep in departures:
+            t = (datetime.strptime(dep, "%H:%M") + timedelta(seconds=off)).time()
+            if t > current_time:
+                return t
+        return None
+
+    stops_fwd = _BRT5_DATA['stops_forward']
+    stops_ret = _BRT5_DATA['stops_return']
+    off_fwd = _BRT5_DATA['offsets_forward']
+    off_ret = _BRT5_DATA['offsets_return']
+    deps_fwd = _BRT5_DATA['departures_forward']
+    deps_ret = _BRT5_DATA['departures_return']
+
+    bt_f, bf_f, ap_f = find_buses(stops_fwd, off_fwd, deps_fwd)
+    bt_r, bf_r, ap_r = find_buses(stops_ret, off_ret, deps_ret)
+
+    lines = ["🚌 **BRT-5 – Monitoraggio in tempo reale**\n"]
+
+    lines.append("🔼 *Verso Ospedale Cannizzaro*")
+    for i, stop in enumerate(stops_fwd):
+        nt = next_t(stop, off_fwd, deps_fwd)
+        if i in bf_f:
+            s = max(0, int((CATANIA_TZ.localize(datetime.combine(now.date(), nt)) - now).total_seconds())) if nt else 0
+            lines.append(f"⚪️ **{stop}**  {bus_icon} {s//60:02d}:{s%60:02d}")
+        elif i in ap_f:
+            lines.append(f"⚪️ **{stop}**  _Appena passato_")
+        elif nt:
+            lines.append(f"⚪️ {stop}  {nt.strftime('%H:%M')}")
+        else:
+            lines.append(f"⚪️ {stop}  —")
+        if i < len(stops_fwd) - 1:
+            lines.append(f"▫️  {bus_icon}" if i in bt_f else "▫️")
+
+    lines.append("")
+    lines.append("🔽 *Verso Terminal Stazione Centrale*")
+    for i, stop in enumerate(stops_ret):
+        nt = next_t(stop, off_ret, deps_ret)
+        if i in bf_r:
+            s = max(0, int((CATANIA_TZ.localize(datetime.combine(now.date(), nt)) - now).total_seconds())) if nt else 0
+            lines.append(f"⚪️ **{stop}**  {bus_icon} {s//60:02d}:{s%60:02d}")
+        elif i in ap_r:
+            lines.append(f"⚪️ **{stop}**  _Appena passato_")
+        elif nt:
+            lines.append(f"⚪️ {stop}  {nt.strftime('%H:%M')}")
+        else:
+            lines.append(f"⚪️ {stop}  —")
+        if i < len(stops_ret) - 1:
+            lines.append(f"▫️  {bus_icon}" if i in bt_r else "▫️")
+
+    return "\n".join(lines)
+
+
+async def auto_update_brt5(context, chat_id, message_id, cycles=40, interval=3):
+    last_sent_msg = None
+    for _ in range(cycles):
+        for _ in range(interval):
+            await asyncio.sleep(1)
+            if not context.chat_data.get('brt5_active', False):
+                return
+        if not context.chat_data.get('brt5_active', False):
+            return
+        now = get_simulated_now(context)
+        new_msg = get_brt5_status(now)
+        if new_msg != last_sent_msg:
+            try:
+                await context.bot.edit_message_text(text=new_msg, chat_id=chat_id, message_id=message_id, parse_mode='Markdown')
+                last_sent_msg = new_msg
+            except Exception as e:
+                logger.error(f"Errore aggiornamento BRT-5: {e}")
+                break
+    if context.chat_data.get('brt5_active', False):
+        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔄 Aggiornare", callback_data="aggiornare_brt5")]])
+        try:
+            await context.bot.edit_message_text(text=new_msg, chat_id=chat_id, message_id=message_id, parse_mode='Markdown', reply_markup=keyboard)
+        except Exception:
+            pass
+        context.chat_data['brt5_active'] = False
+        context.chat_data.pop('brt5_task', None)
+
+
+async def send_brt5_response(update, context, restore_keyboard=None):
+    if 'brt5_task' in context.chat_data:
+        context.chat_data['brt5_active'] = False
+        try:
+            context.chat_data['brt5_task'].cancel()
+        except Exception:
+            pass
+        context.chat_data.pop('brt5_task', None)
+    if restore_keyboard is not None:
+        await update.message.reply_text("🚌 BRT-5", reply_markup=restore_keyboard, disable_notification=True)
+    now = get_simulated_now(context)
+    msg = get_brt5_status(now)
+    result = await update.message.reply_text(msg, parse_mode='Markdown')
+    context.chat_data['brt5_active'] = True
+    task = asyncio.create_task(auto_update_brt5(context, update.effective_chat.id, result.message_id))
+    context.chat_data['brt5_task'] = task
+
+
+async def aggiornare_brt5_callback(update, context):
+    query = update.callback_query
+    await query.answer()
+    if 'brt5_task' in context.chat_data:
+        context.chat_data['brt5_active'] = False
+        try:
+            context.chat_data['brt5_task'].cancel()
+        except Exception:
+            pass
+        context.chat_data.pop('brt5_task', None)
+    now = get_simulated_now(context)
+    msg = get_brt5_status(now)
+    context.chat_data['brt5_active'] = True
+    task = asyncio.create_task(auto_update_brt5(context, query.message.chat_id, query.message.message_id))
+    context.chat_data['brt5_task'] = task
+    try:
+        await context.bot.edit_message_text(text=msg, chat_id=query.message.chat_id, message_id=query.message.message_id, parse_mode='Markdown')
+    except Exception:
+        pass
