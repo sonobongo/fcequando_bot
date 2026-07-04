@@ -415,6 +415,7 @@ def get_brt1_status(now: datetime) -> str:
 
 async def auto_update_brt1(context, chat_id, message_id, cycles=40, interval=3):
     last_sent_msg = None
+    restore_kb = context.chat_data.get('brt1_restore_keyboard')
     for _ in range(cycles):
         for _ in range(interval):
             await asyncio.sleep(1)
@@ -428,7 +429,8 @@ async def auto_update_brt1(context, chat_id, message_id, cycles=40, interval=3):
             try:
                 await context.bot.edit_message_text(
                     text=new_msg, chat_id=chat_id,
-                    message_id=message_id, parse_mode='Markdown'
+                    message_id=message_id, parse_mode='Markdown',
+                    reply_markup=restore_kb
                 )
                 last_sent_msg = new_msg
             except Exception as e:
@@ -458,11 +460,10 @@ async def send_brt1_response(update, context, restore_keyboard=None):
         except Exception:
             pass
         context.chat_data.pop('brt1_task', None)
-    if restore_keyboard is not None:
-        await update.message.reply_text(" ", reply_markup=restore_keyboard, disable_notification=True)
+    context.chat_data['brt1_restore_keyboard'] = restore_keyboard
     now = get_simulated_now(context)
     msg = get_brt1_status(now)
-    result = await update.message.reply_text(msg, parse_mode='Markdown')
+    result = await update.message.reply_text(msg, parse_mode='Markdown', reply_markup=restore_keyboard)
     message_id = result.message_id
     chat_id = update.effective_chat.id
     context.chat_data['brt1_active'] = True
