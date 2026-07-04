@@ -545,13 +545,14 @@ def get_closing_time(now: datetime, station: str) -> Tuple[int, int]:
         last = get_last_train_sant_agata(station)
         return (last.hour, last.minute)
 
+    eff_ct = get_effective_datetime(now)
     if is_festivo_nazionale(now):
-        if now.weekday() in (4, 5, 6):
+        if eff_ct.weekday() in (4, 5, 6):
             return (1, 0)
         else:
             return (22, 30)
     else:
-        if now.weekday() in (4, 5):
+        if eff_ct.weekday() in (4, 5):
             return (1, 0)
         else:
             return (22, 30)
@@ -1130,7 +1131,6 @@ def get_humanitas_trips(now: datetime) -> List[Dict[str, Optional[time]]]:
         trip['NES'] = nes_sched[i]
         trip['HUM'] = hum_sched[i] if i < len(hum_sched) else None
         trip['CEN'] = cen_sched[i] if i < len(cen_sched) else None
-        nes2_sched = HUMANITAS_SCHEDULES.get('NES2', {}).get(key, [])
-        trip['NES2'] = nes2_sched[i] if i < len(nes2_sched) else None
+        trip['NES2'] = None   # no hay horario de llegada al final
         trips.append(trip)
     return trips
