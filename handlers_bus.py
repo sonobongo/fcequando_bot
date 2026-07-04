@@ -458,9 +458,11 @@ async def send_brt1_response(update, context, restore_keyboard=None):
         except Exception:
             pass
         context.chat_data.pop('brt1_task', None)
+    if restore_keyboard is not None:
+        await update.message.reply_text("​", reply_markup=restore_keyboard, disable_notification=True)
     now = get_simulated_now(context)
     msg = get_brt1_status(now)
-    result = await update.message.reply_text(msg, parse_mode='Markdown', reply_markup=restore_keyboard)
+    result = await update.message.reply_text(msg, parse_mode='Markdown')
     message_id = result.message_id
     chat_id = update.effective_chat.id
     context.chat_data['brt1_active'] = True
