@@ -1218,8 +1218,7 @@ async def auto_update_shuttle(context, chat_id, message_id, cycles=40, interval=
             try:
                 await context.bot.edit_message_text(
                     text=new_msg, chat_id=chat_id,
-                    message_id=message_id, parse_mode='Markdown',
-                    reply_markup=restore_kb
+                    message_id=message_id, parse_mode='Markdown'
                 )
                 last_sent_msg = new_msg
             except Exception as e:
