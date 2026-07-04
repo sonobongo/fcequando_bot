@@ -1259,9 +1259,16 @@ async def aggiornare_shuttle_callback(update: Update, context: ContextTypes.DEFA
 
 async def send_shuttle_response(update: Update, context: ContextTypes.DEFAULT_TYPE, restore_keyboard=None):
     stop_shuttle_update(context)
+    if restore_keyboard is not None:
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text="​",
+            reply_markup=restore_keyboard,
+            disable_notification=True
+        )
     now = get_simulated_now(context)
     msg = get_shuttle_status(now)
-    result = await update.message.reply_text(msg, parse_mode='Markdown', reply_markup=restore_keyboard)
+    result = await update.message.reply_text(msg, parse_mode='Markdown')
     message_id = result.message_id
     chat_id = update.effective_chat.id
     context.chat_data['shuttle_active'] = True
@@ -1606,16 +1613,32 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
         "ultimo treno oggi", "ultima corsa oggi"
     ]):
         now = get_simulated_now(context)
-        mp_schedule = get_schedule_list("Montepo", now)
-        st_schedule = get_schedule_list("Stesicoro", now)
-
-        last_mp = mp_schedule[-1]
-        last_st = st_schedule[-1]
+        is_special = is_new_years_eve(now) or is_sant_agata(now) or get_extension_horario(now) is not None
+        if is_special:
+            mp_h, mp_m = get_closing_time(now, "Montepo")
+            st_h, st_m = get_closing_time(now, "Stesicoro")
+            last_mp_str = f"{mp_h:02d}:{mp_m:02d}"
+            last_st_str = f"{st_h:02d}:{st_m:02d}"
+        else:
+            eff = get_effective_datetime(now)
+            tomorrow_noon = CATANIA_TZ.localize(
+                datetime.combine((eff + timedelta(days=1)).date(), time(12, 0))
+            )
+            mp_today = get_schedule_list("Montepo", now)
+            st_today = get_schedule_list("Stesicoro", now)
+            mp_tomorrow = get_schedule_list("Montepo", tomorrow_noon)
+            st_tomorrow = get_schedule_list("Stesicoro", tomorrow_noon)
+            mp_madru = [t for t in mp_tomorrow if t.hour < 5]
+            st_madru = [t for t in st_tomorrow if t.hour < 5]
+            last_mp = mp_madru[-1] if mp_madru else mp_today[-1]
+            last_st = st_madru[-1] if st_madru else st_today[-1]
+            last_mp_str = last_mp.strftime("%H:%M")
+            last_st_str = last_st.strftime("%H:%M")
 
         msg = (
             f"🚇 **Ultime partenze di oggi**\n"
-            f"▪️ Da Monte Po verso Stesicoro: **{last_mp.strftime('%H:%M')}**\n"
-            f"▪️ Da Stesicoro verso Monte Po: **{last_st.strftime('%H:%M')}**"
+            f"▪️ Da Monte Po verso Stesicoro: **{last_mp_str}**\n"
+            f"▪️ Da Stesicoro verso Monte Po: **{last_st_str}**"
         )
         extension_msg = get_extension_message(now)
         if extension_msg:
