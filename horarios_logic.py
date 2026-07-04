@@ -530,6 +530,9 @@ def get_opening_time(now: datetime, station: str = None) -> Tuple[int, int]:
             return (h, m)
     if is_festivo_nazionale(now):
         return (7, 0)
+    eff_op = get_effective_datetime(now)
+    if eff_op.weekday() == 6:  # domenica
+        return (7, 0)
     return (6, 0)
 
 def get_closing_time(now: datetime, station: str) -> Tuple[int, int]:
