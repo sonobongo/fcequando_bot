@@ -530,8 +530,9 @@ def get_opening_time(now: datetime, station: str = None) -> Tuple[int, int]:
             return (h, m)
     if is_festivo_nazionale(now):
         return (7, 0)
-    eff_op = get_effective_datetime(now)
-    if eff_op.weekday() == 6:  # domenica
+    # Usare now.weekday() (giorno calendario reale) per determinare l'orario di apertura
+    # perché l'apertura dipende da QUANDO il metro riapre, non dal giorno operativo
+    if now.weekday() == 6:  # domenica calendario
         return (7, 0)
     return (6, 0)
 
