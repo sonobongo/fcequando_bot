@@ -49,7 +49,7 @@ def get_keyboard_bus(now=None):
             show_shuttle = time_mins < 22 * 60 + 30
         elif wd == 6:
             show_shuttle = time_mins >= 22 * 60 + 30
-    rows = [["BRT-1"], ["Humanitas"], ["Motta"], ["← Menu"]]
+    rows = [["BRT-1"], ["BRT-5"], ["Humanitas"], ["Motta"], ["← Menu"]]
     if show_shuttle:
         rows.insert(0, ["Metro Shuttle"])
     return ReplyKeyboardMarkup(rows, resize_keyboard=True, one_time_keyboard=False)
@@ -957,6 +957,8 @@ async def handle_button(update, context):
         await send_shuttle_response(update, context, restore_keyboard=keyboard_main)
     elif text == "BRT-1":
         await bus_handlers.send_brt1_response(update, context, restore_keyboard=keyboard_main)
+    elif text == "BRT-5":
+        await bus_handlers.send_brt5_response(update, context, restore_keyboard=keyboard_main)
     elif text == "Humanitas":
         await bus_handlers.send_humanitas_response(update, context, restore_keyboard=keyboard_main)
     elif text == "Motta":
@@ -1666,6 +1668,9 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return
     if texto_lower in ("brt1", "brt-1", "brt 1"):
         await bus_handlers.send_brt1_response(update, context)
+        return
+    if texto_lower in ("brt5", "brt-5", "brt 5"):
+        await bus_handlers.send_brt5_response(update, context)
         return
     if texto_lower == "humanitas":
         await bus_handlers.send_humanitas_response(update, context)
