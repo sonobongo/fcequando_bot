@@ -49,7 +49,7 @@ def get_keyboard_bus(now=None):
             show_shuttle = time_mins < 22 * 60 + 30
         elif wd == 6:
             show_shuttle = time_mins >= 22 * 60 + 30
-    rows = [["BRT-1"], ["BRT-5"], ["Humanitas"], ["Motta"], ["← Menu"]]
+    rows = [["BRT-1"], ["Humanitas"], ["Motta"], ["← Menu"]]
     if show_shuttle:
         rows.insert(0, ["Metro Shuttle"])
     return ReplyKeyboardMarkup(rows, resize_keyboard=True, one_time_keyboard=False)
@@ -129,7 +129,8 @@ def stop_shuttle_update(context):
         context.chat_data.pop('shuttle_task', None)
 
 def stop_all_bus_updates(context):
-    stop_all_bus_updates(context)
+    stop_super_update(context)
+    stop_shuttle_update(context)
     for key in ('brt1', 'brt5'):
         if f'{key}_task' in context.chat_data:
             context.chat_data[f'{key}_active'] = False
@@ -739,7 +740,8 @@ async def send_header_response(chat_id, context, estacion_key, is_update=False):
 # RESPUESTA PRINCIPAL (foto + msg2/msg3)
 # ============================================================================
 async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str, return_to_main: bool = True):
-    stop_all_bus_updates(context)
+    stop_super_update(context)
+    stop_shuttle_update(context)
     context.chat_data['last_return_to_main'] = return_to_main
     now = get_simulated_now(context)
     demo_mode = context.chat_data.get('demo_mode', False)
@@ -940,7 +942,8 @@ async def help_command(update, context):
     await store_id(context, msg)
 
 async def handle_button(update, context):
-    stop_all_bus_updates(context)
+    stop_super_update(context)
+    stop_shuttle_update(context)
     
     text = update.message.text
     if text == "Altri":
@@ -954,8 +957,6 @@ async def handle_button(update, context):
         await send_shuttle_response(update, context, restore_keyboard=keyboard_main)
     elif text == "BRT-1":
         await bus_handlers.send_brt1_response(update, context, restore_keyboard=keyboard_main)
-    elif text == "BRT-5":
-        await bus_handlers.send_brt5_response(update, context, restore_keyboard=keyboard_main)
     elif text == "Humanitas":
         await bus_handlers.send_humanitas_response(update, context, restore_keyboard=keyboard_main)
     elif text == "Motta":
@@ -971,7 +972,8 @@ async def handle_button(update, context):
 # MODO TEST
 # ============================================================================
 async def test_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    stop_all_bus_updates(context)
+    stop_super_update(context)
+    stop_shuttle_update(context)
     
     args = context.args
     if not args:
@@ -1016,7 +1018,8 @@ async def test_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Comando non riconosciuto. Usa /test DDMMYYYY HHMM")
 
 async def testfin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    stop_all_bus_updates(context)
+    stop_super_update(context)
+    stop_shuttle_update(context)
     
     if context.chat_data and 'test_time' in context.chat_data:
         del context.chat_data['test_time']
@@ -1214,7 +1217,6 @@ def get_shuttle_status(now: datetime) -> str:
 
 async def auto_update_shuttle(context, chat_id, message_id, cycles=40, interval=3):
     last_sent_msg = None
-    restore_kb = context.chat_data.get('shuttle_restore_keyboard')
     for ciclo in range(1, cycles + 1):
         for _ in range(interval):
             await asyncio.sleep(1)
@@ -1269,10 +1271,14 @@ async def aggiornare_shuttle_callback(update: Update, context: ContextTypes.DEFA
         pass
 
 async def send_shuttle_response(update: Update, context: ContextTypes.DEFAULT_TYPE, restore_keyboard=None):
-    stop_all_bus_updates(context)
-    context.chat_data['shuttle_restore_keyboard'] = restore_keyboard
+    stop_shuttle_update(context)
     if restore_keyboard is not None:
-        await update.message.reply_text("🚌 Metro Shuttle", reply_markup=restore_keyboard, disable_notification=True)
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text="​",
+            reply_markup=restore_keyboard,
+            disable_notification=True
+        )
     now = get_simulated_now(context)
     msg = get_shuttle_status(now)
     result = await update.message.reply_text(msg, parse_mode='Markdown')
@@ -1607,7 +1613,8 @@ async def aggiornare_super_callback(update: Update, context: ContextTypes.DEFAUL
 # ============================================================================
 async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     stop_all_bus_updates(context)
-    stop_all_bus_updates(context)
+    stop_super_update(context)
+    stop_shuttle_update(context)
     
     texto = update.message.text.strip()
     
@@ -1659,9 +1666,6 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return
     if texto_lower in ("brt1", "brt-1", "brt 1"):
         await bus_handlers.send_brt1_response(update, context)
-        return
-    if texto_lower in ("brt5", "brt-5", "brt 5"):
-        await bus_handlers.send_brt5_response(update, context)
         return
     if texto_lower == "humanitas":
         await bus_handlers.send_humanitas_response(update, context)
