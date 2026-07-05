@@ -842,8 +842,13 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
 # ============================================================================
 # COMANDOS Y WRAPPERS
 # ============================================================================
+BUS_BUTTONS = {"Metro Shuttle", "BRT-1", "BRT-5", "Humanitas", "Motta", "Bus"}
+
 async def cancel_refresh_and_run(update: Update, context: ContextTypes.DEFAULT_TYPE, coro, *args, **kwargs):
-    stop_all_bus_updates(context)
+    # Non fermare il refresh se l'utente preme un bottone bus
+    text = getattr(getattr(update, 'message', None), 'text', '') or ''
+    if text not in BUS_BUTTONS:
+        stop_all_bus_updates(context)
     await coro(update, context, *args, **kwargs)
 
 async def start_wrapper(update, context): await cancel_refresh_and_run(update, context, start)
@@ -1614,7 +1619,9 @@ async def aggiornare_super_callback(update: Update, context: ContextTypes.DEFAUL
 # MODO NONNA: DETECCIÓN DE NOMBRE DE ESTACIÓN CON ERRORES TIPOGRÁFICOS Y ALIAS
 # ============================================================================
 async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    stop_all_bus_updates(context)
+    text = (update.message.text or '').strip()
+    if text not in BUS_BUTTONS:
+        stop_all_bus_updates(context)
     stop_super_update(context)
     stop_shuttle_update(context)
     
