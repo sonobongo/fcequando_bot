@@ -961,12 +961,16 @@ async def handle_button(update, context):
     elif text == "Metro Shuttle":
         await send_shuttle_response(update, context)
     elif text == "BRT-1":
+        await update.message.reply_text("🚌", reply_markup=keyboard_main, disable_notification=True)
         await bus_handlers.send_brt1_response(update, context)
     elif text == "BRT-5":
+        await update.message.reply_text("🚌", reply_markup=keyboard_main, disable_notification=True)
         await bus_handlers.send_brt5_response(update, context)
     elif text == "Humanitas":
+        await update.message.reply_text("🚌", reply_markup=keyboard_main, disable_notification=True)
         await bus_handlers.send_humanitas_response(update, context)
     elif text == "Motta":
+        await update.message.reply_text("🚌", reply_markup=keyboard_main, disable_notification=True)
         await bus_handlers.send_motta_response(update, context)
     elif text in BOTON_TO_KEY:
         est_key = BOTON_TO_KEY[text]
@@ -1281,7 +1285,7 @@ async def send_shuttle_response(update: Update, context: ContextTypes.DEFAULT_TY
     stop_shuttle_update(context)
     now = get_simulated_now(context)
     msg = get_shuttle_status(now)
-    result = await update.message.reply_text(msg, parse_mode='Markdown', reply_markup=ReplyKeyboardRemove())
+    result = await update.message.reply_text(msg, parse_mode='Markdown', reply_markup=keyboard_main)
     message_id = result.message_id
     chat_id = update.effective_chat.id
     context.chat_data['shuttle_active'] = True
@@ -1667,15 +1671,19 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await send_shuttle_response(update, context)
         return
     if texto_lower in ("brt1", "brt-1", "brt 1"):
+        await update.message.reply_text("🚌", reply_markup=keyboard_main, disable_notification=True)
         await bus_handlers.send_brt1_response(update, context)
         return
     if texto_lower in ("brt5", "brt-5", "brt 5"):
+        await update.message.reply_text("🚌", reply_markup=keyboard_main, disable_notification=True)
         await bus_handlers.send_brt5_response(update, context)
         return
     if texto_lower == "humanitas":
+        await update.message.reply_text("🚌", reply_markup=keyboard_main, disable_notification=True)
         await bus_handlers.send_humanitas_response(update, context)
         return
     if texto_lower == "motta":
+        await update.message.reply_text("🚌", reply_markup=keyboard_main, disable_notification=True)
         await bus_handlers.send_motta_response(update, context)
         return
     if texto_lower == "bus":
