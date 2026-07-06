@@ -2,12 +2,17 @@ import asyncio
 import time as time_module
 import logging
 from datetime import datetime, timedelta, time
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, ReplyKeyboardRemove
 from telegram.ext import ContextTypes
 from horarios_logic import *
 from horarios_logic import CATANIA_TZ, get_motta_trips, get_humanitas_trips
 
 logger = logging.getLogger(__name__)
+
+_keyboard_main = ReplyKeyboardMarkup(
+    [["Monte Po", "Altri", "Stesicoro"]],
+    resize_keyboard=True, one_time_keyboard=False
+)
 
 async def store_id(context, message):
     if not hasattr(message, 'message_id'):
@@ -156,9 +161,9 @@ async def send_motta_response(update: Update, context: ContextTypes.DEFAULT_TYPE
     now = get_simulated_now(context)
     img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/st_busmotta.png"
     try:
-        msg1 = await update.message.reply_photo(photo=img_url, caption="🚌 Linea Motta", reply_markup=ReplyKeyboardRemove())
+        msg1 = await update.message.reply_photo(photo=img_url, caption="🚌 Linea Motta", reply_markup=_keyboard_main)
     except Exception:
-        msg1 = await update.message.reply_text("🚌 Linea Motta", reply_markup=ReplyKeyboardRemove())
+        msg1 = await update.message.reply_text("🚌 Linea Motta", reply_markup=_keyboard_main)
     await store_id(context, msg1)
     msg = get_motta_status(now)
     keyboard = InlineKeyboardMarkup([[
@@ -282,9 +287,9 @@ async def send_humanitas_response(update: Update, context: ContextTypes.DEFAULT_
     img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/st_bushumanitas.png"
     caption = "🚌 Linea Humanitas"
     try:
-        msg1 = await update.message.reply_photo(photo=img_url, caption=caption, reply_markup=ReplyKeyboardRemove())
+        msg1 = await update.message.reply_photo(photo=img_url, caption=caption, reply_markup=_keyboard_main)
     except Exception:
-        msg1 = await update.message.reply_text(caption, reply_markup=ReplyKeyboardRemove())
+        msg1 = await update.message.reply_text(caption, reply_markup=_keyboard_main)
     if msg1:
         await store_id(context, msg1)
 
@@ -462,7 +467,7 @@ async def send_brt1_response(update, context, restore_keyboard=None):
     context.chat_data['brt1_restore_keyboard'] = restore_keyboard
     now = get_simulated_now(context)
     msg = get_brt1_status(now)
-    result = await update.message.reply_text(msg, parse_mode='Markdown', reply_markup=ReplyKeyboardRemove())
+    result = await update.message.reply_text(msg, parse_mode='Markdown', reply_markup=_keyboard_main)
     message_id = result.message_id
     chat_id = update.effective_chat.id
     context.chat_data['brt1_active'] = True
@@ -647,7 +652,7 @@ async def send_brt5_response(update, context, restore_keyboard=None):
         context.chat_data.pop('brt5_task', None)
     now = get_simulated_now(context)
     msg = get_brt5_status(now)
-    result = await update.message.reply_text(msg, parse_mode='Markdown', reply_markup=ReplyKeyboardRemove())
+    result = await update.message.reply_text(msg, parse_mode='Markdown', reply_markup=_keyboard_main)
     context.chat_data['brt5_active'] = True
     task = asyncio.create_task(auto_update_brt5(context, update.effective_chat.id, result.message_id))
     context.chat_data['brt5_task'] = task
