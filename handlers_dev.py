@@ -959,15 +959,15 @@ async def handle_button(update, context):
         now = get_simulated_now(context)
         await update.message.reply_text("🚌 Servizi Bus:", reply_markup=get_keyboard_bus(now))
     elif text == "Metro Shuttle":
-        await send_shuttle_response(update, context, restore_keyboard=keyboard_main)
+        await send_shuttle_response(update, context)
     elif text == "BRT-1":
-        await bus_handlers.send_brt1_response(update, context, restore_keyboard=keyboard_main)
+        await bus_handlers.send_brt1_response(update, context)
     elif text == "BRT-5":
-        await bus_handlers.send_brt5_response(update, context, restore_keyboard=keyboard_main)
+        await bus_handlers.send_brt5_response(update, context)
     elif text == "Humanitas":
-        await bus_handlers.send_humanitas_response(update, context, restore_keyboard=keyboard_main)
+        await bus_handlers.send_humanitas_response(update, context)
     elif text == "Motta":
-        await bus_handlers.send_motta_response(update, context, restore_keyboard=keyboard_main)
+        await bus_handlers.send_motta_response(update, context)
     elif text in BOTON_TO_KEY:
         est_key = BOTON_TO_KEY[text]
         context.chat_data['last_station'] = est_key
@@ -1279,16 +1279,9 @@ async def aggiornare_shuttle_callback(update: Update, context: ContextTypes.DEFA
 
 async def send_shuttle_response(update: Update, context: ContextTypes.DEFAULT_TYPE, restore_keyboard=None):
     stop_shuttle_update(context)
-    if restore_keyboard is not None:
-        await context.bot.send_message(
-            chat_id=update.effective_chat.id,
-            text="​",
-            reply_markup=restore_keyboard,
-            disable_notification=True
-        )
     now = get_simulated_now(context)
     msg = get_shuttle_status(now)
-    result = await update.message.reply_text(msg, parse_mode='Markdown')
+    result = await update.message.reply_text(msg, parse_mode='Markdown', reply_markup=ReplyKeyboardRemove())
     message_id = result.message_id
     chat_id = update.effective_chat.id
     context.chat_data['shuttle_active'] = True
