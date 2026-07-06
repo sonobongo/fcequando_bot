@@ -156,9 +156,9 @@ async def send_motta_response(update: Update, context: ContextTypes.DEFAULT_TYPE
     now = get_simulated_now(context)
     img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/st_busmotta.png"
     try:
-        msg1 = await update.message.reply_photo(photo=img_url, caption="🚌 Linea Motta", reply_markup=restore_keyboard)
+        msg1 = await update.message.reply_photo(photo=img_url, caption="🚌 Linea Motta", reply_markup=ReplyKeyboardRemove())
     except Exception:
-        msg1 = await update.message.reply_text("🚌 Linea Motta", reply_markup=restore_keyboard)
+        msg1 = await update.message.reply_text("🚌 Linea Motta", reply_markup=ReplyKeyboardRemove())
     await store_id(context, msg1)
     msg = get_motta_status(now)
     keyboard = InlineKeyboardMarkup([[
@@ -282,9 +282,9 @@ async def send_humanitas_response(update: Update, context: ContextTypes.DEFAULT_
     img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/st_bushumanitas.png"
     caption = "🚌 Linea Humanitas"
     try:
-        msg1 = await update.message.reply_photo(photo=img_url, caption=caption, reply_markup=restore_keyboard)
+        msg1 = await update.message.reply_photo(photo=img_url, caption=caption, reply_markup=ReplyKeyboardRemove())
     except Exception:
-        msg1 = await update.message.reply_text(caption, reply_markup=restore_keyboard)
+        msg1 = await update.message.reply_text(caption, reply_markup=ReplyKeyboardRemove())
     if msg1:
         await store_id(context, msg1)
 
@@ -460,11 +460,9 @@ async def send_brt1_response(update, context, restore_keyboard=None):
             pass
         context.chat_data.pop('brt1_task', None)
     context.chat_data['brt1_restore_keyboard'] = restore_keyboard
-    if restore_keyboard is not None:
-        await update.message.reply_text("🚌 BRT-1", reply_markup=restore_keyboard, disable_notification=True)
     now = get_simulated_now(context)
     msg = get_brt1_status(now)
-    result = await update.message.reply_text(msg, parse_mode='Markdown')
+    result = await update.message.reply_text(msg, parse_mode='Markdown', reply_markup=ReplyKeyboardRemove())
     message_id = result.message_id
     chat_id = update.effective_chat.id
     context.chat_data['brt1_active'] = True
@@ -647,11 +645,9 @@ async def send_brt5_response(update, context, restore_keyboard=None):
         except Exception:
             pass
         context.chat_data.pop('brt5_task', None)
-    if restore_keyboard is not None:
-        await update.message.reply_text("🚌 BRT-5", reply_markup=restore_keyboard, disable_notification=True)
     now = get_simulated_now(context)
     msg = get_brt5_status(now)
-    result = await update.message.reply_text(msg, parse_mode='Markdown')
+    result = await update.message.reply_text(msg, parse_mode='Markdown', reply_markup=ReplyKeyboardRemove())
     context.chat_data['brt5_active'] = True
     task = asyncio.create_task(auto_update_brt5(context, update.effective_chat.id, result.message_id))
     context.chat_data['brt5_task'] = task
