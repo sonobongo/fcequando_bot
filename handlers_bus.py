@@ -2,17 +2,12 @@ import asyncio
 import time as time_module
 import logging
 from datetime import datetime, timedelta, time
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, ReplyKeyboardRemove
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from horarios_logic import *
 from horarios_logic import CATANIA_TZ, get_motta_trips, get_humanitas_trips
 
 logger = logging.getLogger(__name__)
-
-_keyboard_main = ReplyKeyboardMarkup(
-    [["Monte Po", "Altri", "Stesicoro"]],
-    resize_keyboard=True, one_time_keyboard=False
-)
 
 async def store_id(context, message):
     if not hasattr(message, 'message_id'):
@@ -161,9 +156,9 @@ async def send_motta_response(update: Update, context: ContextTypes.DEFAULT_TYPE
     now = get_simulated_now(context)
     img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/st_busmotta.png"
     try:
-        msg1 = await update.message.reply_photo(photo=img_url, caption="🚌 Linea Motta", reply_markup=_keyboard_main)
+        msg1 = await update.message.reply_photo(photo=img_url, caption="🚌 Linea Motta", reply_markup=None)
     except Exception:
-        msg1 = await update.message.reply_text("🚌 Linea Motta", reply_markup=_keyboard_main)
+        msg1 = await update.message.reply_text("🚌 Linea Motta", reply_markup=None)
     await store_id(context, msg1)
     msg = get_motta_status(now)
     keyboard = InlineKeyboardMarkup([[
@@ -287,9 +282,9 @@ async def send_humanitas_response(update: Update, context: ContextTypes.DEFAULT_
     img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/st_bushumanitas.png"
     caption = "🚌 Linea Humanitas"
     try:
-        msg1 = await update.message.reply_photo(photo=img_url, caption=caption, reply_markup=_keyboard_main)
+        msg1 = await update.message.reply_photo(photo=img_url, caption=caption, reply_markup=None)
     except Exception:
-        msg1 = await update.message.reply_text(caption, reply_markup=_keyboard_main)
+        msg1 = await update.message.reply_text(caption, reply_markup=None)
     if msg1:
         await store_id(context, msg1)
 
@@ -420,7 +415,6 @@ def get_brt1_status(now: datetime) -> str:
 
 async def auto_update_brt1(context, chat_id, message_id, cycles=40, interval=3):
     last_sent_msg = None
-    restore_kb = context.chat_data.get('brt1_restore_keyboard')
     for _ in range(cycles):
         for _ in range(interval):
             await asyncio.sleep(1)
@@ -464,10 +458,9 @@ async def send_brt1_response(update, context, restore_keyboard=None):
         except Exception:
             pass
         context.chat_data.pop('brt1_task', None)
-    context.chat_data['brt1_restore_keyboard'] = restore_keyboard
     now = get_simulated_now(context)
     msg = get_brt1_status(now)
-    result = await update.message.reply_text(msg, parse_mode='Markdown', reply_markup=_keyboard_main)
+    result = await update.message.reply_text(msg, parse_mode='Markdown')
     message_id = result.message_id
     chat_id = update.effective_chat.id
     context.chat_data['brt1_active'] = True
@@ -502,7 +495,7 @@ async def aggiornare_brt1_callback(update, context):
 
 
 # ============================================================================
-# LÍNEA BRT-5 (Terminal Stazione Centrale ↔ Ospedale Cannizzaro) circular
+# LÍNEA BRT-5 (Terminal Stazione Centrale ↔ Ospedale Cannizzaro)
 # ============================================================================
 import os as _os5
 import json as _json5
@@ -554,8 +547,7 @@ def get_brt5_status(now: datetime) -> str:
                 t = (base + timedelta(seconds=off)).time()
                 dt = CATANIA_TZ.localize(datetime.combine(now.date(), t))
                 if 0 < (now - dt).total_seconds() <= 30:
-                    appena.add(i)
-                    break
+                    appena.add(i); break
         if not bus_tratti and not bus_fermate:
             bus_tratti.add(0)
         return bus_tratti, bus_fermate, appena
@@ -568,48 +560,34 @@ def get_brt5_status(now: datetime) -> str:
                 return t
         return None
 
-    stops_fwd = _BRT5_DATA['stops_forward']
-    stops_ret = _BRT5_DATA['stops_return']
-    off_fwd = _BRT5_DATA['offsets_forward']
-    off_ret = _BRT5_DATA['offsets_return']
-    deps_fwd = _BRT5_DATA['departures_forward']
-    deps_ret = _BRT5_DATA['departures_return']
-
-    bt_f, bf_f, ap_f = find_buses(stops_fwd, off_fwd, deps_fwd)
-    bt_r, bf_r, ap_r = find_buses(stops_ret, off_ret, deps_ret)
+    sf = _BRT5_DATA['stops_forward']; sr = _BRT5_DATA['stops_return']
+    of = _BRT5_DATA['offsets_forward']; or_ = _BRT5_DATA['offsets_return']
+    df = _BRT5_DATA['departures_forward']; dr = _BRT5_DATA['departures_return']
+    bt_f,bf_f,ap_f = find_buses(sf,of,df)
+    bt_r,bf_r,ap_r = find_buses(sr,or_,dr)
 
     lines = ["🚌 **BRT-5 – Monitoraggio in tempo reale**\n"]
-
     lines.append("🔼 *Verso Ospedale Cannizzaro*")
-    for i, stop in enumerate(stops_fwd):
-        nt = next_t(stop, off_fwd, deps_fwd)
+    for i,stop in enumerate(sf):
+        nt = next_t(stop,of,df)
         if i in bf_f:
-            s = max(0, int((CATANIA_TZ.localize(datetime.combine(now.date(), nt)) - now).total_seconds())) if nt else 0
+            s = max(0,int((CATANIA_TZ.localize(datetime.combine(now.date(),nt))-now).total_seconds())) if nt else 0
             lines.append(f"⚪️ **{stop}**  {bus_icon} {s//60:02d}:{s%60:02d}")
-        elif i in ap_f:
-            lines.append(f"⚪️ **{stop}**  _Appena passato_")
-        elif nt:
-            lines.append(f"⚪️ {stop}  {nt.strftime('%H:%M')}")
-        else:
-            lines.append(f"⚪️ {stop}  —")
-        if i < len(stops_fwd) - 1:
-            lines.append(f"▫️  {bus_icon}" if i in bt_f else "▫️")
+        elif i in ap_f: lines.append(f"⚪️ **{stop}**  _Appena passato_")
+        elif nt: lines.append(f"⚪️ {stop}  {nt.strftime('%H:%M')}")
+        else: lines.append(f"⚪️ {stop}  —")
+        if i < len(sf)-1: lines.append(f"▫️  {bus_icon}" if i in bt_f else "▫️")
 
-    lines.append("")
-    lines.append("🔽 *Verso Terminal Stazione Centrale*")
-    for i, stop in enumerate(stops_ret):
-        nt = next_t(stop, off_ret, deps_ret)
+    lines.append("\n🔽 *Verso Terminal Stazione Centrale*")
+    for i,stop in enumerate(sr):
+        nt = next_t(stop,or_,dr)
         if i in bf_r:
-            s = max(0, int((CATANIA_TZ.localize(datetime.combine(now.date(), nt)) - now).total_seconds())) if nt else 0
+            s = max(0,int((CATANIA_TZ.localize(datetime.combine(now.date(),nt))-now).total_seconds())) if nt else 0
             lines.append(f"⚪️ **{stop}**  {bus_icon} {s//60:02d}:{s%60:02d}")
-        elif i in ap_r:
-            lines.append(f"⚪️ **{stop}**  _Appena passato_")
-        elif nt:
-            lines.append(f"⚪️ {stop}  {nt.strftime('%H:%M')}")
-        else:
-            lines.append(f"⚪️ {stop}  —")
-        if i < len(stops_ret) - 1:
-            lines.append(f"▫️  {bus_icon}" if i in bt_r else "▫️")
+        elif i in ap_r: lines.append(f"⚪️ **{stop}**  _Appena passato_")
+        elif nt: lines.append(f"⚪️ {stop}  {nt.strftime('%H:%M')}")
+        else: lines.append(f"⚪️ {stop}  —")
+        if i < len(sr)-1: lines.append(f"▫️  {bus_icon}" if i in bt_r else "▫️")
 
     return "\n".join(lines)
 
@@ -630,8 +608,7 @@ async def auto_update_brt5(context, chat_id, message_id, cycles=40, interval=3):
                 await context.bot.edit_message_text(text=new_msg, chat_id=chat_id, message_id=message_id, parse_mode='Markdown')
                 last_sent_msg = new_msg
             except Exception as e:
-                logger.error(f"Errore aggiornamento BRT-5: {e}")
-                break
+                logger.error(f"Errore aggiornamento BRT-5: {e}"); break
     if context.chat_data.get('brt5_active', False):
         keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔄 Aggiornare", callback_data="aggiornare_brt5")]])
         try:
@@ -645,14 +622,12 @@ async def auto_update_brt5(context, chat_id, message_id, cycles=40, interval=3):
 async def send_brt5_response(update, context, restore_keyboard=None):
     if 'brt5_task' in context.chat_data:
         context.chat_data['brt5_active'] = False
-        try:
-            context.chat_data['brt5_task'].cancel()
-        except Exception:
-            pass
+        try: context.chat_data['brt5_task'].cancel()
+        except Exception: pass
         context.chat_data.pop('brt5_task', None)
     now = get_simulated_now(context)
     msg = get_brt5_status(now)
-    result = await update.message.reply_text(msg, parse_mode='Markdown', reply_markup=_keyboard_main)
+    result = await update.message.reply_text(msg, parse_mode='Markdown')
     context.chat_data['brt5_active'] = True
     task = asyncio.create_task(auto_update_brt5(context, update.effective_chat.id, result.message_id))
     context.chat_data['brt5_task'] = task
@@ -663,10 +638,8 @@ async def aggiornare_brt5_callback(update, context):
     await query.answer()
     if 'brt5_task' in context.chat_data:
         context.chat_data['brt5_active'] = False
-        try:
-            context.chat_data['brt5_task'].cancel()
-        except Exception:
-            pass
+        try: context.chat_data['brt5_task'].cancel()
+        except Exception: pass
         context.chat_data.pop('brt5_task', None)
     now = get_simulated_now(context)
     msg = get_brt5_status(now)
