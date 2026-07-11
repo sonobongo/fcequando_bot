@@ -128,6 +128,8 @@ def stop_shuttle_update(context):
             pass
         context.chat_data.pop('shuttle_task', None)
 
+BUS_BUTTONS = {"Metro Shuttle", "BRT-1", "BRT-5", "Humanitas", "Motta", "Bus"}
+
 def stop_all_bus_updates(context):
     stop_super_update(context)
     stop_shuttle_update(context)
@@ -138,6 +140,12 @@ def stop_all_bus_updates(context):
                 context.chat_data[f'{key}_task'].cancel()
             except Exception:
                 pass
+            context.chat_data.pop(f'{key}_task', None)
+    for key in ('brt1', 'brt5'):
+        if f'{key}_task' in context.chat_data:
+            context.chat_data[f'{key}_active'] = False
+            try: context.chat_data[f'{key}_task'].cancel()
+            except Exception: pass
             context.chat_data.pop(f'{key}_task', None)
 
 # ============================================================================
@@ -740,8 +748,7 @@ async def send_header_response(chat_id, context, estacion_key, is_update=False):
 # RESPUESTA PRINCIPAL (foto + msg2/msg3)
 # ============================================================================
 async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TYPE, estacion_key: str, return_to_main: bool = True):
-    stop_super_update(context)
-    stop_shuttle_update(context)
+    stop_all_bus_updates(context)
     context.chat_data['last_return_to_main'] = return_to_main
     now = get_simulated_now(context)
     demo_mode = context.chat_data.get('demo_mode', False)
@@ -842,10 +849,7 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
 # ============================================================================
 # COMANDOS Y WRAPPERS
 # ============================================================================
-BUS_BUTTONS = {"Metro Shuttle", "BRT-1", "BRT-5", "Humanitas", "Motta", "Bus"}
-
 async def cancel_refresh_and_run(update: Update, context: ContextTypes.DEFAULT_TYPE, coro, *args, **kwargs):
-    # Non fermare il refresh se l'utente preme un bottone bus
     text = getattr(getattr(update, 'message', None), 'text', '') or ''
     if text not in BUS_BUTTONS:
         stop_all_bus_updates(context)
@@ -947,8 +951,7 @@ async def help_command(update, context):
     await store_id(context, msg)
 
 async def handle_button(update, context):
-    stop_super_update(context)
-    stop_shuttle_update(context)
+    stop_all_bus_updates(context)
     
     text = update.message.text
     if text == "Altri":
@@ -959,19 +962,13 @@ async def handle_button(update, context):
         now = get_simulated_now(context)
         await update.message.reply_text("🚌 Servizi Bus:", reply_markup=get_keyboard_bus(now))
     elif text == "Metro Shuttle":
-        await send_shuttle_response(update, context)
+        await send_shuttle_response(update, context, restore_keyboard=keyboard_main)
     elif text == "BRT-1":
-        await update.message.reply_text("🚌", reply_markup=keyboard_main, disable_notification=True)
-        await bus_handlers.send_brt1_response(update, context)
-    elif text == "BRT-5":
-        await update.message.reply_text("🚌", reply_markup=keyboard_main, disable_notification=True)
-        await bus_handlers.send_brt5_response(update, context)
+        await bus_handlers.send_brt1_response(update, context, restore_keyboard=keyboard_main)
     elif text == "Humanitas":
-        await update.message.reply_text("🚌", reply_markup=keyboard_main, disable_notification=True)
-        await bus_handlers.send_humanitas_response(update, context)
+        await bus_handlers.send_humanitas_response(update, context, restore_keyboard=keyboard_main)
     elif text == "Motta":
-        await update.message.reply_text("🚌", reply_markup=keyboard_main, disable_notification=True)
-        await bus_handlers.send_motta_response(update, context)
+        await bus_handlers.send_motta_response(update, context, restore_keyboard=keyboard_main)
     elif text in BOTON_TO_KEY:
         est_key = BOTON_TO_KEY[text]
         context.chat_data['last_station'] = est_key
@@ -983,8 +980,7 @@ async def handle_button(update, context):
 # MODO TEST
 # ============================================================================
 async def test_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    stop_super_update(context)
-    stop_shuttle_update(context)
+    stop_all_bus_updates(context)
     
     args = context.args
     if not args:
@@ -1029,8 +1025,7 @@ async def test_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Comando non riconosciuto. Usa /test DDMMYYYY HHMM")
 
 async def testfin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    stop_super_update(context)
-    stop_shuttle_update(context)
+    stop_all_bus_updates(context)
     
     if context.chat_data and 'test_time' in context.chat_data:
         del context.chat_data['test_time']
@@ -1283,9 +1278,16 @@ async def aggiornare_shuttle_callback(update: Update, context: ContextTypes.DEFA
 
 async def send_shuttle_response(update: Update, context: ContextTypes.DEFAULT_TYPE, restore_keyboard=None):
     stop_shuttle_update(context)
+    if restore_keyboard is not None:
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text="​",
+            reply_markup=restore_keyboard,
+            disable_notification=True
+        )
     now = get_simulated_now(context)
     msg = get_shuttle_status(now)
-    result = await update.message.reply_text(msg, parse_mode='Markdown', reply_markup=keyboard_main)
+    result = await update.message.reply_text(msg, parse_mode='Markdown')
     message_id = result.message_id
     chat_id = update.effective_chat.id
     context.chat_data['shuttle_active'] = True
@@ -1616,11 +1618,9 @@ async def aggiornare_super_callback(update: Update, context: ContextTypes.DEFAUL
 # MODO NONNA: DETECCIÓN DE NOMBRE DE ESTACIÓN CON ERRORES TIPOGRÁFICOS Y ALIAS
 # ============================================================================
 async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = (update.message.text or '').strip()
-    if text not in BUS_BUTTONS:
+    _txt = (update.message.text or '').strip()
+    if _txt not in BUS_BUTTONS and not any(k in _txt.lower() for k in ('brt1','brt-1','brt5','brt-5','shuttle','motta','humanitas')):
         stop_all_bus_updates(context)
-    stop_super_update(context)
-    stop_shuttle_update(context)
     
     texto = update.message.text.strip()
     
@@ -1668,22 +1668,19 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
     
     # ========== RESPUESTA A "shuttle" (palabra exacta) ==========
     if texto_lower in ("shuttle", "metro shuttle"):
+        await update.message.reply_text("Metro Shuttle", reply_markup=keyboard_main, disable_notification=True)
         await send_shuttle_response(update, context)
         return
     if texto_lower in ("brt1", "brt-1", "brt 1"):
-        await update.message.reply_text("🚌", reply_markup=keyboard_main, disable_notification=True)
+        await update.message.reply_text("BRT-1", reply_markup=keyboard_main, disable_notification=True)
         await bus_handlers.send_brt1_response(update, context)
         return
-    if texto_lower in ("brt5", "brt-5", "brt 5"):
-        await update.message.reply_text("🚌", reply_markup=keyboard_main, disable_notification=True)
-        await bus_handlers.send_brt5_response(update, context)
-        return
     if texto_lower == "humanitas":
-        await update.message.reply_text("🚌", reply_markup=keyboard_main, disable_notification=True)
+        await update.message.reply_text("Humanitas", reply_markup=keyboard_main, disable_notification=True)
         await bus_handlers.send_humanitas_response(update, context)
         return
     if texto_lower == "motta":
-        await update.message.reply_text("🚌", reply_markup=keyboard_main, disable_notification=True)
+        await update.message.reply_text("Motta", reply_markup=keyboard_main, disable_notification=True)
         await bus_handlers.send_motta_response(update, context)
         return
     if texto_lower == "bus":
