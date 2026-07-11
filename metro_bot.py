@@ -8,6 +8,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, D
 from horarios_logic import *
 import handlers_dev as dev_handlers
 import handlers_acc as acc_handlers
+import handlers_bus as bus_handlers
 
 flask_app = Flask(__name__)
 
@@ -143,7 +144,8 @@ def main():
     app.add_handler(CommandHandler("devfin", dev_fin_wrapper))
 
     button_texts = ["Monte Po", "Stesicoro", "Altri", "Menu", "← Menu", "Fontana", "Nesima", "San Nullo",
-                    "Cibali", "Milo", "Borgo", "Giuffrida", "Italia", "Galatea", "Giovanni XXIII"]
+                    "Cibali", "Milo", "Borgo", "Giuffrida", "Italia", "Galatea", "Giovanni XXIII",
+                    "Bus", "Metro Shuttle", "BRT-1", "BRT-5", "Humanitas", "Motta"]
     async def handle_button_wrapper(update, context):
         if context.chat_data.get('acces_mode', False):
             await acc_handlers.normal_handle_text(update, context)
@@ -152,6 +154,12 @@ def main():
     app.add_handler(MessageHandler(filters.Text(button_texts), handle_button_wrapper))
 
     app.add_handler(CallbackQueryHandler(dev_handlers.aggiornare_super_callback, pattern="^aggiornare_super$"))
+    app.add_handler(CallbackQueryHandler(dev_handlers.aggiornare_shuttle_callback, pattern="^aggiornare_shuttle$"))
+    app.add_handler(CallbackQueryHandler(dev_handlers.ritornare_callback, pattern="^ritornare_"))
+    app.add_handler(CallbackQueryHandler(bus_handlers.aggiornare_brt1_callback, pattern="^aggiornare_brt1$"))
+    app.add_handler(CallbackQueryHandler(bus_handlers.aggiornare_brt5_callback, pattern="^aggiornare_brt5$"))
+    app.add_handler(CallbackQueryHandler(bus_handlers.aggiornare_motta_callback, pattern="^aggiornare_motta$"))
+    app.add_handler(CallbackQueryHandler(bus_handlers.aggiornare_humanitas_callback, pattern="^aggiornare_humanitas$"))
     app.add_handler(CallbackQueryHandler(aggiornare_callback_wrapper, pattern="^aggiornare_"))
     app.add_handler(CallbackQueryHandler(aggiornare_cabecera_callback_wrapper, pattern="^agg_cabecera_"))
 
