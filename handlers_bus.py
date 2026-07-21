@@ -650,3 +650,194 @@ async def aggiornare_brt5_callback(update, context):
         await context.bot.edit_message_text(text=msg, chat_id=query.message.chat_id, message_id=query.message.message_id, parse_mode='Markdown')
     except Exception:
         pass
+
+
+# ============================================================================
+# LÍNEA 109 (Stazione Metro Milo ↔ Cimitero Mascalucia)
+# ============================================================================
+import os as _os109
+import json as _json109
+from datetime import date as _date
+
+_BUS109_FILE = _os109.path.join(_os109.path.dirname(_os109.path.abspath(__file__)), 'bus109_horarios.json')
+_BUS109_DATA = {}
+
+def _load_bus109():
+    global _BUS109_DATA
+    if not _os109.path.exists(_BUS109_FILE):
+        return
+    with open(_BUS109_FILE, 'r', encoding='utf-8') as f:
+        _BUS109_DATA = _json109.load(f)
+
+_load_bus109()
+
+def _bus109_extra_seconds(stop_index: int, dep_str: str, now: datetime) -> int:
+    """Extra seconds per stop based on season and time of day."""
+    dep_h = int(dep_str.split(':')[0])
+    month = now.month
+    is_summer = 6 <= month <= 9
+    is_weekday = now.weekday() < 5
+    is_peak = 6 <= dep_h < 8
+
+    if is_summer:
+        return 10 * stop_index if is_peak else 0
+    else:  # Sep-Jun
+        per_stop = 15 if is_peak else 10
+        return per_stop * stop_index if is_weekday else 0
+
+def _bus109_arrival(dep_str: str, offset_secs: int, stop_index: int, now: datetime):
+    """Calculate arrival time at a stop given departure and offset."""
+    base = datetime.strptime(dep_str, "%H:%M")
+    extra = _bus109_extra_seconds(stop_index, dep_str, now)
+    result = base + timedelta(seconds=offset_secs + extra)
+    return result.time()
+
+def get_bus109_status(now: datetime) -> str:
+    if not _BUS109_DATA:
+        return "🚌 Dati Linea 109 non disponibili."
+    if now.tzinfo is None:
+        now = CATANIA_TZ.localize(now)
+    else:
+        now = now.astimezone(CATANIA_TZ)
+    current_time = now.time()
+    bus_icon = "🔻" if now.second % 2 == 0 else "⬇️"
+
+    sf = _BUS109_DATA['stops_forward']
+    sr = _BUS109_DATA['stops_return']
+    of = _BUS109_DATA['offsets_forward']
+    or_ = _BUS109_DATA['offsets_return']
+    df = _BUS109_DATA['departures_forward']
+    dr = _BUS109_DATA['departures_return']
+
+    def find_buses(stops, offsets, departures):
+        bus_tratti, bus_fermate, appena = set(), set(), set()
+        N = len(stops)
+        for i in range(N - 1):
+            off_i = offsets[stops[i]]
+            off_i1 = offsets[stops[i+1]]
+            for dep in departures:
+                t_i = _bus109_arrival(dep, off_i, i, now)
+                t_i1 = _bus109_arrival(dep, off_i1, i+1, now)
+                if t_i <= current_time < t_i1:
+                    dt_i1 = CATANIA_TZ.localize(datetime.combine(now.date(), t_i1))
+                    secs = (dt_i1 - now).total_seconds()
+                    if secs <= 30:
+                        bus_fermate.add(i+1)
+                    else:
+                        bus_tratti.add(i)
+                    break
+        for i, stop in enumerate(stops):
+            off = offsets[stop]
+            for dep in departures:
+                t = _bus109_arrival(dep, off, i, now)
+                dt = CATANIA_TZ.localize(datetime.combine(now.date(), t))
+                if 0 < (now - dt).total_seconds() <= 30:
+                    appena.add(i); break
+        if not bus_tratti and not bus_fermate:
+            bus_tratti.add(0)
+        return bus_tratti, bus_fermate, appena
+
+    def next_t(stop, offsets, departures, stops_list):
+        idx = stops_list.index(stop)
+        off = offsets[stop]
+        for dep in departures:
+            t = _bus109_arrival(dep, off, idx, now)
+            if t > current_time:
+                return t
+        return None
+
+    bt_f, bf_f, ap_f = find_buses(sf, of, df)
+    bt_r, bf_r, ap_r = find_buses(sr, or_, dr)
+
+    lines = ["🚌 **Linea 109 – Monitoraggio in tempo reale**\n"]
+    lines.append("🔼 *Verso Cimitero Mascalucia*")
+    for i, stop in enumerate(sf):
+        nt = next_t(stop, of, df, sf)
+        if i in bf_f:
+            s = max(0, int((CATANIA_TZ.localize(datetime.combine(now.date(), nt)) - now).total_seconds())) if nt else 0
+            lines.append(f"⚪️ **{stop}**  {bus_icon} {s//60:02d}:{s%60:02d}")
+        elif i in ap_f:
+            lines.append(f"⚪️ **{stop}**  _Appena passato_")
+        elif nt:
+            lines.append(f"⚪️ {stop}  {nt.strftime('%H:%M')}")
+        else:
+            lines.append(f"⚪️ {stop}  —")
+        if i < len(sf)-1:
+            lines.append(f"▫️  {bus_icon}" if i in bt_f else "▫️")
+
+    lines.append("\n🔽 *Verso Stazione Metro Milo*")
+    for i, stop in enumerate(sr):
+        nt = next_t(stop, or_, dr, sr)
+        if i in bf_r:
+            s = max(0, int((CATANIA_TZ.localize(datetime.combine(now.date(), nt)) - now).total_seconds())) if nt else 0
+            lines.append(f"⚪️ **{stop}**  {bus_icon} {s//60:02d}:{s%60:02d}")
+        elif i in ap_r:
+            lines.append(f"⚪️ **{stop}**  _Appena passato_")
+        elif nt:
+            lines.append(f"⚪️ {stop}  {nt.strftime('%H:%M')}")
+        else:
+            lines.append(f"⚪️ {stop}  —")
+        if i < len(sr)-1:
+            lines.append(f"▫️  {bus_icon}" if i in bt_r else "▫️")
+
+    return "\n".join(lines)
+
+
+async def auto_update_bus109(context, chat_id, message_id, cycles=40, interval=3):
+    last_sent_msg = None
+    for _ in range(cycles):
+        for _ in range(interval):
+            await asyncio.sleep(1)
+            if not context.chat_data.get('bus109_active', False):
+                return
+        if not context.chat_data.get('bus109_active', False):
+            return
+        now = get_simulated_now(context)
+        new_msg = get_bus109_status(now)
+        if new_msg != last_sent_msg:
+            try:
+                await context.bot.edit_message_text(text=new_msg, chat_id=chat_id, message_id=message_id, parse_mode='Markdown')
+                last_sent_msg = new_msg
+            except Exception as e:
+                logger.error(f"Errore aggiornamento 109: {e}"); break
+    if context.chat_data.get('bus109_active', False):
+        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("🔄 Aggiornare", callback_data="aggiornare_bus109")]])
+        try:
+            await context.bot.edit_message_text(text=new_msg, chat_id=chat_id, message_id=message_id, parse_mode='Markdown', reply_markup=keyboard)
+        except Exception:
+            pass
+        context.chat_data['bus109_active'] = False
+        context.chat_data.pop('bus109_task', None)
+
+
+async def send_bus109_response(update, context, restore_keyboard=None):
+    if 'bus109_task' in context.chat_data:
+        context.chat_data['bus109_active'] = False
+        try: context.chat_data['bus109_task'].cancel()
+        except Exception: pass
+        context.chat_data.pop('bus109_task', None)
+    now = get_simulated_now(context)
+    msg = get_bus109_status(now)
+    result = await update.message.reply_text(msg, parse_mode='Markdown')
+    context.chat_data['bus109_active'] = True
+    task = asyncio.create_task(auto_update_bus109(context, update.effective_chat.id, result.message_id))
+    context.chat_data['bus109_task'] = task
+
+
+async def aggiornare_bus109_callback(update, context):
+    query = update.callback_query
+    await query.answer()
+    if 'bus109_task' in context.chat_data:
+        context.chat_data['bus109_active'] = False
+        try: context.chat_data['bus109_task'].cancel()
+        except Exception: pass
+        context.chat_data.pop('bus109_task', None)
+    now = get_simulated_now(context)
+    msg = get_bus109_status(now)
+    context.chat_data['bus109_active'] = True
+    task = asyncio.create_task(auto_update_bus109(context, query.message.chat_id, query.message.message_id))
+    context.chat_data['bus109_task'] = task
+    try:
+        await context.bot.edit_message_text(text=msg, chat_id=query.message.chat_id, message_id=query.message.message_id, parse_mode='Markdown')
+    except Exception:
+        pass
