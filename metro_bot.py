@@ -158,6 +158,7 @@ def main():
     app.add_handler(CallbackQueryHandler(dev_handlers.ritornare_callback, pattern="^ritornare_"))
     app.add_handler(CallbackQueryHandler(bus_handlers.aggiornare_brt1_callback, pattern="^aggiornare_brt1$"))
     app.add_handler(CallbackQueryHandler(bus_handlers.aggiornare_brt5_callback, pattern="^aggiornare_brt5$"))
+    app.add_handler(CallbackQueryHandler(bus_handlers.aggiornare_bus109_callback, pattern="^aggiornare_bus109$"))
     app.add_handler(CallbackQueryHandler(bus_handlers.aggiornare_motta_callback, pattern="^aggiornare_motta$"))
     app.add_handler(CallbackQueryHandler(bus_handlers.aggiornare_humanitas_callback, pattern="^aggiornare_humanitas$"))
     app.add_handler(CallbackQueryHandler(aggiornare_callback_wrapper, pattern="^aggiornare_"))
