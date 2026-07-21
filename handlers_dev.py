@@ -49,7 +49,7 @@ def get_keyboard_bus(now=None):
             show_shuttle = time_mins < 22 * 60 + 30
         elif wd == 6:
             show_shuttle = time_mins >= 22 * 60 + 30
-    rows = [["BRT-1"], ["BRT-5"], ["Humanitas"], ["Motta"], ["← Menu"]]
+    rows = [["BRT-1"], ["BRT-5"], ["Linea 109"], ["Humanitas"], ["Motta"], ["← Menu"]]
     if show_shuttle:
         rows.insert(0, ["Metro Shuttle"])
     return ReplyKeyboardMarkup(rows, resize_keyboard=True, one_time_keyboard=False)
@@ -952,6 +952,10 @@ async def handle_button(update, context):
         tmp = await update.message.reply_text(".", reply_markup=keyboard_main, disable_notification=True)
         await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=tmp.message_id)
         await bus_handlers.send_brt5_response(update, context)
+    elif text == "Linea 109":
+        tmp = await update.message.reply_text(".", reply_markup=keyboard_main, disable_notification=True)
+        await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=tmp.message_id)
+        await bus_handlers.send_bus109_response(update, context)
     elif text == "Humanitas":
         tmp = await update.message.reply_text(".", reply_markup=keyboard_main, disable_notification=True)
         await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=tmp.message_id)
@@ -1667,6 +1671,9 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return
     if texto_lower in ("brt5", "brt-5", "brt 5"):
         await bus_handlers.send_brt5_response(update, context)
+        return
+    if texto_lower in ("109", "linea 109", "bus 109"):
+        await bus_handlers.send_bus109_response(update, context)
         return
     if texto_lower == "humanitas":
         await bus_handlers.send_humanitas_response(update, context)
