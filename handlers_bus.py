@@ -282,7 +282,7 @@ async def send_humanitas_response(update: Update, context: ContextTypes.DEFAULT_
     img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/st_bushumanitas.png"
     caption = "🚌 Linea Humanitas"
     try:
-        msg1 = await update.message.reply_photo(photo=img_url, caption=caption, reply_markup=None)
+        msg1 = await update.message.reply_photo(photo=img_url, caption=caption, reply_markup=restore_keyboard)
     except Exception:
         msg1 = await update.message.reply_text(caption, reply_markup=None)
     if msg1:
@@ -458,6 +458,8 @@ async def send_brt1_response(update, context, restore_keyboard=None):
         except Exception:
             pass
         context.chat_data.pop('brt1_task', None)
+    if restore_keyboard:
+        await update.message.reply_text("🚌 BRT-1", reply_markup=restore_keyboard, disable_notification=True)
     now = get_simulated_now(context)
     msg = get_brt1_status(now)
     result = await update.message.reply_text(msg, parse_mode='Markdown')
@@ -625,6 +627,8 @@ async def send_brt5_response(update, context, restore_keyboard=None):
         try: context.chat_data['brt5_task'].cancel()
         except Exception: pass
         context.chat_data.pop('brt5_task', None)
+    if restore_keyboard:
+        await update.message.reply_text("🚌 BRT-5", reply_markup=restore_keyboard, disable_notification=True)
     now = get_simulated_now(context)
     msg = get_brt5_status(now)
     result = await update.message.reply_text(msg, parse_mode='Markdown')
@@ -816,6 +820,8 @@ async def send_bus109_response(update, context, restore_keyboard=None):
         try: context.chat_data['bus109_task'].cancel()
         except Exception: pass
         context.chat_data.pop('bus109_task', None)
+    if restore_keyboard:
+        await update.message.reply_text("🚌 109", reply_markup=restore_keyboard, disable_notification=True)
     now = get_simulated_now(context)
     msg = get_bus109_status(now)
     result = await update.message.reply_text(msg, parse_mode='Markdown')
