@@ -943,29 +943,17 @@ async def handle_button(update, context):
         now = get_simulated_now(context)
         await update.message.reply_text("🚌 Servizi Bus:", reply_markup=get_keyboard_bus(now))
     elif text == "Metro Shuttle":
-        tmp = await update.message.reply_text(".", reply_markup=keyboard_main, disable_notification=True)
-        await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=tmp.message_id)
-        await send_shuttle_response(update, context)
+        await send_shuttle_response(update, context, restore_keyboard=keyboard_main)
     elif text == "BRT-1":
-        tmp = await update.message.reply_text(".", reply_markup=keyboard_main, disable_notification=True)
-        await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=tmp.message_id)
-        await bus_handlers.send_brt1_response(update, context)
+        await bus_handlers.send_brt1_response(update, context, restore_keyboard=keyboard_main)
     elif text == "BRT-5":
-        tmp = await update.message.reply_text(".", reply_markup=keyboard_main, disable_notification=True)
-        await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=tmp.message_id)
-        await bus_handlers.send_brt5_response(update, context)
+        await bus_handlers.send_brt5_response(update, context, restore_keyboard=keyboard_main)
     elif text == "109":
-        tmp = await update.message.reply_text(".", reply_markup=keyboard_main, disable_notification=True)
-        await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=tmp.message_id)
-        await bus_handlers.send_bus109_response(update, context)
+        await bus_handlers.send_bus109_response(update, context, restore_keyboard=keyboard_main)
     elif text == "Humanitas":
-        tmp = await update.message.reply_text(".", reply_markup=keyboard_main, disable_notification=True)
-        await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=tmp.message_id)
-        await bus_handlers.send_humanitas_response(update, context)
+        await bus_handlers.send_humanitas_response(update, context, restore_keyboard=keyboard_main)
     elif text == "Motta":
-        tmp = await update.message.reply_text(".", reply_markup=keyboard_main, disable_notification=True)
-        await context.bot.delete_message(chat_id=update.effective_chat.id, message_id=tmp.message_id)
-        await bus_handlers.send_motta_response(update, context)
+        await bus_handlers.send_motta_response(update, context, restore_keyboard=keyboard_main)
     elif text in BOTON_TO_KEY:
         est_key = BOTON_TO_KEY[text]
         context.chat_data['last_station'] = est_key
