@@ -1266,12 +1266,7 @@ async def aggiornare_shuttle_callback(update: Update, context: ContextTypes.DEFA
 async def send_shuttle_response(update: Update, context: ContextTypes.DEFAULT_TYPE, restore_keyboard=None):
     stop_shuttle_update(context)
     if restore_keyboard is not None:
-        await context.bot.send_message(
-            chat_id=update.effective_chat.id,
-            text="​",
-            reply_markup=restore_keyboard,
-            disable_notification=True
-        )
+        await update.message.reply_text("🚌", reply_markup=restore_keyboard, disable_notification=True)
     now = get_simulated_now(context)
     msg = get_shuttle_status(now)
     result = await update.message.reply_text(msg, parse_mode='Markdown')
