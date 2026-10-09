@@ -530,10 +530,6 @@ def get_opening_time(now: datetime, station: str = None) -> Tuple[int, int]:
             return (h, m)
     if is_festivo_nazionale(now):
         return (7, 0)
-    # Usare now.weekday() (giorno calendario reale) per determinare l'orario di apertura
-    # perché l'apertura dipende da QUANDO il metro riapre, non dal giorno operativo
-    if now.weekday() == 6:  # domenica calendario
-        return (7, 0)
     return (6, 0)
 
 def get_closing_time(now: datetime, station: str) -> Tuple[int, int]:
@@ -549,14 +545,13 @@ def get_closing_time(now: datetime, station: str) -> Tuple[int, int]:
         last = get_last_train_sant_agata(station)
         return (last.hour, last.minute)
 
-    eff_ct = get_effective_datetime(now)
     if is_festivo_nazionale(now):
-        if eff_ct.weekday() in (4, 5, 6):
+        if now.weekday() in (4, 5, 6):
             return (1, 0)
         else:
             return (22, 30)
     else:
-        if eff_ct.weekday() in (4, 5):
+        if now.weekday() in (4, 5):
             return (1, 0)
         else:
             return (22, 30)
@@ -1086,19 +1081,17 @@ def get_motta_trips(now: datetime) -> List[Dict[str, Optional[time]]]:
     if now.weekday() >= 5:
         return []
     trips = []
-    stops = ['MTP', 'MSB', 'MSA', 'MSB2', 'MTP2']
-    mtp_sched = MOTTA_SCHEDULES.get('MTP', {}).get('weekday', [])
+    fnt_sched = MOTTA_SCHEDULES.get('FNT', {}).get('weekday', [])
     msb2_sched = MOTTA_SCHEDULES.get('MSB2', {}).get('weekday', [])
-    for i in range(len(mtp_sched)):
+    fnt2_sched = MOTTA_SCHEDULES.get('FNT2', {}).get('weekday', [])
+    for i in range(len(fnt_sched)):
         trip = {}
-        trip['MTP'] = mtp_sched[i]
-        trip['MSB'] = MOTTA_SCHEDULES['MSB']['weekday'][i] if i < len(MOTTA_SCHEDULES['MSB']['weekday']) else None
-        trip['MSA'] = MOTTA_SCHEDULES['MSA']['weekday'][i] if i < len(MOTTA_SCHEDULES['MSA']['weekday']) else None
-        if i == 0:
-            trip['MSB2'] = None
-        else:
-            trip['MSB2'] = msb2_sched[i-1] if (i-1) < len(msb2_sched) else None
-        trip['MTP2'] = MOTTA_SCHEDULES['MTP2']['weekday'][i] if i < len(MOTTA_SCHEDULES['MTP2']['weekday']) else None
+        trip['FNT'] = fnt_sched[i]
+        trip['MTP'] = MOTTA_SCHEDULES.get('MTP', {}).get('weekday', [])[i] if i < len(MOTTA_SCHEDULES.get('MTP', {}).get('weekday', [])) else None
+        trip['MSB'] = MOTTA_SCHEDULES.get('MSB', {}).get('weekday', [])[i] if i < len(MOTTA_SCHEDULES.get('MSB', {}).get('weekday', [])) else None
+        trip['MSA'] = MOTTA_SCHEDULES.get('MSA', {}).get('weekday', [])[i] if i < len(MOTTA_SCHEDULES.get('MSA', {}).get('weekday', [])) else None
+        trip['MSB2'] = msb2_sched[i-1] if i > 0 and (i-1) < len(msb2_sched) else None
+        trip['FNT2'] = fnt2_sched[i] if i < len(fnt2_sched) else None
         trips.append(trip)
     return trips
     # ============================================================================
