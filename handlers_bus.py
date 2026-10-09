@@ -48,11 +48,11 @@ def get_motta_status(now: datetime) -> str:
         return "🚌 Servizio Motta non disponibile (solo feriali)."
 
     current_time = now.time()
-    stops = ['MTP', 'MSB', 'MSA', 'MSB2', 'MTP2']
+    stops = ['FNT', 'MTP', 'MSB', 'MSA', 'MSB2', 'FNT2']
     active_trip = None
     for trip in trips:
-        dep_time = trip.get('MTP')
-        arr_time = trip.get('MTP2')
+        dep_time = trip.get('FNT')
+        arr_time = trip.get('FNT2')
         if dep_time is None or arr_time is None:
             continue
         if dep_time <= current_time < arr_time:
@@ -60,93 +60,71 @@ def get_motta_status(now: datetime) -> str:
             break
     if active_trip is None:
         for trip in trips:
-            if trip.get('MTP') and trip['MTP'] > current_time:
+            if trip.get('FNT') and trip['FNT'] > current_time:
                 active_trip = trip
                 break
         if active_trip is None and trips:
             active_trip = trips[-1]
 
     bus_pos = -1
+    now_dt = datetime.combine(now.date(), current_time)
     if active_trip['MSB2'] is not None:
         for i in range(len(stops)-1):
             t1 = active_trip[stops[i]]
             t2 = active_trip[stops[i+1]]
             if t1 is None or t2 is None:
                 continue
-            t1_dt = datetime.combine(now.date(), t1)
-            t2_dt = datetime.combine(now.date(), t2)
-            now_dt = datetime.combine(now.date(), current_time)
             if t1 <= current_time < t2:
+                t1_dt = datetime.combine(now.date(), t1)
+                t2_dt = datetime.combine(now.date(), t2)
                 seg_total = (t2_dt - t1_dt).total_seconds()
-                seg_transcurridos = (now_dt - t1_dt).total_seconds()
-                frac = seg_transcurridos / seg_total if seg_total > 0 else 0
+                frac = (now_dt - t1_dt).total_seconds() / seg_total if seg_total > 0 else 0
                 bus_pos = i + frac
                 break
-            elif current_time == t2:
-                bus_pos = i + 1
-                break
-        else:
-            if current_time < active_trip['MTP']:
-                bus_pos = -1
-            elif current_time >= active_trip['MTP2']:
-                bus_pos = len(stops) - 1
     else:
-        segmentos = [(0, 1), (1, 2), (2, 4)]
+        segmentos = [(0,1),(1,2),(2,3),(3,5)]
         for idx1, idx2 in segmentos:
             t1 = active_trip[stops[idx1]]
             t2 = active_trip[stops[idx2]]
             if t1 is None or t2 is None:
                 continue
-            t1_dt = datetime.combine(now.date(), t1)
-            t2_dt = datetime.combine(now.date(), t2)
-            now_dt = datetime.combine(now.date(), current_time)
             if t1 <= current_time < t2:
+                t1_dt = datetime.combine(now.date(), t1)
+                t2_dt = datetime.combine(now.date(), t2)
                 seg_total = (t2_dt - t1_dt).total_seconds()
-                seg_transcurridos = (now_dt - t1_dt).total_seconds()
-                frac = seg_transcurridos / seg_total if seg_total > 0 else 0
-                if idx2 - idx1 == 1:
-                    bus_pos = idx1 + frac
-                else:
-                    bus_pos = 2 + frac * 2
+                frac = (now_dt - t1_dt).total_seconds() / seg_total if seg_total > 0 else 0
+                span = idx2 - idx1
+                bus_pos = idx1 + frac * span
                 break
-            elif current_time == t2:
-                bus_pos = idx2
-                break
-        else:
-            if current_time < active_trip['MTP']:
-                bus_pos = -1
-            elif current_time >= active_trip['MTP2']:
-                bus_pos = len(stops) - 1
+    if bus_pos == -1 and active_trip.get('FNT') and current_time >= active_trip.get('FNT2', current_time):
+        bus_pos = len(stops) - 1
 
     parts = []
-    for i in range(5):
-        on_stop = (bus_pos != -1 and abs(bus_pos - i) < 0.5 and not (i < bus_pos < i + 1))
+    for i in range(6):
         if bus_pos != -1 and abs(bus_pos - i) < 0.01:
             parts.append("🚍")
         else:
             parts.append("⚪")
-        if i < 4:
-            in_segment = bus_pos != -1 and i < bus_pos < i + 1
-            if in_segment:
-                tercio = int((bus_pos - i) * 3)
-                if tercio > 2:
-                    tercio = 2
-                tramo_chars = ["▫"] * 3
-                tramo_chars[tercio] = "🚍"
-                parts.append("".join(tramo_chars))
+        if i < 5:
+            if bus_pos != -1 and i < bus_pos < i + 1:
+                tercio = min(2, int((bus_pos - i) * 3))
+                tramo = ["▫"] * 3
+                tramo[tercio] = "🚍"
+                parts.append("".join(tramo))
             else:
                 parts.append("▫▫▫")
     emoji_line = "".join(parts)
 
     lines = [emoji_line]
-    lines.append("MTP        MSB          MSA         MSB          MTP")
+    lines.append("FNT   MTP    MSB    MSA    MSB    FNT")
 
-    t1 = active_trip['MTP'].strftime('%H:%M') if active_trip['MTP'] else '--:--'
-    t2 = active_trip['MSB'].strftime('%H:%M') if active_trip['MSB'] else '--:--'
-    t3 = active_trip['MSA'].strftime('%H:%M') if active_trip['MSA'] else '--:--'
-    t4 = active_trip['MSB2'].strftime('%H:%M') if active_trip['MSB2'] else '--:--'
-    t5 = active_trip['MTP2'].strftime('%H:%M') if active_trip['MTP2'] else '--:--'
-    times_line = t1.ljust(11) + t2.ljust(14) + t3.ljust(14) + t4.ljust(14) + t5
+    t1 = active_trip['FNT'].strftime('%H:%M') if active_trip['FNT'] else '--:--'
+    t2 = active_trip['MTP'].strftime('%H:%M') if active_trip['MTP'] else '--:--'
+    t3 = active_trip['MSB'].strftime('%H:%M') if active_trip['MSB'] else '--:--'
+    t4 = active_trip['MSA'].strftime('%H:%M') if active_trip['MSA'] else '--:--'
+    t5 = active_trip['MSB2'].strftime('%H:%M') if active_trip['MSB2'] else '--:--'
+    t6 = active_trip['FNT2'].strftime('%H:%M') if active_trip['FNT2'] else '--:--'
+    times_line = t1.ljust(7) + t2.ljust(7) + t3.ljust(7) + t4.ljust(7) + t5.ljust(7) + t6
     lines.append(times_line)
 
     return "\n".join(lines)
@@ -282,7 +260,7 @@ async def send_humanitas_response(update: Update, context: ContextTypes.DEFAULT_
     img_url = "https://raw.githubusercontent.com/sonobongo/fcequando_bot/main/st_bushumanitas.png"
     caption = "🚌 Linea Humanitas"
     try:
-        msg1 = await update.message.reply_photo(photo=img_url, caption=caption, reply_markup=restore_keyboard)
+        msg1 = await update.message.reply_photo(photo=img_url, caption=caption, reply_markup=None)
     except Exception:
         msg1 = await update.message.reply_text(caption, reply_markup=None)
     if msg1:
@@ -458,8 +436,6 @@ async def send_brt1_response(update, context, restore_keyboard=None):
         except Exception:
             pass
         context.chat_data.pop('brt1_task', None)
-    if restore_keyboard:
-        await update.message.reply_text("🚌 BRT-1", reply_markup=restore_keyboard, disable_notification=True)
     now = get_simulated_now(context)
     msg = get_brt1_status(now)
     result = await update.message.reply_text(msg, parse_mode='Markdown')
@@ -627,8 +603,6 @@ async def send_brt5_response(update, context, restore_keyboard=None):
         try: context.chat_data['brt5_task'].cancel()
         except Exception: pass
         context.chat_data.pop('brt5_task', None)
-    if restore_keyboard:
-        await update.message.reply_text("🚌 BRT-5", reply_markup=restore_keyboard, disable_notification=True)
     now = get_simulated_now(context)
     msg = get_brt5_status(now)
     result = await update.message.reply_text(msg, parse_mode='Markdown')
@@ -820,8 +794,6 @@ async def send_bus109_response(update, context, restore_keyboard=None):
         try: context.chat_data['bus109_task'].cancel()
         except Exception: pass
         context.chat_data.pop('bus109_task', None)
-    if restore_keyboard:
-        await update.message.reply_text("🚌 109", reply_markup=restore_keyboard, disable_notification=True)
     now = get_simulated_now(context)
     msg = get_bus109_status(now)
     result = await update.message.reply_text(msg, parse_mode='Markdown')
