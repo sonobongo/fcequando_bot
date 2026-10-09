@@ -131,9 +131,9 @@ def stop_shuttle_update(context):
         context.chat_data.pop('shuttle_task', None)
 
 # ============================================================================
-# BUS NESIMA → HUMANITAS
+# BUS FONTANA → HUMANITAS
 # ============================================================================
-def get_bus_message_nesima(now: datetime) -> str:
+def get_bus_message_fontana(now: datetime) -> str:
     if now.weekday() == 6 or is_festivo_nazionale(now):
         return ""
     horarios = [("7:30", 7*60+30), ("8:30", 8*60+30), ("9:30", 9*60+30), ("10:30", 10*60+30),
@@ -1940,9 +1940,9 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     ALIASES = {
         "misterbianco": "montepo",
-        "humanitas": "nesima",
-        "centro sicilia": "nesima",
-        "centrosicilia": "nesima",
+        "humanitas": "fontana",
+        "centro sicilia": "fontana",
+        "centrosicilia": "fontana",
         "mister bianco": "montepo",
         "mr bianco": "montepo",
         "mr. bianco": "montepo",
@@ -2097,7 +2097,7 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     msg = await update.message.reply_text(
         "Stazione non riconosciuta. Le stazioni disponibili sono: " +
-        ", ".join(NOMBRE_MOSTRAR.values()) + ".\nPuoi anche usare alias come 'Misterbianco' (Monte Po) o 'Humanitas' (Nesima).",
+        ", ".join(NOMBRE_MOSTRAR.values()) + ".\nPuoi anche usare alias come 'Misterbianco' (Monte Po) o 'Humanitas' (Fontana).",
         reply_markup=keyboard_main
     )
     await store_id(context, msg)
