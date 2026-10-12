@@ -99,33 +99,25 @@ def get_motta_status(now: datetime) -> str:
     if bus_pos == -1 and active_trip.get('FNT') and current_time >= active_trip.get('FNT2', current_time):
         bus_pos = len(stops) - 1
 
-    parts = []
-    for i in range(6):
-        if bus_pos != -1 and abs(bus_pos - i) < 0.01:
-            parts.append("🚍")
+    STOP_LABELS = {
+        'FNT': 'Metro Fontana', 'MTP': 'Metro Monte Po',
+        'MSB': 'Misterbianco', 'MSA': "Motta Sant'Anastasia",
+        'MSB2': 'Misterbianco', 'FNT2': 'Metro Fontana (arr.)'
+    }
+    bus_icon = "🚍"
+    lines = ["🚌 **Linea Motta – In tempo reale**\n"]
+    for i, stop in enumerate(stops):
+        t = active_trip.get(stop)
+        label = STOP_LABELS.get(stop, stop)
+        t_str = t.strftime('%H:%M') if t else '--:--'
+        on_stop = bus_pos != -1 and abs(bus_pos - i) < 0.01
+        if on_stop:
+            lines.append(f"⚪️ **{label}**  {bus_icon}")
         else:
-            parts.append("⚪")
-        if i < 5:
-            if bus_pos != -1 and i < bus_pos < i + 1:
-                tercio = min(2, int((bus_pos - i) * 3))
-                tramo = ["▫"] * 3
-                tramo[tercio] = "🚍"
-                parts.append("".join(tramo))
-            else:
-                parts.append("▫▫▫")
-    emoji_line = "".join(parts)
-
-    lines = [emoji_line]
-    lines.append("FNT   MTP    MSB    MSA    MSB    FNT")
-
-    t1 = active_trip['FNT'].strftime('%H:%M') if active_trip['FNT'] else '--:--'
-    t2 = active_trip['MTP'].strftime('%H:%M') if active_trip['MTP'] else '--:--'
-    t3 = active_trip['MSB'].strftime('%H:%M') if active_trip['MSB'] else '--:--'
-    t4 = active_trip['MSA'].strftime('%H:%M') if active_trip['MSA'] else '--:--'
-    t5 = active_trip['MSB2'].strftime('%H:%M') if active_trip['MSB2'] else '--:--'
-    t6 = active_trip['FNT2'].strftime('%H:%M') if active_trip['FNT2'] else '--:--'
-    times_line = t1.ljust(7) + t2.ljust(7) + t3.ljust(7) + t4.ljust(7) + t5.ljust(7) + t6
-    lines.append(times_line)
+            lines.append(f"⚪️ {label}  {t_str}")
+        if i < len(stops) - 1:
+            in_seg = bus_pos != -1 and i < bus_pos < i + 1
+            lines.append(f"▫️  {bus_icon}" if in_seg else "▫️")
 
     return "\n".join(lines)
 
@@ -218,39 +210,25 @@ def get_humanitas_status(now: datetime) -> str:
 
     # Construir línea visual (longitudes de tramos: 4, 4, 3)
     seg_lengths = [4, 4, 3]
-    parts = []
-    for i in range(4):
-        # Parada
-        if bus_pos != -1 and abs(bus_pos - i) < 0.01:
-            parts.append("🚍")
+    STOP_LABELS_H = {
+        'NES': 'Nesima Metro', 'HUM': 'Humanitas',
+        'CEN': 'Centro Sicilia', 'NES2': 'Nesima Metro (arr.)'
+    }
+    stops_h = ['NES', 'HUM', 'CEN', 'NES2']
+    bus_icon = "🚍"
+    lines = ["🚌 **Linea Humanitas – In tempo reale**\n"]
+    for i, stop in enumerate(stops_h):
+        t = active_trip.get(stop)
+        label = STOP_LABELS_H.get(stop, stop)
+        t_str = t.strftime('%H:%M') if t else '--:--'
+        on_stop = bus_pos != -1 and abs(bus_pos - i) < 0.01
+        if on_stop:
+            lines.append(f"⚪️ **{label}**  {bus_icon}")
         else:
-            parts.append("⚪")
-        # Tramo
-        if i < 3:
-            n = seg_lengths[i]
-            if bus_pos != -1 and i < bus_pos < i+1:
-                tercio = int((bus_pos - i) * n)
-                if tercio >= n:
-                    tercio = n - 1
-                tramo_chars = []
-                for j in range(n):
-                    if j == tercio:
-                        tramo_chars.append("🚍")
-                    else:
-                        tramo_chars.append("▫")
-                parts.append("".join(tramo_chars))
-            else:
-                parts.append("▫" * n)
-    emoji_line = "".join(parts)
-
-    lines = [emoji_line]
-    lines.append(f"{'NES':<16}{'HUM':<18}{'CEN':<13}{'NES'}")
-    # Horarios (NES2 ya es un valor real)
-    t1 = active_trip['NES'].strftime('%H:%M') if active_trip['NES'] else '--:--'
-    t2 = active_trip['HUM'].strftime('%H:%M') if active_trip['HUM'] else '--:--'
-    t3 = active_trip['CEN'].strftime('%H:%M') if active_trip['CEN'] else '--:--'
-    t4 = active_trip['NES2'].strftime('%H:%M') if active_trip['NES2'] else '--:--'
-    lines.append(f"{t1:<16}{t2:<18}{t3:<13}{t4}")
+            lines.append(f"⚪️ {label}  {t_str}")
+        if i < len(stops_h) - 1:
+            in_seg = bus_pos != -1 and i < bus_pos < i + 1
+            lines.append(f"▫️  {bus_icon}" if in_seg else "▫️")
 
     return "\n".join(lines)
 
