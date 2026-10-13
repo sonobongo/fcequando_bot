@@ -106,6 +106,7 @@ def get_motta_status(now: datetime) -> str:
     }
     bus_icon = "🚍"
     lines = ["🚌 **Linea Motta – In tempo reale**\n"]
+    DOUBLE_AFTER = {1, 4}  # double divider after MTP and MSB2 (longer segments)
     for i, stop in enumerate(stops):
         t = active_trip.get(stop)
         label = STOP_LABELS.get(stop, stop)
@@ -117,7 +118,10 @@ def get_motta_status(now: datetime) -> str:
             lines.append(f"⚪️ {label}  {t_str}")
         if i < len(stops) - 1:
             in_seg = bus_pos != -1 and i < bus_pos < i + 1
-            lines.append(f"▫️  {bus_icon}" if in_seg else "▫️")
+            divider = f"▫️  {bus_icon}" if in_seg else "▫️"
+            if i in DOUBLE_AFTER:
+                lines.append(divider)
+            lines.append(divider)
 
     return "\n".join(lines)
 
