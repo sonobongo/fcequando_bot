@@ -106,18 +106,22 @@ def get_motta_status(now: datetime) -> str:
     }
     bus_icon = "🚍"
     lines = ["🚌 **Linea Motta – In tempo reale**\n"]
+    DOUBLE_AFTER = {1, 4}  # double divider after MTP and MSB2 (longer segments)
     for i, stop in enumerate(stops):
         t = active_trip.get(stop)
         label = STOP_LABELS.get(stop, stop)
         t_str = t.strftime('%H:%M') if t else '--:--'
-        on_stop = bus_pos != -1 and abs(bus_pos - i) < 0.01
+        on_stop = bus_pos != -1 and i <= bus_pos < i + 0.02
+        in_seg = bus_pos != -1 and i + 0.02 <= bus_pos < i + 1
         if on_stop:
             lines.append(f"⚪️ **{label}**  {bus_icon}")
         else:
             lines.append(f"⚪️ {label}  {t_str}")
         if i < len(stops) - 1:
-            in_seg = bus_pos != -1 and i < bus_pos < i + 1
-            lines.append(f"▫️  {bus_icon}" if in_seg else "▫️")
+            divider = f"▫️  {bus_icon}" if in_seg else "▫️"
+            if i in DOUBLE_AFTER:
+                lines.append(divider)
+            lines.append(divider)
 
     return "\n".join(lines)
 
@@ -221,13 +225,13 @@ def get_humanitas_status(now: datetime) -> str:
         t = active_trip.get(stop)
         label = STOP_LABELS_H.get(stop, stop)
         t_str = t.strftime('%H:%M') if t else '--:--'
-        on_stop = bus_pos != -1 and abs(bus_pos - i) < 0.01
+        on_stop = bus_pos != -1 and i <= bus_pos < i + 0.02
+        in_seg = bus_pos != -1 and i + 0.02 <= bus_pos < i + 1
         if on_stop:
             lines.append(f"⚪️ **{label}**  {bus_icon}")
         else:
             lines.append(f"⚪️ {label}  {t_str}")
         if i < len(stops_h) - 1:
-            in_seg = bus_pos != -1 and i < bus_pos < i + 1
             lines.append(f"▫️  {bus_icon}" if in_seg else "▫️")
 
     return "\n".join(lines)
