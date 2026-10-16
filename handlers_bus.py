@@ -42,6 +42,14 @@ def get_simulated_now(context: ContextTypes.DEFAULT_TYPE) -> datetime:
 # ============================================================================
 # LÍNEA MOTTA (Misterbianco-Motta S.Anastasia) – monitor simple
 # ============================================================================
+
+def _bus_on_stop(t, now):
+    """True durante el minuto siguiente a la hora de llegada a la parada."""
+    if t is None:
+        return False
+    delta = (datetime.combine(now.date(), now.time()) - datetime.combine(now.date(), t)).total_seconds()
+    return 0 <= delta < 60
+
 def get_motta_status(now: datetime) -> str:
     trips = get_motta_trips(now)
     if not trips:
@@ -111,17 +119,16 @@ def get_motta_status(now: datetime) -> str:
         t = active_trip.get(stop)
         label = STOP_LABELS.get(stop, stop)
         t_str = t.strftime('%H:%M') if t else '--:--'
-        on_stop = bus_pos != -1 and i <= bus_pos < i + 0.02
-        in_seg = bus_pos != -1 and i + 0.02 <= bus_pos < i + 1
+        on_stop = _bus_on_stop(t, now) or (bus_pos != -1 and i == len(stops) - 1 and bus_pos >= i)
+        in_seg = (not on_stop) and bus_pos != -1 and i <= bus_pos < i + 1
         if on_stop:
             lines.append(f"⚪️ **{label}**  {bus_icon}")
         else:
             lines.append(f"⚪️ {label}  {t_str}")
         if i < len(stops) - 1:
-            divider = f"▫️  {bus_icon}" if in_seg else "▫️"
+            lines.append(f"▫️  {bus_icon}" if in_seg else "▫️")
             if i in DOUBLE_AFTER:
-                lines.append(divider)
-            lines.append(divider)
+                lines.append("▫️")
 
     return "\n".join(lines)
 
@@ -225,8 +232,8 @@ def get_humanitas_status(now: datetime) -> str:
         t = active_trip.get(stop)
         label = STOP_LABELS_H.get(stop, stop)
         t_str = t.strftime('%H:%M') if t else '--:--'
-        on_stop = bus_pos != -1 and i <= bus_pos < i + 0.02
-        in_seg = bus_pos != -1 and i + 0.02 <= bus_pos < i + 1
+        on_stop = _bus_on_stop(t, now) or (bus_pos != -1 and i == len(stops_h) - 1 and bus_pos >= i)
+        in_seg = (not on_stop) and bus_pos != -1 and i <= bus_pos < i + 1
         if on_stop:
             lines.append(f"⚪️ **{label}**  {bus_icon}")
         else:
