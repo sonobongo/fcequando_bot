@@ -958,8 +958,8 @@ async def handle_button(update, context):
         est_key = BOTON_TO_KEY[text]
         context.chat_data['last_station'] = est_key
         await send_station_response(update, context, est_key, return_to_main=True)
-    else:
-        await update.message.reply_text("Scelta non valida. Usa i pulsanti.", reply_markup=keyboard_main)
+            else:
+        await normal_handle_text(update, context)
 
 # ============================================================================
 # MODO TEST
