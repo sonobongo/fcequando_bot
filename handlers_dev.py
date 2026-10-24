@@ -1908,12 +1908,8 @@ async def normal_handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     ALIASES = {
         "misterbianco": "montepo",
-        "humanitas": "fontana",
         "centro sicilia": "fontana",
         "centrosicilia": "fontana",
-        "mister bianco": "montepo",
-        "mr bianco": "montepo",
-        "mr. bianco": "montepo",
         "giovanni": "giovanni",
         "giovanni xxiii": "giovanni",
         "stesicoro": "stesicoro",
