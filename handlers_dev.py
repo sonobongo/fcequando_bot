@@ -805,6 +805,108 @@ async def send_station_response(update: Update, context: ContextTypes.DEFAULT_TY
         last_msg = clean_text_for_display(last_msg)
         if last_msg:
             last_msg_text = f"\n\n{last_msg}"
+
+    permanent_caption = f"{test_indicator}🚇 Prossimi treni a {nombre}{last_msg_text}"
+    permanent_caption = clean_text_for_display(permanent_caption)
+    if not permanent_caption:
+        permanent_caption = f"🚇 Prossimi treni a {nombre}"
+
+    # 👇 AVISO DE BUS: ahora en Fontana (antes estaba en Nesima)
+    if estacion_key == "fontana":
+        try:
+            bus_msg = get_bus_message_fontana(now)
+            if bus_msg:
+                permanent_caption += f"\n\n{bus_msg}"
+        except Exception as e:
+            logger.error(f"get_bus_message_fontana falló: {e}")
+
+    img_station = get_station_image(estacion_key, now)
+
+    if img_station:
+        msg1 = await update.message.reply_photo(photo=img_station, caption=permanent_caption, reply_markup=keyboard_main if return_to_main else get_keyboard_altri(now))
+    else:
+        msg1 = await update.message.reply_text(permanent_caption, reply_markup=keyboard_main if return_to_main else get_keyboard_altri(now))
+    context.chat_data['main_msg_id'] = msg1.message_id
+    await store_id(context, msg1)
+
+    ids = await send_messages_2_and_3(update, context, estacion_key, now, simulated=(context.chat_data.get('test_time') is not None or context.chat_data.get('test_live_base') is not None), show_button=True)
+    if ids:
+        context.chat_data['refresh_msg_ids'] = list(ids)
+    stop_super_update(context)
+    stop_shuttle_update(context)
+    context.chat_data['last_return_to_main'] = return_to_main
+    now = get_simulated_now(context)
+    demo_mode = context.chat_data.get('demo_mode', False)
+
+    test_indicator = ""
+    if (context.chat_data.get('test_time') is not None or context.chat_data.get('test_live_base') is not None) and not demo_mode:
+        test_indicator = "🧪 [TEST MODE] "
+
+    if estacion_key in ["montepo", "stesicoro"]:
+        await send_header_response(update.message.chat_id, context, estacion_key, is_update=False)
+        return
+
+    if is_sant_agata(now):
+        nombre = NOMBRE_MOSTRAR.get(estacion_key, estacion_key.capitalize())
+        msg_agata = get_sant_agata_message("Montepo", now)
+        img_station = get_station_image(estacion_key, now)
+        if img_station:
+            msg1 = await update.message.reply_photo(photo=img_station, caption=f"🚇 {nombre}\n\n{msg_agata}", parse_mode='Markdown', reply_markup=keyboard_main if return_to_main else get_keyboard_altri(now))
+        else:
+            msg1 = await update.message.reply_text(f"🚇 {nombre}\n\n{msg_agata}", parse_mode='Markdown', reply_markup=keyboard_main if return_to_main else get_keyboard_altri(now))
+        context.chat_data['main_msg_id'] = msg1.message_id
+        await store_id(context, msg1)
+        return
+
+    closed, next_open, special_closing_msg = is_metro_closed(now, "Montepo")
+    if closed:
+        if next_open.date() > now.date():
+            reopen_str = f"domani alle {next_open.strftime('%H:%M')}"
+        else:
+            reopen_str = f"alle {next_open.strftime('%H:%M')}"
+        mins_to_open = int((next_open - now).total_seconds() // 60)
+        if mins_to_open <= 60:
+            try:
+                first_train, _, _, has_first = get_next_departure("Montepo", now)
+                if not has_first:
+                    tomorrow = CATANIA_TZ.localize(datetime.combine(now.date() + timedelta(days=1), time(0, 0)))
+                    first_train, _, _, has_first = get_next_departure("Montepo", tomorrow)
+                if has_first and first_train:
+                    msg = f"🚇 La metropolitana è chiusa. Il primo treno da Monte Po partirà alle {first_train.strftime('%H:%M')}."
+                else:
+                    msg = f"🚇 La metropolitana è chiusa. Riaprirà {reopen_str}."
+            except Exception:
+                msg = f"🚇 La metropolitana è chiusa. Riaprirà {reopen_str}."
+        else:
+            msg = f"🚇 La metropolitana è chiusa. Riaprirà {reopen_str}."
+        try:
+            img = get_station_image(estacion_key, now)
+            if img:
+                msg1 = await update.message.reply_photo(photo=img, caption=msg, parse_mode='Markdown', reply_markup=keyboard_main if return_to_main else get_keyboard_altri(now))
+            else:
+                msg1 = await update.message.reply_text(msg, parse_mode='Markdown', reply_markup=keyboard_main if return_to_main else get_keyboard_altri(now))
+            context.chat_data['main_msg_id'] = msg1.message_id
+            await store_id(context, msg1)
+        except Exception as e:
+            logger.error(f"Error enviando mensaje de metro cerrado: {e}")
+            try:
+                msg1 = await update.message.reply_text(msg, reply_markup=keyboard_main)
+                context.chat_data['main_msg_id'] = msg1.message_id
+            except Exception:
+                pass
+        return
+
+    nombre = NOMBRE_MOSTRAR.get(estacion_key, estacion_key.capitalize())
+    last_msg = get_last_train_message(now, "Montepo")
+    last_msg_text = ""
+    if last_msg and not is_sant_agata(now):
+        if "01:00" in last_msg:
+            last_msg = last_msg.replace("📌", "🕐")
+        elif "22:30" in last_msg:
+            last_msg = last_msg.replace("📌", "🕙")
+        last_msg = clean_text_for_display(last_msg)
+        if last_msg:
+            last_msg_text = f"\n\n{last_msg}"
     
     permanent_caption = f"{test_indicator}🚇 Prossimi treni a {nombre}{last_msg_text}"
     permanent_caption = clean_text_for_display(permanent_caption)
