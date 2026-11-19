@@ -125,6 +125,18 @@
       "descripcion": "Hora punta extendida por evento especial"
     }
   ],
+  "huelgas": [
+    {
+      "fecha": "2026-11-20",
+      "aviso_desde": "2026-11-18",
+      "descripcion": "Sciopero",
+      "tramos_suspendidos": [
+        { "inicio": "09:00", "fin": "13:00" },
+        { "inicio": "16:00", "fin": "cierre" }
+      ],
+      "reanuda": { "fecha": "2026-11-21", "hora": "06:00" }
+    }
+  ],
   "notas": [
     {
       "fecha_inicio": "2026-06-01",
